@@ -272,7 +272,15 @@ async def update_order(
                         if extra:
                             msg_text += extra.get(lang, extra.get("ru", ""))
 
-                        await client.send_message(conv.telegram_chat_id, msg_text)
+                        # Resolve entity — after restart Telethon may not have the peer cached
+                        try:
+                            entity = await client.get_input_entity(conv.telegram_chat_id)
+                        except ValueError:
+                            if conv.telegram_username:
+                                entity = await client.get_input_entity(conv.telegram_username)
+                            else:
+                                raise
+                        await client.send_message(entity, msg_text)
 
                         # Save notification as message
                         from src.conversations.models import Message

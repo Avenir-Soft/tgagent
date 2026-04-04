@@ -60,6 +60,7 @@ class OrderOut(BaseModel):
     currency: str
     status: str
     items: list[OrderItemOut]
+    conversation_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 

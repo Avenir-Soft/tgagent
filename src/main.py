@@ -162,10 +162,18 @@ async def _execute_due_broadcasts():
                 for conv_id, chat_id, first_name, username in convs:
                     r_info = {"name": first_name or "—", "username": username, "conversation_id": str(conv_id)}
                     try:
+                        # Resolve entity — after restart Telethon may not have the peer cached
+                        try:
+                            entity = await client.get_input_entity(chat_id)
+                        except ValueError:
+                            if username:
+                                entity = await client.get_input_entity(username)
+                            else:
+                                raise
                         if image_url:
-                            tg_sent = await client.send_file(chat_id, file=image_url, caption=msg_text, force_document=False)
+                            tg_sent = await client.send_file(entity, file=image_url, caption=msg_text, force_document=False)
                         else:
-                            tg_sent = await client.send_message(chat_id, msg_text)
+                            tg_sent = await client.send_message(entity, msg_text)
                         sent += 1
                         r_info["sent"] = True
 

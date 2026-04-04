@@ -58,6 +58,9 @@ class Conversation(PkMixin, TenantMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     ai_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    is_training_candidate: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     last_message_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -101,5 +104,10 @@ class Message(PkMixin, TenantMixin, TimestampMixin, Base):
     delivery_status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=text("'sent'")
     )  # sent, delivered, failed
+    training_label: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # approved, rejected
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rejection_selected_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     conversation = relationship("Conversation", back_populates="messages")

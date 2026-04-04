@@ -13,6 +13,7 @@ class HandoffCreate(BaseModel):
 class HandoffUpdate(BaseModel):
     status: str | None = None
     assigned_to_user_id: UUID | None = None
+    resolution_notes: str | None = None
 
 
 class HandoffOut(BaseModel):
@@ -24,9 +25,11 @@ class HandoffOut(BaseModel):
     priority: str
     status: str
     assigned_to_user_id: UUID | None
+    assigned_to_user_name: str | None = None
     linked_order_id: UUID | None = None
     linked_order_number: str | None = None
     conversation_name: str | None = None
+    resolution_notes: str | None = None
     created_at: datetime
     resolved_at: datetime | None
 

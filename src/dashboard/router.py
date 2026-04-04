@@ -345,7 +345,15 @@ async def send_cart_recovery(
         from src.telegram.service import telegram_manager
         client = telegram_manager.get_client(user.tenant_id)
         if client:
-            sent = await client.send_message(conv.telegram_chat_id, text)
+            # Resolve entity — after restart Telethon may not have the peer cached
+            try:
+                entity = await client.get_input_entity(conv.telegram_chat_id)
+            except ValueError:
+                if conv.telegram_username:
+                    entity = await client.get_input_entity(conv.telegram_username)
+                else:
+                    raise
+            sent = await client.send_message(entity, text)
             from datetime import datetime as _dt2, timezone as _tz2
             msg = Message(
                 tenant_id=user.tenant_id,
@@ -598,15 +606,25 @@ async def send_broadcast(
                 "conversation_id": str(conv.id),
             }
             try:
+                # Resolve entity first — after restart Telethon may not have the peer cached
+                try:
+                    entity = await client.get_input_entity(conv.telegram_chat_id)
+                except ValueError:
+                    # Fallback: try resolving by username
+                    if conv.telegram_username:
+                        entity = await client.get_input_entity(conv.telegram_username)
+                    else:
+                        raise
+
                 if body.image_url:
                     await client.send_file(
-                        conv.telegram_chat_id,
+                        entity,
                         file=body.image_url,
                         caption=body.text,
                         force_document=False,
                     )
                 else:
-                    await client.send_message(conv.telegram_chat_id, body.text)
+                    await client.send_message(entity, body.text)
                 msg = Message(
                     tenant_id=user.tenant_id,
                     conversation_id=conv.id,

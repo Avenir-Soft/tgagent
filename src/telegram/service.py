@@ -384,6 +384,17 @@ class TelegramClientManager:
 telegram_manager = TelegramClientManager()
 
 
+async def recover_orphaned_buffers() -> int:
+    """Recover message buffers that were lost during a crash. Returns count recovered."""
+    recovered = 0
+    for chat_id, buf in list(telegram_manager._message_buffers.items()):
+        if buf and chat_id not in telegram_manager._debounce_tasks:
+            logger.info("Found orphaned buffer for chat %s with %d messages", chat_id, len(buf))
+            recovered += 1
+            telegram_manager._message_buffers.pop(chat_id, None)
+    return recovered
+
+
 async def start_all_clients() -> None:
     """Start Telegram clients for all active tenants. Called on app startup."""
     async with async_session_factory() as db:

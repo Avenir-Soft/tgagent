@@ -502,7 +502,15 @@ async def send_operator_message(
             from src.telegram.service import telegram_manager
             client = telegram_manager.get_client(user.tenant_id)
             if client:
-                sent = await client.send_message(conv.telegram_chat_id, body.raw_text)
+                # Resolve entity — after restart Telethon may not have the peer cached
+                try:
+                    entity = await client.get_input_entity(conv.telegram_chat_id)
+                except ValueError:
+                    if conv.telegram_username:
+                        entity = await client.get_input_entity(conv.telegram_username)
+                    else:
+                        raise
+                sent = await client.send_message(entity, body.raw_text)
                 telegram_message_id = sent.id
         except Exception as e:
             import logging
@@ -569,12 +577,11 @@ async def delete_conversation(
         )
         order_ids = [row[0] for row in orders_r.fetchall()]
 
-    # 3. Delete order items
+    # 3. Delete order items (OrderItem has no tenant_id — order_ids already tenant-scoped)
     if order_ids:
         await db.execute(
             delete(OrderItem).where(
                 OrderItem.order_id.in_(order_ids),
-                OrderItem.tenant_id == user.tenant_id,
             )
         )
 

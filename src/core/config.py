@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     openai_moderation_model: str = "omni-moderation-latest"
 
     # CORS
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.99:3000"
 
     # Encryption key for sensitive data (Telegram sessions, etc.)
     encryption_key: str = "CHANGE-ME-32-BYTES-KEY-HERE!!!!"

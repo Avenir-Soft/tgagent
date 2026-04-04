@@ -37,6 +37,9 @@ class Handoff(PkMixin, TenantMixin, TimestampMixin, Base):
     linked_order_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
     )  # Order related to this handoff (if any)
+    resolution_notes: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
