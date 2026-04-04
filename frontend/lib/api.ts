@@ -6,8 +6,6 @@ export class ApiError extends Error {
   }
 }
 
-let _redirecting = false;
-
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers: Record<string, string> = {
@@ -19,16 +17,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
   if (!res.ok) {
-    // Only redirect on 401 for non-auth endpoints, and only once
     if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/auth/")) {
-      if (token && !_redirecting) {
-        _redirecting = true;
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        // Delay redirect slightly to let catch handlers run
-        setTimeout(() => { window.location.href = "/login"; }, 100);
-      }
-      throw new ApiError(401, "Session expired");
+      throw new ApiError(401, "Not authenticated");
     }
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, body.detail || res.statusText);
@@ -54,11 +44,8 @@ export const api = {
     if (token) headers["Authorization"] = `Bearer ${token}`;
     const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: formData });
     if (!res.ok) {
-      if (res.status === 401 && typeof window !== "undefined" && token && !_redirecting) {
-        _redirecting = true;
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        window.location.href = "/login";
+      if (res.status === 401 && typeof window !== "undefined") {
+        throw new ApiError(401, "Not authenticated");
       }
       const body = await res.json().catch(() => ({}));
       throw new ApiError(res.status, body.detail || res.statusText);
