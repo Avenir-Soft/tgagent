@@ -1,0 +1,427 @@
+import json
+import logging
+import time
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.auth.deps import get_current_user, require_store_owner
+from src.auth.models import User
+from src.core.config import settings
+from src.core.database import get_db
+from src.telegram.models import TelegramAccount, TelegramChannel, TelegramDiscussionGroup
+from src.telegram.schemas import (
+    DiscussionGroupCreate,
+    DiscussionGroupOut,
+    TelegramAccountCreate,
+    TelegramAccountOut,
+    TelegramChannelCreate,
+    TelegramChannelOut,
+)
+
+from src.core.rate_limit import limiter
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/telegram", tags=["telegram"])
+
+# In-memory client cache — Telethon clients can't be serialized to Redis,
+# but auth metadata (hash, tenant, session path) is stored in Redis with TTL
+_pending_clients: dict[str, object] = {}
+
+_PENDING_AUTH_TTL = 900  # 15 minutes
+
+
+async def _get_redis():
+    """Get Redis client for pending auth storage."""
+    import redis.asyncio as aioredis
+    return aioredis.from_url(settings.redis_url, decode_responses=True)
+
+
+async def _store_pending_auth(phone: str, data: dict, client: object):
+    """Store pending auth metadata in Redis + client in memory."""
+    r = await _get_redis()
+    key = f"pending_auth:{phone}"
+    await r.setex(key, _PENDING_AUTH_TTL, json.dumps(data))
+    await r.aclose()
+    _pending_clients[phone] = client
+
+
+async def _get_pending_auth(phone: str) -> tuple[dict | None, object | None]:
+    """Retrieve pending auth from Redis + client from memory."""
+    r = await _get_redis()
+    key = f"pending_auth:{phone}"
+    raw = await r.get(key)
+    await r.aclose()
+    if not raw:
+        _pending_clients.pop(phone, None)
+        return None, None
+    data = json.loads(raw)
+    client = _pending_clients.get(phone)
+    if not client:
+        # Client lost (process restart) — Redis data is stale
+        r2 = await _get_redis()
+        await r2.delete(key)
+        await r2.aclose()
+        return None, None
+    return data, client
+
+
+async def _clear_pending_auth(phone: str):
+    """Remove pending auth from both Redis and memory."""
+    r = await _get_redis()
+    await r.delete(f"pending_auth:{phone}")
+    await r.aclose()
+    _pending_clients.pop(phone, None)
+
+
+class SendCodeRequest(BaseModel):
+    phone_number: str
+    display_name: str | None = None
+
+
+class VerifyCodeRequest(BaseModel):
+    phone_number: str
+    code: str
+    password: str | None = None  # 2FA password if needed
+
+
+@router.post("/auth/send-code")
+@limiter.limit("5/minute")
+async def send_code(
+    request: Request,
+    body: SendCodeRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    """Step 1: Send authorization code to the phone number."""
+    from telethon import TelegramClient
+
+    session_path = f"{settings.telegram_sessions_dir}/{user.tenant_id}_{body.phone_number}"
+    client = TelegramClient(
+        session_path,
+        settings.telegram_api_id,
+        settings.telegram_api_hash,
+        device_model="AI Closer Server",
+        system_version="Linux 5.15",
+        app_version="1.0.0",
+        lang_code="ru",
+        system_lang_code="ru",
+    )
+    await client.connect()
+
+    result = await client.send_code_request(body.phone_number)
+    await _store_pending_auth(
+        body.phone_number,
+        {
+            "phone_code_hash": result.phone_code_hash,
+            "tenant_id": str(user.tenant_id),
+            "display_name": body.display_name,
+            "session_path": session_path,
+            "created_at": time.time(),
+        },
+        client,
+    )
+
+    return {"status": "code_sent", "phone": body.phone_number}
+
+
+@router.post("/auth/verify-code")
+@limiter.limit("5/minute")
+async def verify_code(
+    request: Request,
+    body: VerifyCodeRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    """Step 2: Verify the code and complete authentication."""
+    pending, client = await _get_pending_auth(body.phone_number)
+    if not pending or not client:
+        raise HTTPException(status_code=400, detail="No pending auth for this phone. Send code first.")
+
+    # Verify the auth flow belongs to this tenant (prevent cross-tenant hijack)
+    if pending.get("tenant_id") != str(user.tenant_id):
+        raise HTTPException(status_code=403, detail="This auth flow belongs to a different account.")
+
+    try:
+        await client.sign_in(
+            body.phone_number,
+            body.code,
+            phone_code_hash=pending["phone_code_hash"],
+        )
+    except Exception as e:
+        err_msg = str(e)
+        if "Two-steps verification" in err_msg or "SessionPasswordNeeded" in err_msg:
+            if not body.password:
+                return {"status": "2fa_required", "message": "Нужен пароль двухфакторной аутентификации"}
+            from telethon.errors import SessionPasswordNeededError
+            try:
+                await client.sign_in(password=body.password)
+            except Exception as e2:
+                raise HTTPException(status_code=400, detail=f"2FA error: {e2}")
+        else:
+            raise HTTPException(status_code=400, detail=f"Auth error: {err_msg}")
+
+    # Get account info
+    me = await client.get_me()
+
+    # Save account to DB
+    account = TelegramAccount(
+        tenant_id=user.tenant_id,
+        phone_number=body.phone_number,
+        display_name=pending.get("display_name") or me.first_name,
+        username=me.username,
+        session_ref=f"{user.tenant_id}_{body.phone_number}",
+        status="connected",
+    )
+    db.add(account)
+    await db.flush()
+
+    # Start listening
+    from src.telegram.service import telegram_manager
+    telegram_manager._clients[user.tenant_id] = client
+    telegram_manager._register_handlers(client, user.tenant_id)
+
+    await _clear_pending_auth(body.phone_number)
+
+    return {
+        "status": "connected",
+        "account": TelegramAccountOut.model_validate(account).model_dump(mode="json"),
+    }
+
+
+# --- Disconnect Account ---
+@router.delete("/accounts/{account_id}")
+async def disconnect_account(
+    account_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    """Disconnect and remove a Telegram account."""
+    result = await db.execute(
+        select(TelegramAccount).where(
+            TelegramAccount.id == account_id,
+            TelegramAccount.tenant_id == user.tenant_id,
+        )
+    )
+    account = result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Stop Telegram client if running
+    from src.telegram.service import telegram_manager
+    client = telegram_manager._clients.pop(user.tenant_id, None)
+    if client and client.is_connected():
+        await client.disconnect()
+
+    # Delete session file
+    import os
+    session_path = f"{settings.telegram_sessions_dir}/{account.session_ref}.session"
+    if os.path.exists(session_path):
+        os.remove(session_path)
+
+    await db.delete(account)
+    return {"status": "disconnected", "phone": account.phone_number}
+
+
+# --- Accounts ---
+@router.post("/accounts", response_model=TelegramAccountOut, status_code=201)
+async def create_account(
+    body: TelegramAccountCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    account = TelegramAccount(
+        tenant_id=user.tenant_id,
+        phone_number=body.phone_number,
+        display_name=body.display_name,
+        username=body.username,
+    )
+    db.add(account)
+    await db.flush()
+    return TelegramAccountOut.model_validate(account)
+
+
+@router.get("/accounts", response_model=list[TelegramAccountOut])
+async def list_accounts(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(TelegramAccount).where(TelegramAccount.tenant_id == user.tenant_id)
+    )
+    return [TelegramAccountOut.model_validate(a) for a in result.scalars().all()]
+
+
+# --- Channels ---
+@router.post("/channels", response_model=TelegramChannelOut, status_code=201)
+async def create_channel(
+    body: TelegramChannelCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    channel = TelegramChannel(
+        tenant_id=user.tenant_id,
+        telegram_channel_id=body.telegram_channel_id,
+        title=body.title,
+        username=body.username,
+        linked_discussion_group_id=body.linked_discussion_group_id,
+    )
+    db.add(channel)
+    await db.flush()
+    return TelegramChannelOut.model_validate(channel)
+
+
+@router.get("/channels", response_model=list[TelegramChannelOut])
+async def list_channels(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(TelegramChannel).where(TelegramChannel.tenant_id == user.tenant_id)
+    )
+    return [TelegramChannelOut.model_validate(c) for c in result.scalars().all()]
+
+
+# --- Discussion Groups ---
+@router.post("/discussion-groups", response_model=DiscussionGroupOut, status_code=201)
+async def create_discussion_group(
+    body: DiscussionGroupCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    group = TelegramDiscussionGroup(
+        tenant_id=user.tenant_id,
+        telegram_group_id=body.telegram_group_id,
+        title=body.title,
+    )
+    db.add(group)
+    await db.flush()
+    return DiscussionGroupOut.model_validate(group)
+
+
+@router.get("/discussion-groups", response_model=list[DiscussionGroupOut])
+async def list_discussion_groups(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(TelegramDiscussionGroup).where(
+            TelegramDiscussionGroup.tenant_id == user.tenant_id
+        )
+    )
+    return [DiscussionGroupOut.model_validate(g) for g in result.scalars().all()]
+
+
+# --- Status & Reconnect ---
+@router.get("/status")
+async def telegram_status(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Real-time connection status for all accounts."""
+    from src.telegram.service import telegram_manager
+
+    result = await db.execute(
+        select(TelegramAccount).where(TelegramAccount.tenant_id == user.tenant_id)
+    )
+    accounts = result.scalars().all()
+    statuses = []
+    for a in accounts:
+        client = telegram_manager.get_client(user.tenant_id)
+        is_alive = False
+        if client:
+            try:
+                is_alive = client.is_connected()
+            except Exception:
+                pass
+        statuses.append({
+            "account_id": str(a.id),
+            "phone_number": a.phone_number,
+            "display_name": a.display_name,
+            "db_status": a.status,
+            "live_connected": is_alive,
+        })
+    return statuses
+
+
+@router.post("/accounts/{account_id}/reconnect")
+async def reconnect_account(
+    account_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    """Reconnect a Telegram account."""
+    from src.telegram.service import telegram_manager
+
+    result = await db.execute(
+        select(TelegramAccount).where(
+            TelegramAccount.id == account_id,
+            TelegramAccount.tenant_id == user.tenant_id,
+        )
+    )
+    account = result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Disconnect old client if exists
+    old_client = telegram_manager._clients.pop(user.tenant_id, None)
+    if old_client:
+        try:
+            await old_client.disconnect()
+        except Exception:
+            pass
+
+    # Start new client
+    try:
+        await telegram_manager.start_client(account)
+        account.status = "connected"
+        return {"status": "reconnected", "phone": account.phone_number}
+    except Exception as e:
+        account.status = "error"
+        raise HTTPException(status_code=500, detail=f"Reconnect failed: {e}")
+
+
+@router.get("/activity-logs")
+async def activity_logs(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Recent activity logs: last messages, conversations count, etc."""
+    from sqlalchemy import func
+    from src.conversations.models import Conversation, Message
+
+    # Last 30 outbound AI/admin messages as activity log
+    result = await db.execute(
+        select(
+            Message.id,
+            Message.conversation_id,
+            Message.sender_type,
+            Message.raw_text,
+            Message.created_at,
+            Conversation.telegram_first_name,
+            Conversation.telegram_username,
+        )
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(
+            Conversation.tenant_id == user.tenant_id,
+            Message.direction == "outbound",
+        )
+        .order_by(Message.created_at.desc())
+        .limit(30)
+    )
+    rows = result.all()
+    logs = []
+    for r in rows:
+        logs.append({
+            "id": str(r.id),
+            "conversation_id": str(r.conversation_id),
+            "sender_type": r.sender_type,
+            "text_preview": (r.raw_text or "")[:80],
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "customer_name": r.telegram_first_name,
+            "customer_username": r.telegram_username,
+        })
+    return logs

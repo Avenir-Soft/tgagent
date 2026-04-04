@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.env
+sessions/
+*.session
+*.session-journal
+.venv/
+dist/
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+node_modules/
+frontend/.next/
+frontend/node_modules/
+.DS_Store
