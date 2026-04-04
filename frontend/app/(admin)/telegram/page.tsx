@@ -87,26 +87,39 @@ export default function TelegramPage() {
     api.get<ActivityLog[]>("/telegram/activity-logs").then(setLogs).catch(() => {});
   }, []);
 
-  // Poll connection status every 5s
+  // Poll connection status every 5s (stop on auth failure)
   useEffect(() => {
+    let stopped = false;
+    let interval: ReturnType<typeof setInterval>;
     const fetchStatus = () => {
+      if (stopped) return;
       api.get<AccountStatus[]>("/telegram/status").then((data) => {
         const map: Record<string, string> = {};
         data.forEach((s) => { map[s.account_id] = s.status; });
         setStatuses(map);
-      }).catch(() => {});
+      }).catch((e) => {
+        if (e?.status === 401) { stopped = true; clearInterval(interval); }
+      });
     };
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
+    interval = setInterval(fetchStatus, 5000);
+    return () => { stopped = true; clearInterval(interval); };
   }, []);
 
-  // Poll activity logs every 10s
+  // Poll activity logs every 10s (stop on auth failure)
   useEffect(() => {
-    loadLogs();
-    const interval = setInterval(loadLogs, 10000);
-    return () => clearInterval(interval);
-  }, [loadLogs]);
+    let stopped = false;
+    let interval: ReturnType<typeof setInterval>;
+    const fetch = () => {
+      if (stopped) return;
+      api.get<ActivityLog[]>("/telegram/activity-logs").then(setLogs).catch((e) => {
+        if (e?.status === 401) { stopped = true; clearInterval(interval); }
+      });
+    };
+    fetch();
+    interval = setInterval(fetch, 10000);
+    return () => { stopped = true; clearInterval(interval); };
+  }, []);
 
   useEffect(() => { reload(); }, [reload]);
 

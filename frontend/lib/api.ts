@@ -25,7 +25,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         _redirecting = true;
         localStorage.removeItem("token");
         localStorage.removeItem("user");
-        window.location.href = "/login";
+        // Delay redirect slightly to let catch handlers run
+        setTimeout(() => { window.location.href = "/login"; }, 100);
       }
       throw new ApiError(401, "Session expired");
     }
