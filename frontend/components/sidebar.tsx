@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { logout, getUser } from "@/lib/auth";
 import { getTheme, toggleTheme, applyTheme } from "@/lib/theme";
 import { ReactNode, useState, useEffect } from "react";
+import { getInitial } from "@/lib/utils";
 
 /* ── SVG Icons (24x24, stroke-based) ─────────────────────────── */
 
@@ -98,8 +99,8 @@ export default function Sidebar({ open, onClose }: { open?: boolean; onClose?: (
     applyTheme();
   }, []);
   const initials = user?.full_name
-    ? user.full_name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()
-    : user?.email?.[0]?.toUpperCase() || "?";
+    ? user.full_name.split(" ").map((w: string) => getInitial(w)).join("").slice(0, 2)
+    : getInitial(user?.email);
 
   return (
     <>

@@ -98,6 +98,12 @@ class Message(PkMixin, TenantMixin, TimestampMixin, Base):
     )  # customer, ai, human_admin
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     normalized_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    media_type: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # photo, sticker, gif, voice, video_note, video, document
+    media_file_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )  # Telegram file ID for downloading
     ai_generated: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )

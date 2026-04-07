@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
@@ -32,6 +32,7 @@ interface Media {
   url: string;
   media_type: string;
   sort_order: number;
+  variant_id: string | null;
 }
 
 interface Product {
@@ -106,6 +107,8 @@ export default function ProductDetailPage() {
   // Media
   const [mediaList, setMediaList] = useState<Media[]>([]);
   const [newMediaUrl, setNewMediaUrl] = useState("");
+  const [variantMediaInput, setVariantMediaInput] = useState<Record<string, string>>({});
+  const [expandedVariantMedia, setExpandedVariantMedia] = useState<Set<string>>(new Set());
   // Sales
   const [sales, setSales] = useState<SalesData | null>(null);
   const [showSales, setShowSales] = useState(false);
@@ -243,6 +246,29 @@ export default function ProductDetailPage() {
     } catch { toast("Ошибка удаления", "error"); }
   };
 
+  // Variant media
+  const addVariantMedia = async (variantId: string) => {
+    const url = (variantMediaInput[variantId] || "").trim();
+    if (!url) return;
+    try {
+      await api.post(`/products/${id}/media`, { url, media_type: "photo", variant_id: variantId });
+      setVariantMediaInput((prev) => ({ ...prev, [variantId]: "" }));
+      toast("Фото варианта добавлено", "success");
+      load();
+    } catch { toast("Ошибка добавления", "error"); }
+  };
+
+  const toggleVariantMedia = (vid: string) => {
+    setExpandedVariantMedia((prev) => {
+      const next = new Set(prev);
+      next.has(vid) ? next.delete(vid) : next.add(vid);
+      return next;
+    });
+  };
+
+  const getVariantMedia = (vid: string) => mediaList.filter((m) => m.variant_id === vid);
+  const productLevelMedia = mediaList.filter((m) => !m.variant_id);
+
   if (loading) return <LoadingSpinner />;
   if (!product) return <div className="p-8 text-center text-rose-500">Товар не найден</div>;
 
@@ -298,18 +324,19 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      {/* Photos */}
+      {/* Photos (product-level) */}
       <div className="card p-4">
-        <h2 className="font-semibold text-slate-900 mb-3">Фото ({mediaList.length})</h2>
+        <h2 className="font-semibold text-slate-900 mb-1">Фото товара ({productLevelMedia.length})</h2>
+        <p className="text-xs text-slate-400 mb-3">Общие фото товара. Фото вариантов добавляются в таблице ниже.</p>
         <div className="flex gap-3 flex-wrap mb-3">
-          {mediaList.map((m) => (
+          {productLevelMedia.map((m) => (
             <div key={m.id} className="relative group w-20 h-20 rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
               <img src={m.url} alt="" className="w-full h-full object-cover" />
               <button type="button" onClick={() => deleteMedia(m.id)}
                 className="absolute top-0.5 right-0.5 w-5 h-5 bg-rose-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
             </div>
           ))}
-          {mediaList.length === 0 && <p className="text-xs text-slate-400">Нет фото</p>}
+          {productLevelMedia.length === 0 && <p className="text-xs text-slate-400">Нет фото</p>}
         </div>
         <div className="flex gap-2">
           <input type="url" value={newMediaUrl} onChange={(e) => setNewMediaUrl(e.target.value)}
@@ -385,8 +412,11 @@ export default function ProductDetailPage() {
                   const edit = editing[v.id];
                   const isSaving = saving.has(v.id);
                   const isPriceEditing = editingVariant === v.id;
+                  const vMedia = getVariantMedia(v.id);
+                  const isMediaExpanded = expandedVariantMedia.has(v.id);
                   return (
-                    <tr key={v.id} className={`hover:bg-slate-50/50 transition-colors ${isEditing ? "bg-indigo-50/40" : ""}`}>
+                    <React.Fragment key={v.id}>
+                    <tr className={`hover:bg-slate-50/50 transition-colors ${isEditing ? "bg-indigo-50/40" : ""}`}>
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-900">{v.title}</div>
                         {v.sku && <div className="text-xs text-slate-400">SKU: {v.sku}</div>}
@@ -439,23 +469,54 @@ export default function ProductDetailPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        {isEditing ? (
-                          <div className="flex gap-1">
-                            <button type="button" disabled={isSaving} onClick={() => saveInventory(v.id)}
-                              className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">{isSaving ? "..." : "OK"}</button>
-                            <button type="button" onClick={() => cancelEdit(v.id)}
-                              className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition-colors">X</button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-1">
-                            <button type="button" onClick={() => startEdit(v)}
-                              className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-indigo-600 hover:bg-indigo-50 transition-colors">Склад</button>
-                            <button type="button" onClick={() => deleteVariant(v.id)}
-                              className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-rose-500 hover:bg-rose-50 transition-colors" title="Удалить вариант">&times;</button>
-                          </div>
-                        )}
+                        <div className="flex gap-1">
+                          {isEditing ? (
+                            <>
+                              <button type="button" disabled={isSaving} onClick={() => saveInventory(v.id)}
+                                className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">{isSaving ? "..." : "OK"}</button>
+                              <button type="button" onClick={() => cancelEdit(v.id)}
+                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition-colors">X</button>
+                            </>
+                          ) : (
+                            <>
+                              <button type="button" onClick={() => toggleVariantMedia(v.id)}
+                                className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${vMedia.length > 0 ? "bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100" : "bg-white border border-slate-200 text-slate-400 hover:bg-slate-50"}`}
+                                title="Фото варианта">
+                                {vMedia.length > 0 ? `${vMedia.length} фото` : "Фото"}
+                              </button>
+                              <button type="button" onClick={() => startEdit(v)}
+                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-indigo-600 hover:bg-indigo-50 transition-colors">Склад</button>
+                              <button type="button" onClick={() => deleteVariant(v.id)}
+                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-rose-500 hover:bg-rose-50 transition-colors" title="Удалить вариант">&times;</button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
+                    {/* Variant photos row */}
+                    {isMediaExpanded && (
+                      <tr className="bg-violet-50/30">
+                        <td colSpan={8} className="px-4 py-3">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            {vMedia.map((m) => (
+                              <div key={m.id} className="relative group w-16 h-16 rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+                                <img src={m.url} alt="" className="w-full h-full object-cover" />
+                                <button type="button" onClick={() => deleteMedia(m.id)}
+                                  className="absolute top-0.5 right-0.5 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
+                              </div>
+                            ))}
+                            <div className="flex gap-1.5 flex-1 min-w-[200px]">
+                              <input type="url" value={variantMediaInput[v.id] || ""} onChange={(e) => setVariantMediaInput((prev) => ({ ...prev, [v.id]: e.target.value }))}
+                                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addVariantMedia(v.id); } }}
+                                placeholder="URL фото варианта..." className="flex-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-violet-500 outline-none transition-all" />
+                              <button type="button" onClick={() => addVariantMedia(v.id)} disabled={!(variantMediaInput[v.id] || "").trim()}
+                                className="px-2.5 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">+</button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

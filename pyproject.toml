@@ -20,6 +20,7 @@ dependencies = [
     "celery[redis]>=5.4.0",
     "python-multipart>=0.0.9",
     "cryptography>=42.0.0",
+    "tenacity>=8.2.0",
 ]
 
 [project.optional-dependencies]

@@ -175,6 +175,7 @@ async def _preprocess_order_request(
             db.add(handoff)
             conversation.status = "handoff"
             conversation.ai_enabled = False
+            await db.flush()
             return {
                 "forced_response": _I18N_ORDER_PROCESSING.get(lang, _I18N_ORDER_PROCESSING["ru"]).format(num=order.order_number)
             }

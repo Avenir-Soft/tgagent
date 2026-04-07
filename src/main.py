@@ -47,6 +47,8 @@ async def _run_startup_migrations():
             "CREATE INDEX IF NOT EXISTS ix_conversations_training ON conversations (is_training_candidate) WHERE is_training_candidate = TRUE",
             "CREATE INDEX IF NOT EXISTS ix_conversations_state ON conversations (state)",
             "CREATE INDEX IF NOT EXISTS ix_orders_lead ON orders (lead_id)",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type VARCHAR(20)",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_file_id VARCHAR(255)",
             "CREATE INDEX IF NOT EXISTS ix_messages_conv_created ON messages (conversation_id, created_at DESC)",
             # Fix legacy role values
             "UPDATE users SET role = 'super_admin' WHERE role = 'admin'",

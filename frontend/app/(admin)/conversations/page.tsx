@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { timeAgo } from "@/lib/time-ago";
+import { getInitial } from "@/lib/utils";
 
 interface Conversation {
   id: string;
@@ -130,7 +131,37 @@ export default function ConversationsPage() {
   // Delete state
   const [deletingConv, setDeletingConv] = useState<Conversation | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  // Bulk select
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
   const { toast } = useToast();
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (selected.size === filtered.length) setSelected(new Set());
+    else setSelected(new Set(filtered.map((c) => c.id)));
+  };
+  const bulkDelete = async () => {
+    if (selected.size === 0) return;
+    setBulkDeleteLoading(true);
+    try {
+      const res = await api.post<{ deleted: number }>("/conversations/bulk-delete", { conversation_ids: [...selected] });
+      toast(`Удалено ${res.deleted} диалогов`, "success");
+      setSelected(new Set());
+      fetchConversations();
+    } catch {
+      toast("Ошибка удаления", "error");
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  };
 
   const fetchConversations = useCallback(
     async (reset = true) => {
@@ -294,6 +325,35 @@ export default function ConversationsPage() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 px-4 py-2.5 bg-rose-50 border border-rose-200 rounded-xl">
+          <span className="text-sm text-rose-700 font-medium">Выбрано: {selected.size}</span>
+          <button
+            type="button"
+            onClick={() => setShowBulkConfirm(true)}
+            disabled={bulkDeleteLoading}
+            className="px-3 py-1.5 bg-rose-600 text-white text-xs font-medium rounded-lg hover:bg-rose-700 disabled:opacity-50 transition-colors"
+          >
+            {bulkDeleteLoading ? "Удаление..." : "Удалить выбранные"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            Снять выделение
+          </button>
+          <button
+            type="button"
+            onClick={toggleSelectAll}
+            className="px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            {selected.size === filtered.length ? "Снять все" : "Выбрать все"}
+          </button>
+        </div>
+      )}
+
       {/* Conversation list */}
       <div className="space-y-2">
         {loading && conversations.length === 0 ? (
@@ -316,7 +376,16 @@ export default function ConversationsPage() {
               <Link key={c.id} href={`/conversations/${c.id}`} className="block group">
                 <div className={`card px-5 py-4 flex items-center gap-4 transition-all group-hover:shadow-md group-hover:border-slate-300 ${
                   unread > 0 ? "border-l-3 border-l-indigo-500" : ""
-                }`}>
+                } ${selected.has(c.id) ? "ring-2 ring-indigo-400 bg-indigo-50/30" : ""}`}>
+                  {/* Checkbox */}
+                  <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }} className="shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(c.id)}
+                      onChange={() => toggleSelect(c.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                  </div>
                   {/* Avatar */}
                   <div className="relative shrink-0">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
@@ -325,7 +394,7 @@ export default function ConversationsPage() {
                         : "bg-violet-50 text-violet-600"
                     }`}>
                       {c.telegram_first_name
-                        ? c.telegram_first_name.charAt(0).toUpperCase()
+                        ? getInitial(c.telegram_first_name, c.source_type === "dm" ? "D" : "C")
                         : c.source_type === "dm" ? "D" : "C"}
                     </div>
                     {unread > 0 && (
@@ -455,6 +524,17 @@ export default function ConversationsPage() {
         loading={deleteLoading}
         onConfirm={deleteConversation}
         onCancel={() => setDeletingConv(null)}
+      />
+
+      <ConfirmDialog
+        open={showBulkConfirm}
+        title={`Удалить ${selected.size} диалогов?`}
+        message="Все выбранные диалоги будут удалены вместе с сообщениями, заказами, лидами и хэндоффами. Это действие необратимо."
+        confirmText="Удалить все"
+        variant="danger"
+        loading={bulkDeleteLoading}
+        onConfirm={async () => { await bulkDelete(); setShowBulkConfirm(false); }}
+        onCancel={() => setShowBulkConfirm(false)}
       />
     </div>
   );

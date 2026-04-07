@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.models import User
 from src.core.database import get_db
-from src.core.security import decode_access_token
+from src.core.security import decode_access_token, is_token_blacklisted
 from src.core.tenant_context import set_current_tenant_id
 
 bearer_scheme = HTTPBearer()
@@ -19,9 +19,19 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    payload = decode_access_token(credentials.credentials)
+    token = credentials.credentials
+    payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    # Check if token was revoked (logout)
+    try:
+        if is_token_blacklisted(token):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
+    except HTTPException:
+        raise  # Re-raise auth errors
+    except Exception:
+        pass  # Redis unavailable — allow request (fail-open)
 
     user_id = payload.get("sub")
     if not user_id:

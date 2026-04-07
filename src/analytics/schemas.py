@@ -56,7 +56,7 @@ class FunnelStage(BaseModel):
     name: str
     label: str
     count: int
-    pct: float
+    pct: float | None = None
 
 
 class FunnelResponse(BaseModel):

@@ -624,3 +624,56 @@ async def delete_conversation(
     await db.flush()
 
     return {"deleted": True}
+
+
+@router.post("/conversations/bulk-delete")
+async def bulk_delete_conversations(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    """Bulk delete conversations by list of IDs. Cascades to messages, leads, orders, handoffs."""
+    from src.handoffs.models import Handoff
+    from src.leads.models import Lead
+    from src.orders.models import Order, OrderItem
+
+    conv_ids = body.get("conversation_ids", [])
+    if not conv_ids:
+        raise HTTPException(status_code=400, detail="conversation_ids required")
+
+    # Verify all conversations belong to tenant
+    result = await db.execute(
+        select(Conversation.id).where(
+            Conversation.id.in_([UUID(c) for c in conv_ids]),
+            Conversation.tenant_id == user.tenant_id,
+        )
+    )
+    valid_ids = [row[0] for row in result.fetchall()]
+    if not valid_ids:
+        raise HTTPException(status_code=404, detail="No conversations found")
+
+    # Find leads → orders → order items
+    leads_r = await db.execute(
+        select(Lead.id).where(Lead.conversation_id.in_(valid_ids), Lead.tenant_id == user.tenant_id)
+    )
+    lead_ids = [row[0] for row in leads_r.fetchall()]
+
+    order_ids = []
+    if lead_ids:
+        orders_r = await db.execute(
+            select(Order.id).where(Order.lead_id.in_(lead_ids), Order.tenant_id == user.tenant_id)
+        )
+        order_ids = [row[0] for row in orders_r.fetchall()]
+
+    # Delete in order: items → orders → leads → handoffs → messages → conversations
+    if order_ids:
+        await db.execute(delete(OrderItem).where(OrderItem.order_id.in_(order_ids)))
+        await db.execute(delete(Order).where(Order.id.in_(order_ids), Order.tenant_id == user.tenant_id))
+    if lead_ids:
+        await db.execute(delete(Lead).where(Lead.id.in_(lead_ids), Lead.tenant_id == user.tenant_id))
+    await db.execute(delete(Handoff).where(Handoff.conversation_id.in_(valid_ids), Handoff.tenant_id == user.tenant_id))
+    await db.execute(delete(Message).where(Message.conversation_id.in_(valid_ids), Message.tenant_id == user.tenant_id))
+    await db.execute(delete(Conversation).where(Conversation.id.in_(valid_ids), Conversation.tenant_id == user.tenant_id))
+    await db.flush()
+
+    return {"deleted": len(valid_ids), "skipped": len(conv_ids) - len(valid_ids)}

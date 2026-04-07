@@ -12,7 +12,7 @@ from sqlalchemy import select, union_all, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.catalog.models import Category, DeliveryRule, Inventory, Product, ProductAlias, ProductVariant
+from src.catalog.models import Category, DeliveryRule, Inventory, Product, ProductAlias, ProductMedia, ProductVariant
 from src.leads.models import Lead
 from src.orders.models import Order, OrderItem
 
@@ -210,7 +210,9 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
         )
         .options(
             selectinload(Product.variants).selectinload(ProductVariant.inventory),
+            selectinload(Product.variants).selectinload(ProductVariant.media),
             selectinload(Product.category),
+            selectinload(Product.media),
         )
         .limit(5)
     )
@@ -231,6 +233,20 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
                 total_stock += avail
             if v.price:
                 prices.append(float(v.price))
+        # First product image (sorted by sort_order)
+        media_sorted = sorted((p.media or []), key=lambda m: m.sort_order)
+        image_url = media_sorted[0].url if media_sorted else None
+
+        # Count ALL unique photo URLs (product-level + variant-level)
+        _all_photo_urls = set()
+        for m in media_sorted:
+            if m.url:
+                _all_photo_urls.add(m.url)
+        for v in active_variants:
+            for m in (v.media or []):
+                if m.url:
+                    _all_photo_urls.add(m.url)
+
         product_list.append({
             "product_id": str(p.id),
             "name": p.name,
@@ -239,10 +255,11 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
             "category": p.category.name if p.category else None,
             "product_type": _classify_product_type(p.name, p.model or "", p.category.name if p.category else ""),
             "variants_count": len(active_variants),
-            "total_available_stock": total_stock,
             "price_range": f"{min(prices):.0f}–{max(prices):.0f}" if prices else None,
             "currency": active_variants[0].currency if active_variants and active_variants[0].currency else "UZS",
             "in_stock": total_stock > 0,
+            "image_url": image_url,
+            "total_photos": len(_all_photo_urls),
         })
 
     in_stock = [p for p in product_list if p["in_stock"]]
@@ -262,7 +279,7 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
 
 
 async def get_variant_candidates(tenant_id: UUID, product_id: UUID, db: AsyncSession) -> dict:
-    """List active variants for a product with title, color, storage, ram, size, price, currency, stock."""
+    """List active variants for a product with title, color, storage, ram, size, price, currency, in_stock."""
     result = await db.execute(
         select(ProductVariant)
         .where(
@@ -270,13 +287,24 @@ async def get_variant_candidates(tenant_id: UUID, product_id: UUID, db: AsyncSes
             ProductVariant.product_id == product_id,
             ProductVariant.is_active.is_(True),
         )
+        .options(selectinload(ProductVariant.media))
     )
-    variants = result.scalars().all()
+    variants = result.scalars().unique().all()
 
     if not variants:
-        return {"found": False, "variants": []}
+        return {"found": False, "variants": [], "image_urls": []}
+
+    # Also load product-level media (fallback if variants have no images)
+    prod_result = await db.execute(
+        select(Product)
+        .where(Product.id == product_id, Product.tenant_id == tenant_id)
+        .options(selectinload(Product.media))
+    )
+    product = prod_result.scalar_one_or_none()
+    product_media = sorted((product.media or []) if product else [], key=lambda m: m.sort_order)
 
     variant_list = []
+    all_image_urls = []
     for v in variants:
         # Get inventory for this variant
         inv_result = await db.execute(
@@ -297,14 +325,24 @@ async def get_variant_candidates(tenant_id: UUID, product_id: UUID, db: AsyncSes
             "size": v.size,
             "price": str(v.price),
             "currency": v.currency,
-            "available_quantity": available_qty,
+            "in_stock": available_qty > 0,
         }
         # Include extra specs (processor, screen, battery, etc.) if present
         if v.attributes_json:
             entry["specs"] = v.attributes_json
         variant_list.append(entry)
 
-    return {"found": True, "variants": variant_list}
+        # Collect variant-level images (all angles)
+        variant_media = sorted((v.media or []), key=lambda m: m.sort_order)
+        for m in variant_media:
+            if m.url and m.url not in all_image_urls:
+                all_image_urls.append(m.url)
+
+    # If no variant-level images, use product-level images
+    if not all_image_urls:
+        all_image_urls = [m.url for m in product_media if m.url]
+
+    return {"found": True, "variants": variant_list, "image_urls": all_image_urls}
 
 
 async def get_variant_price(tenant_id: UUID, variant_id: UUID, db: AsyncSession) -> dict:
@@ -514,7 +552,7 @@ async def create_lead(
     variant_id: UUID | None,
     db: AsyncSession,
 ) -> dict:
-    """Create a new lead from conversation."""
+    """Create or update a lead from conversation (dedup by telegram_user_id + tenant_id)."""
     from src.conversations.models import Conversation
 
     conv_result = await db.execute(
@@ -524,10 +562,37 @@ async def create_lead(
     if not conversation:
         return {"error": "conversation_not_found"}
 
+    tg_user_id = conversation.telegram_user_id
+
+    # Dedup: find existing lead for this telegram user in this tenant
+    existing_result = await db.execute(
+        select(Lead).where(
+            Lead.tenant_id == tenant_id,
+            Lead.telegram_user_id == tg_user_id,
+        ).order_by(Lead.created_at.desc()).limit(1)
+    )
+    existing_lead = existing_result.scalar_one_or_none()
+
+    if existing_lead:
+        # Update existing lead with latest data
+        existing_lead.conversation_id = conversation_id
+        tg_username = getattr(conversation, 'telegram_username', None)
+        if tg_username:
+            existing_lead.telegram_username = tg_username
+        tg_name = getattr(conversation, 'telegram_first_name', None)
+        if tg_name and not existing_lead.customer_name:
+            existing_lead.customer_name = tg_name
+        if product_id:
+            existing_lead.interested_product_id = product_id
+        if variant_id:
+            existing_lead.interested_variant_id = variant_id
+        await db.flush()
+        return {"lead_id": str(existing_lead.id), "status": "updated"}
+
     lead = Lead(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
-        telegram_user_id=conversation.telegram_user_id,
+        telegram_user_id=tg_user_id,
         telegram_username=getattr(conversation, 'telegram_username', None),
         customer_name=getattr(conversation, 'telegram_first_name', None),
         interested_product_id=product_id,
@@ -577,6 +642,7 @@ async def create_order_draft(
     city: str | None,
     address: str | None,
     db: AsyncSession,
+    delivery_type: str | None = None,
 ) -> dict:
     """Create a draft order with one or more items. Reserves inventory."""
     import secrets
@@ -631,16 +697,18 @@ async def create_order_draft(
     delivery_cost = Decimal("0")
     delivery_eta = None
     delivery_note = None
+    rule = None
     if city:
         resolved = _resolve_city(city)
         search_city = resolved[0] if resolved else city
-        del_result = await db.execute(
-            select(DeliveryRule).where(
-                DeliveryRule.tenant_id == tenant_id,
-                DeliveryRule.is_active.is_(True),
-                DeliveryRule.city.ilike(f"%{search_city}%"),
-            )
+        _del_query = select(DeliveryRule).where(
+            DeliveryRule.tenant_id == tenant_id,
+            DeliveryRule.is_active.is_(True),
+            DeliveryRule.city.ilike(f"%{search_city}%"),
         )
+        if delivery_type:
+            _del_query = _del_query.where(DeliveryRule.delivery_type == delivery_type)
+        del_result = await db.execute(_del_query)
         rule = del_result.scalars().first()
         if rule:
             delivery_cost = rule.price
@@ -664,6 +732,7 @@ async def create_order_draft(
         phone=phone,
         city=city,
         address=address,
+        delivery_type=delivery_type or (rule.delivery_type if rule else None),
         total_amount=grand_total,
         currency="UZS",
         status="draft",
@@ -932,6 +1001,7 @@ async def cancel_order_by_number(
     conversation_id: UUID,
     order_number: str,
     db: AsyncSession,
+    ai_settings=None,
 ) -> dict:
     """Cancel a draft order. Unreserves inventory. Only works for draft status."""
     from src.conversations.models import Conversation
@@ -963,8 +1033,8 @@ async def cancel_order_by_number(
         if lead and lead.telegram_user_id != conv.telegram_user_id:
             return {"cancelled": False, "error": "Этот заказ не принадлежит вам"}
 
-    # Check policy
-    policy = can_cancel_order(order.status)
+    # Check policy (respects ai_settings if provided)
+    policy = can_cancel_order(order.status, ai_settings)
     if not policy["allowed"]:
         return {
             "cancelled": False,
@@ -1137,4 +1207,79 @@ async def get_customer_history(
         "address": latest.address,
         "last_order_number": latest.order_number,
         "total_previous_orders": len(orders),
+    }
+
+
+async def request_return(
+    tenant_id: UUID,
+    conversation_id: UUID,
+    order_number: str,
+    reason: str,
+    db: AsyncSession,
+    ai_settings=None,
+) -> dict:
+    """Request a return/exchange for a delivered order.
+
+    Checks policy (can_return_order) and creates a handoff if operator is required.
+    """
+    from src.conversations.models import Conversation
+    from src.ai.policies import can_return_order
+
+    conv_result = await db.execute(
+        select(Conversation).where(Conversation.id == conversation_id)
+    )
+    conv = conv_result.scalar_one_or_none()
+    if not conv:
+        return {"error": "conversation_not_found"}
+
+    order_result = await db.execute(
+        select(Order).where(
+            Order.tenant_id == tenant_id,
+            Order.order_number == _normalize_order_number(order_number),
+        ).options(selectinload(Order.items))
+    )
+    order = order_result.scalar_one_or_none()
+    if not order:
+        return {"success": False, "error": "Заказ с таким номером не найден"}
+
+    # Verify ownership through lead → telegram_user_id
+    if order.lead_id:
+        lead_result = await db.execute(select(Lead).where(Lead.id == order.lead_id))
+        lead = lead_result.scalar_one_or_none()
+        if lead and lead.telegram_user_id != conv.telegram_user_id:
+            return {"success": False, "error": "Этот заказ не принадлежит вам"}
+
+    # Check return policy
+    policy = can_return_order(order.status, ai_settings)
+    if not policy["allowed"]:
+        return {"success": False, "error": policy["message"], "status": order.status}
+
+    if policy["needs_operator"]:
+        # Create handoff for operator
+        from src.handoffs.models import Handoff
+        handoff = Handoff(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            priority="high",
+            summary=f"Запрос на возврат: {order.order_number}. Причина: {reason}",
+            linked_order_id=order.id,
+        )
+        db.add(handoff)
+        await db.flush()
+        return {
+            "success": True,
+            "needs_operator": True,
+            "order_number": order.order_number,
+            "message": policy["message"],
+        }
+
+    # Direct return (when require_operator_for_returns=False)
+    order.status = "returned"
+    await db.flush()
+    return {
+        "success": True,
+        "order_number": order.order_number,
+        "status": "returned",
+        "status_label": "Возвращён",
+        "message": f"Заказ {order.order_number} помечен на возврат",
     }

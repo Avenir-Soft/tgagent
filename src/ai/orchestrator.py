@@ -23,8 +23,6 @@ from src.ai.truth_tools import (
     list_categories,
     get_product_candidates,
     get_variant_candidates,
-    get_variant_price,
-    get_variant_stock,
     get_delivery_options,
     create_lead,
     create_order_draft,
@@ -36,291 +34,62 @@ logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────
-# LANGUAGE DETECTION
+# LANGUAGE DETECTION & GREETING (imported from language.py — single source of truth)
+# ──────────────────────────────────────────────
+from src.ai.language import _detect_language, _check_greeting  # noqa: E402
+
+
+# ──────────────────────────────────────────────
+# PROFANITY DETECTION
 # ──────────────────────────────────────────────
 
-def _detect_language(text: str, current_language: str = "ru") -> str:
-    """Detect message language and script: 'ru', 'uz_cyrillic', 'uz_latin', 'en'.
+# Russian mat (core stems + common forms)
+_PROFANITY_RU = {
+    "блять", "бля", "блядь", "блядина", "блядский",
+    "сука", "суки", "сучка", "сучара",
+    "хуй", "хуя", "хуё", "хуе", "хуёв", "хуев", "нахуй", "нахуя", "нихуя", "охуел", "охуеть", "похуй",
+    "пизда", "пиздец", "пиздёж", "пиздеж", "пиздато", "пиздос", "пиздёш", "пиздеш", "пиздюк",
+    "ебать", "ёбаный", "ебаный", "ебал", "ебло", "ебанулся", "ебанутый", "заебал", "заебись",
+    "ёб", "ёбтвоюмать", "ебтвоюмать", "уёбок", "уебок", "уёбище", "уебище", "выебать", "съебал",
+    "мудак", "мудила", "мудозвон",
+    "долбоёб", "долбоеб", "залупа",
+    "пидор", "пидорас", "пидарас", "педик",
+    "дерьмо", "говно", "говнюк",
+}
 
-    Returns specific script for Uzbek to ensure AI responds in matching script.
-    Falls back to current conversation language for ambiguous messages.
-    """
+# Uzbek profanity (common vulgar words)
+_PROFANITY_UZ = {
+    "сиктир", "сиқтир", "сиктиргин",
+    "сикиш", "сиқиш",
+    "онангни", "онангни", "оналаринни",
+    "кутак", "кўтак",
+    "жинни", "ахмоқ", "ахмок",
+    "siktir", "siqtir", "kutok", "kotak", "ko'tak",
+    "onangni", "axmoq",
+}
+
+_PROFANITY_ALL = _PROFANITY_RU | _PROFANITY_UZ
+
+
+def _contains_profanity(text: str) -> bool:
+    """Detect profanity in Russian/Uzbek text. Code-level check, not LLM."""
     if not text:
-        return current_language
-    stripped = text.strip()
-    text_lower = stripped.lower()
-    word_list = text_lower.replace("\u2019", "'").replace("\u2018", "'").replace("'", "'").split()
-    words = set(word_list)
+        return False
+    text_lower = text.lower().replace("ё", "е")
+    words = set(text_lower.split())
 
-    # --- Check STRONG Uzbek markers first (even for single words) ---
+    # Direct word match
+    if words & _PROFANITY_ALL:
+        return True
 
-    # Uzbek-specific Cyrillic characters: ў, қ, ғ, ҳ — always Uzbek
-    if any(c in text for c in "ўқғҳ"):
-        return "uz_cyrillic"
+    # Substring match for compound forms (нахуй written as на хуй, etc.)
+    _substrings = ["хуй", "хуя", "хуе", "пизд", "ебат", "ёбан", "ебан", "блят", "сиктир", "siktir"]
+    for sub in _substrings:
+        if sub in text_lower:
+            return True
 
-    # Uzbek Cyrillic plural/verb suffixes that Russian doesn't have
-    uz_suffixes_cyrillic = ["лар", "лер", "ларни", "ларин", "лик", "чил", "айми", "амиз", "синг"]
-    for w in word_list:
-        for suf in uz_suffixes_cyrillic:
-            if w.endswith(suf) and len(w) > len(suf) + 2:
-                return "uz_cyrillic"
+    return False
 
-    # Single strong Uzbek Cyrillic words (even alone)
-    uz_strong_cyrillic = {
-        "салом", "рахмат", "керак", "нима", "кани", "борми", "йўқ", "яхши",
-        "кўрсат", "кейин", "ассалому", "ёрдам", "олай", "берай",
-        "болди", "булди", "чунарли", "кушвурин", "кушворин", "жунатинг",
-        "жунатвурасиз", "расмийлаштирамизми", "урвурин", "олдинги",
-        "зааказ", "закажи", "маҳсулот", "мавжуд", "буюртма",
-    }
-    if words & uz_strong_cyrillic:
-        return "uz_cyrillic"
-
-    # Single strong Uzbek Latin words (even alone)
-    uz_strong_latin = {
-        "salom", "rahmat", "kerak", "nima", "kani", "bormi", "yoq", "yaxshi",
-        "keyin", "assalomu", "oka", "aka", "uka", "qalesan", "qalaysiz",
-        "yaxshimisiz", "zakaz", "buyurtma", "tovar", "manga", "menga",
-        "qimoqchiman", "qimoqchidim", "mavjud", "narxi", "narx",
-    }
-    if words & uz_strong_latin:
-        return "uz_latin"
-
-    # --- Strong Russian markers (must be checked BEFORE short message fallback!) ---
-    # Without this, "Привет" in a conversation with current_language=uz_cyrillic
-    # falls through to the fallback and stays uz_cyrillic.
-    ru_strong_words = {
-        "привет", "здравствуйте", "здрасте", "здарова", "добрый",
-        "хочу", "хотел", "хотела", "можете", "можно", "пожалуйста",
-        "спасибо", "подскажите", "покажите", "сколько", "почему",
-        "заказать", "говорить", "говорите", "русском", "русски",
-        "скажите", "помогите", "нужен", "нужна", "нужно",
-        "оформить", "доставка", "доставку",
-    }
-    if words & ru_strong_words:
-        return "ru"
-
-    # --- English detection ---
-    en_words = {
-        "hello", "hi", "hey", "order", "want", "need", "buy", "price",
-        "delivery", "please", "thanks", "thank", "how", "much", "show",
-        "cart", "checkout", "cancel", "wanna", "gonna",
-    }
-    if words & en_words:
-        # Check it's actually mostly Latin (not Russian with borrowed words)
-        latin_count = sum(1 for c in text_lower if "a" <= c <= "z")
-        if latin_count > len(text_lower) * 0.4:
-            return "en"
-
-    # Short messages (1-2 words or < 5 chars) with no strong markers → keep current language
-    if len(stripped) < 5 or len(word_list) <= 1:
-        return current_language
-
-    # --- Uzbek Latin markers (extended) ---
-    uz_latin_words = {
-        "kerak", "narx", "qancha", "buyurtma", "rahmat", "salom",
-        "yaxshi", "olaman", "beraman", "menga", "sizga", "nima", "qaysi",
-        "uchun", "bilan", "xarid", "mahsulot", "sotib", "olish",
-        "yetkazib", "berish", "manzil", "raqam", "tanlang",
-        "qoshish", "olib", "tashlash", "holat", "qaytarish",
-        "bormi", "bering", "arzon", "qimmat", "yoq", "kani",
-        "nimaga", "bor", "ber", "yoqmi", "shuni", "shu",
-        "qo'sh", "tashla", "oka", "aka", "uka",
-        "qalesan", "qalaysiz", "yaxshimisiz", "zakaz", "tovar",
-        "manga", "qimoqchiman", "qimoqchidim", "mavjud", "ko'rsat",
-        "variantlar", "telefonlar", "soatlar", "narsalar",
-        "qorasidan", "oqidan", "rangi", "narxi",
-    }
-    if words & uz_latin_words:
-        return "uz_latin"
-
-    # Uzbek Latin suffix patterns: -dan, -ga, -ni, -lar, -dim, -man
-    uz_latin_suffixes = ["dan", "dagi", "dek", "lar", "ler", "dim", "man", "miz", "siz"]
-    for w in word_list:
-        if len(w) > 4:
-            for suf in uz_latin_suffixes:
-                if w.endswith(suf) and any("a" <= c <= "z" for c in w[:3]):
-                    return "uz_latin"
-
-    # Check for Uzbek Latin apostrophe patterns (o', g')
-    uz_patterns = ["o'", "g'", "o\u2019", "g\u2019"]
-    latin_count = sum(1 for c in text if "a" <= c.lower() <= "z")
-    if latin_count > 3:
-        if any(p in text_lower for p in uz_patterns):
-            return "uz_latin"
-
-    # --- Uzbek Cyrillic markers ---
-    uz_cyrillic_markers = [
-        "салом", "ассалому", "рахмат", "керак", "нарх",
-        "буюртма", "менга", "сизга", "нима", "яхши", "манзил",
-        "кани", "кевосан", "бовоти", "олб", "таша",
-        "курсат", "ёрдам", "узбеч",
-        "гаплаш", "тушун", "кечир", "сурама", "берай",
-        "олай", "нарса", "ёзинг",
-    ]
-    for marker in uz_cyrillic_markers:
-        if marker in text_lower:
-            return "uz_cyrillic"
-
-    # Uzbek informal Cyrillic (written without special chars)
-    uz_informal_cyrillic = [
-        "канча", "нарси", "бераман", "оламан",
-        "олб", "йок", "бовот", "сурадим", "езган",
-        "олди", "кирди", "чикди", "булди",
-    ]
-    for marker in uz_informal_cyrillic:
-        if marker in text_lower:
-            return "uz_cyrillic"
-
-    # --- English (longer phrases) ---
-    if latin_count > len(stripped) * 0.6 and len(word_list) >= 2:
-        # Mostly Latin text with 2+ words and no Uzbek markers — likely English
-        return "en"
-
-    # Cyrillic text without Uzbek markers
-    cyrillic = sum(1 for c in text if "\u0400" <= c <= "\u04FF")
-    if cyrillic > 0:
-        # If user was already in Uzbek Cyrillic, keep it unless clear Russian words
-        if current_language == "uz_cyrillic":
-            ru_only_markers = ["пожалуйста", "спасибо", "здравствуйте", "подскажите", "можно", "хочу", "покажите", "сколько", "почему"]
-            if not any(m in text_lower for m in ru_only_markers):
-                return "uz_cyrillic"
-        return "ru"
-
-    return current_language
-
-
-# ──────────────────────────────────────────────
-# DETERMINISTIC GREETING HANDLER
-# ──────────────────────────────────────────────
-
-import random as _random
-
-# Greeting patterns per language
-_GREETING_PATTERNS = {
-    "ru": ["привет", "здравствуйте", "добрый день", "добрый вечер", "доброе утро", "ку", "хеллоу", "хай", "здрасте", "здарова", "здаров", "здоров", "здорова", "прив", "приветик"],
-    "uz_cyrillic": ["салом", "ассалому алейкум", "ассалом", "хуш келибсиз"],
-    "uz_latin": ["salom", "assalomu alaykum", "assalom", "xush kelibsiz"],
-    "en": ["hi", "hello", "hey", "good morning", "good evening", "good afternoon", "howdy"],
-}
-
-# "How are you" patterns
-_HOW_ARE_YOU_PATTERNS = {
-    "uz_cyrillic": ["яхшимисиз", "қалайсиз", "қалесан", "яхшимисан", "яхшимсиз"],
-    "uz_latin": ["yaxshimisiz", "qalaysiz", "qalesan", "yaxshimisan", "yaxshimsiz"],
-    "ru": ["как дела", "как ты", "как вы"],
-    "en": ["how are you", "how's it going", "how are things"],
-}
-
-# Greeting responses — deterministic, grammatically correct
-_GREETING_RESPONSES = {
-    "ru": [
-        "Привет! Чем могу помочь?",
-        "Здравствуйте! Что подобрать?",
-        "Привет! Какой товар интересует?",
-    ],
-    "uz_cyrillic": [
-        "Ассалому алейкум! Қандай ёрдам бера оламан?",
-        "Ассалому алейкум! Қайси товаримиз қизиқтиряпти?",
-        "Салом! Қандай товар керак?",
-    ],
-    "uz_latin": [
-        "Assalomu alaykum! Qanday yordam bera olaman?",
-        "Assalomu alaykum! Qaysi tovarimiz qiziqtiryapti?",
-        "Salom! Qanday tovar kerak?",
-    ],
-    "en": [
-        "Hi! How can I help you?",
-        "Hello! What product are you looking for?",
-        "Hey! What can I show you?",
-    ],
-}
-
-# "How are you" responses
-_HOW_ARE_YOU_RESPONSES = {
-    "ru": [
-        "Хорошо, спасибо! Чем могу помочь?",
-    ],
-    "uz_cyrillic": [
-        "Яхшиман, раҳмат! Сизга қандай ёрдам бера оламан?",
-        "Раҳмат, яхши! Қандай товар керак?",
-    ],
-    "uz_latin": [
-        "Yaxshiman, rahmat! Sizga qanday yordam bera olaman?",
-        "Rahmat, yaxshi! Qanday tovar kerak?",
-    ],
-    "en": [
-        "I'm good, thanks! How can I help you?",
-    ],
-}
-
-
-def _check_greeting(text: str, language: str) -> str | None:
-    """Check if message is a greeting and return a deterministic response.
-
-    Returns response string or None if not a greeting.
-    This bypasses the LLM entirely to avoid bad grammar in Uzbek.
-    Only triggers for PURE greeting messages — if the message also contains
-    a product query or request, skip greeting and let LLM handle everything.
-    """
-    text_lower = text.strip().lower()
-    # Remove punctuation for matching
-    clean = text_lower.replace("!", "").replace("?", "").replace(".", "").replace(",", "").strip()
-    clean_words = clean.split()
-
-    # Only handle short greeting messages (≤ 5 words) — longer messages go to LLM
-    if len(clean_words) > 5:
-        return None
-
-    # If message has NON-greeting content (product query, request, etc.) → skip greeting,
-    # let LLM handle the full message. "ассалому алейкум айфон борми" → LLM, not greeting.
-    _ALL_GREETING_WORDS = {
-        "привет", "приветик", "прив", "здравствуйте", "добрый", "день", "вечер", "утро", "доброе", "ку",
-        "хеллоу", "хай", "здрасте", "здарова", "здаров", "здоров", "здорова",
-        "салом", "ассалому", "алейкум", "ассалом", "хуш", "келибсиз",
-        "salom", "assalomu", "alaykum", "assalom", "xush", "kelibsiz",
-        "hi", "hello", "hey", "good", "morning", "evening", "afternoon", "howdy",
-        "яхшимисиз", "қалайсиз", "қалесан", "яхшимисан", "яхшимсиз",
-        "yaxshimisiz", "qalaysiz", "qalesan", "yaxshimisan", "yaxshimsiz",
-        "как", "дела", "ты", "вы",
-        "how", "are", "you",
-        "ока", "aka", "uka", "брат", "бро",
-    }
-    non_greeting_words = [w for w in clean_words if w not in _ALL_GREETING_WORDS]
-    if non_greeting_words:
-        # Message has content beyond greeting → let LLM handle it all
-        return None
-
-    clean_words_set = set(clean_words)
-
-    # Check "how are you" first (they may include a greeting)
-    for lang, patterns in _HOW_ARE_YOU_PATTERNS.items():
-        for pattern in patterns:
-            pattern_words = set(pattern.split())
-            # Multi-word: check all words present. Single-word: check in word set.
-            if len(pattern_words) > 1:
-                if pattern_words <= clean_words_set:
-                    responses = _HOW_ARE_YOU_RESPONSES.get(language, _HOW_ARE_YOU_RESPONSES["ru"])
-                    return _random.choice(responses)
-            else:
-                if pattern in clean_words_set:
-                    responses = _HOW_ARE_YOU_RESPONSES.get(language, _HOW_ARE_YOU_RESPONSES["ru"])
-                    return _random.choice(responses)
-
-    # Check pure greetings — match whole words only
-    for lang, patterns in _GREETING_PATTERNS.items():
-        for pattern in patterns:
-            pattern_words = set(pattern.split())
-            if len(pattern_words) > 1:
-                if pattern_words <= clean_words_set:
-                    responses = _GREETING_RESPONSES.get(language, _GREETING_RESPONSES["ru"])
-                    return _random.choice(responses)
-            else:
-                if pattern in clean_words_set:
-                    responses = _GREETING_RESPONSES.get(language, _GREETING_RESPONSES["ru"])
-                    return _random.choice(responses)
-
-    return None
 
 
 # ──────────────────────────────────────────────
@@ -370,6 +139,7 @@ SYSTEM_PROMPT_BASE = """\
 - АБСОЛЮТНОЕ ПРАВИЛО: НИКОГДА не говори "добавил в корзину" / "добавлено" если ты НЕ вызвал select_for_cart! Сначала tool call → потом подтверждение.
 - Вызывай select_for_cart ТОЛЬКО когда клиент ЯВНО выбрал конкретный товар: "этот", "да", "го", "давай", "добавьте", "беру", цифру варианта, назвал цвет/модель.
 - Если клиент говорит "да" / "го" / "давай" после показа товара → это ВЫБОР, вызови select_for_cart.
+- ВАЖНО: если ТЫ предложил конкретный товар ("добавить X в заказ?", "может X тоже?") и клиент ответил "да"/"давай"/"конечно" → это подтверждение ТВОЕГО предложения! Вызови get_variant_candidates для этого товара, затем select_for_cart. НЕ игнорируй своё же предложение.
 - НЕ добавляй товар в корзину если ты просто ПОКАЗАЛ его как вариант. Показать ≠ выбрать.
 - Если ты показал несколько опций ("Есть Sony и AirPods") — жди выбор клиента. НЕ добавляй ничего сам.
 - "лучше X" / "давайте X" / "возьму X" → добавь ТОЛЬКО X, НЕ добавляй другие показанные товары.
@@ -384,12 +154,12 @@ SYSTEM_PROMPT_BASE = """\
 
 ХАРАКТЕРИСТИКИ ТОВАРА — КРИТИЧЕСКИ ВАЖНО:
 - АБСОЛЮТНЫЙ ЗАПРЕТ: НИКОГДА не указывай характеристики если tool get_variant_candidates их НЕ вернул в ТЕКУЩЕМ диалоге.
-- get_variant_candidates возвращает: title, color, storage, ram, size, price, available_quantity + поле "specs" (если есть) с процессором, экраном, камерой, батареей и т.д.
+- get_variant_candidates возвращает: title, color, storage, ram, size, price, in_stock + поле "specs" (если есть) с процессором, экраном, камерой, батареей и т.д.
 - Если в ответе get_variant_candidates ЕСТЬ поле "specs" — МОЖЕШЬ показывать характеристики из него (processor, display, camera, battery, gpu, ssd, capacity и т.д.)
 - Если поля "specs" НЕТ — НЕ ВЫДУМЫВАЙ характеристики! Скажи "могу показать цену и наличие, для подробных характеристик обратитесь к оператору".
 - ВАЖНО: Если клиент спрашивает "есть характеристики?", "покажи спеки", "какой процессор?", "на сколько хватит батареи?" → СНАЧАЛА вызови get_variant_candidates (если ещё не вызывал для этого товара), ПОТОМ ответь из specs. НЕ говори "подключу оператора" если ещё не проверил!
 - Если клиент спрашивает о характеристике конкретного товара который он ТОЛЬКО ЧТО смотрел → это НЕ off-topic! Вызови get_variant_candidates!
-- get_product_candidates возвращает: name, brand, model, variants_count, total_available_stock, price_range, in_stock. ТАМ НЕТ характеристик!
+- get_product_candidates возвращает: name, brand, model, variants_count, price_range, in_stock. ТАМ НЕТ характеристик!
 - КРИТИЧЕСКИ ВАЖНО: если in_stock=false — НЕ показывай этот товар клиенту! Скажи что нет в наличии.
 - Когда показываешь результат get_product_candidates — пиши ТОЛЬКО название, кол-во вариантов и "от X сум" (price_range). НЕ пиши RAM/storage/specs!
   ПРАВИЛЬНО: "1. Apple MacBook Pro 14 M3 — 1 вариант, от 26 900 000 сум ✅"
@@ -414,7 +184,17 @@ SYSTEM_PROMPT_BASE = """\
 - ПРАВИЛО: количество групп > 1 И клиент дал номер → УТОЧНЯЙ ВСЕГДА.
 
 ФОРМАТ:
-"iPhone 15 Pro 256GB, чёрный — 15 200 000 сум ✅ (4 шт)"
+"iPhone 15 Pro 256GB, чёрный — 15 200 000 сум ✅"
+
+КОЛИЧЕСТВО НА СКЛАДЕ — СТРОГО ЗАПРЕЩЕНО:
+- НИКОГДА не говори клиенту сколько единиц товара на складе.
+- НЕ пиши "(4 шт)", "осталось 3", "в наличии 10 штук" и т.д.
+- Только "есть в наличии ✅" или "нет в наличии ❌". Точка.
+- НЕ вставляй ссылки на фото/URL в текст.
+- ФОТО: "photo_available": true и "photos_attached" > 0 значат что фото УЖЕ ПРИКРЕПЛЕНЫ к ответу. Клиент их увидит. ЗАПРЕЩЕНО писать "не могу показать фото", "фото недоступны" — это ЛОЖЬ, фото прикреплены!
+- "total_photos" — общее количество фото товара. Если total_photos <= 1 — ВСЕ фото уже отправлены, НЕ предлагай "могу показать ещё фото/ракурсы". Если total_photos > 1 и фото уже прикреплено — можешь предложить: "Хотите увидеть все ракурсы?"
+- Если клиент просит фото — вызови get_variant_candidates. Все фото прикрепятся автоматически.
+- Когда фото прикреплено — НЕ упоминай фото в тексте вообще, просто опиши товар. Фото говорит само за себя.
 
 ВОПРОСЫ ПРО МАГАЗИН (НЕ off-topic!):
 - "вы работаете?" / "вы открыты?" / "работает магазин?" → "Да, мы работаем! Чем могу помочь?"
@@ -587,7 +367,7 @@ STATE_PROMPTS = {
 
     "selection": """\
 ТЕКУЩИЙ ЭТАП: Клиент ВЫБИРАЕТ ВАРИАНТ конкретного товара (цвет, объём, размер).
-- Цифра ("1", "2", "3") → выбор варианта из показанного списка. Найди variant_id в state_context и вызови select_for_cart.
+- Цифра ("1", "2", "3") → выбор варианта из показанного списка. Найди variant_id в state_context и вызови select_for_cart с qty=1. ЦИФРА = НОМЕР ВАРИАНТА, НЕ КОЛИЧЕСТВО! qty всегда 1 если клиент не сказал "штуки/шт".
 - "этот", "первый", "чёрный", "128гб" → выбор конкретного варианта. Вызови select_for_cart.
 - "да" → подтверждает текущий обсуждаемый вариант → select_for_cart.
 - "нет" / "другой" → клиент хочет другой вариант, НЕ удаляй ничего из корзины.
@@ -701,7 +481,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "get_product_candidates",
-            "description": "Search products by name, alias, or variant title. Returns matching products with product_id, total_available_stock, price_range, in_stock. IMPORTANT: if in_stock=false, do NOT recommend this product — it is out of stock.",
+            "description": "Search products by name, alias, or variant title. Returns matching products with product_id, price_range, in_stock. IMPORTANT: if in_stock=false, do NOT recommend this product — it is out of stock.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -715,41 +495,13 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "get_variant_candidates",
-            "description": "Get all variants for a product with title, color, storage, ram, size, price, stock, and specs (processor, display, camera, battery, etc. if available). Returns variant_id UUIDs needed for ordering.",
+            "description": "Get all variants for a product with title, color, storage, ram, size, price, in_stock, and specs (processor, display, camera, battery, etc. if available). Returns variant_id UUIDs needed for ordering.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "product_id": {"type": "string", "description": "Product UUID from get_product_candidates or state_context"},
                 },
                 "required": ["product_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_variant_price",
-            "description": "Get exact price for a specific variant.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "variant_id": {"type": "string", "description": "Variant UUID"},
-                },
-                "required": ["variant_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_variant_stock",
-            "description": "Get stock for a specific variant.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "variant_id": {"type": "string", "description": "Variant UUID"},
-                },
-                "required": ["variant_id"],
             },
         },
     },
@@ -776,7 +528,7 @@ TOOL_DEFINITIONS = [
                 "type": "object",
                 "properties": {
                     "variant_id": {"type": "string", "description": "Variant UUID from state_context"},
-                    "qty": {"type": "integer", "description": "Quantity (default 1)"},
+                    "qty": {"type": "integer", "description": "Quantity, default 1. IMPORTANT: customer saying '2' after variant list means variant NUMBER 2, NOT quantity. Only set qty>1 if customer explicitly says '2 штуки', 'два штуки', 'мне 2 шт', 'x2'."},
                 },
                 "required": ["variant_id"],
             },
@@ -800,7 +552,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "create_order_draft",
-            "description": "Create order from items in cart. Cart must have items (use select_for_cart first). Reserves inventory.",
+            "description": "Create order from items in cart. Cart must have items (use select_for_cart first). Reserves inventory. MUST call get_delivery_options first to show delivery choices!",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -808,6 +560,7 @@ TOOL_DEFINITIONS = [
                     "phone": {"type": "string", "description": "Phone number"},
                     "city": {"type": "string", "description": "City"},
                     "address": {"type": "string", "description": "Delivery address"},
+                    "delivery_type": {"type": "string", "description": "Delivery type chosen by customer: 'courier', 'pickup', or 'post'. MUST be from get_delivery_options result."},
                 },
                 "required": ["customer_name", "phone"],
             },
@@ -883,8 +636,23 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "request_return",
+            "description": "Request a return or exchange for a delivered order. Use when customer wants to return a product or exchange it. Only works for delivered orders. Creates a handoff to operator by default.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_number": {"type": "string", "description": "Order number like ORD-XXXXX"},
+                    "reason": {"type": "string", "description": "Reason for return — be specific (e.g. 'defective screen', 'wrong color', 'changed mind')"},
+                },
+                "required": ["order_number", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "request_handoff",
-            "description": "Transfer conversation to a human operator. Use for: order edits on confirmed orders, returns/exchanges, payment questions, persistent conflicts.",
+            "description": "Transfer conversation to a human operator. Use for: order edits on confirmed orders, payment questions, persistent conflicts. Do NOT use for returns — use request_return instead.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -899,213 +667,7 @@ TOOL_DEFINITIONS = [
 ]
 
 
-def _build_order_modification_response(tool_name: str, result: dict, language: str = "ru") -> str | None:
-    """Build a deterministic response for order modification tools.
-
-    Returns a ready-made response string, bypassing the LLM entirely.
-    This prevents the LLM from asking for address/checkout after modifying an existing order.
-    Language-aware: responds in the customer's language.
-    """
-    title = result.get("item_title", "?")
-    order_num = result.get("order_number", "")
-    new_total = result.get("new_total", "?")
-    try:
-        total_fmt = f"{int(float(new_total)):,}".replace(",", " ")
-    except (ValueError, TypeError):
-        total_fmt = str(new_total)
-
-    if tool_name == "add_item_to_order" and result.get("success"):
-        if result.get("action") == "quantity_updated":
-            new_qty = result.get("new_qty", "?")
-            templates = {
-                "ru": f"Обновил количество {title} в заказе {order_num} — теперь {new_qty} шт. Общая сумма: {total_fmt} сум 👍 Яна нима керак бўлса, ёзинг!",
-                "uz_cyrillic": f"{title} миқдори {order_num} буюртмада янгиланди — энди {new_qty} дона. Жами: {total_fmt} сўм 👍 Яна нима керак бўлса, ёзинг!",
-                "uz_latin": f"{title} miqdori {order_num} buyurtmada yangilandi — endi {new_qty} dona. Jami: {total_fmt} so'm 👍 Yana nima kerak bo'lsa, yozing!",
-                "en": f"Updated {title} quantity in order {order_num} — now {new_qty} pcs. Total: {total_fmt} UZS 👍 Let me know if you need anything else!",
-            }
-        else:
-            templates = {
-                "ru": f"Добавил {title} в заказ {order_num}! Общая сумма: {total_fmt} сум 👍 Ещё что-то нужно?",
-                "uz_cyrillic": f"{title} {order_num} буюртмага қўшилди! Жами: {total_fmt} сўм 👍 Яна нима керак бўлса, ёзинг!",
-                "uz_latin": f"{title} {order_num} buyurtmaga qo'shildi! Jami: {total_fmt} so'm 👍 Yana nima kerak bo'lsa, yozing!",
-                "en": f"Added {title} to order {order_num}! Total: {total_fmt} UZS 👍 Need anything else?",
-            }
-        return templates.get(language, templates["ru"])
-
-    if tool_name == "remove_item_from_order" and result.get("success"):
-        removed = result.get("removed_item", result.get("item_title", "?"))
-        remaining = result.get("remaining_items", "?")
-        if result.get("action") == "quantity_reduced":
-            rem_qty = result.get("remaining_qty", "?")
-            templates = {
-                "ru": f"Уменьшил количество {removed} в заказе {order_num} — осталось {rem_qty} шт. Сумма: {total_fmt} сум. Ещё что-то?",
-                "uz_cyrillic": f"{removed} миқдори {order_num} буюртмада камайтирилди — {rem_qty} дона қолди. Жами: {total_fmt} сўм. Яна нима керак?",
-                "uz_latin": f"{removed} miqdori {order_num} buyurtmada kamaytirildi — {rem_qty} dona qoldi. Jami: {total_fmt} so'm. Yana nima kerak?",
-                "en": f"Reduced {removed} quantity in order {order_num} — {rem_qty} left. Total: {total_fmt} UZS. Anything else?",
-            }
-        else:
-            templates = {
-                "ru": f"Убрал {removed} из заказа {order_num}. Осталось {remaining} товаров, сумма: {total_fmt} сум. Ещё что-то?",
-                "uz_cyrillic": f"{removed} {order_num} буюртмадан олиб ташланди. {remaining} та товар қолди, жами: {total_fmt} сўм. Яна нима керак?",
-                "uz_latin": f"{removed} {order_num} buyurtmadan olib tashlandi. {remaining} ta tovar qoldi, jami: {total_fmt} so'm. Yana nima kerak?",
-                "en": f"Removed {removed} from order {order_num}. {remaining} items left, total: {total_fmt} UZS. Anything else?",
-            }
-        return templates.get(language, templates["ru"])
-
-    # Forced response for create_order_draft — ALWAYS show order number + real items
-    if tool_name == "create_order_draft" and result.get("order_id"):
-        order_num = result.get("order_number", "?")
-        items = result.get("items", [])
-        total = result.get("total_amount", "?")
-        delivery = result.get("delivery_note", "")
-        eta = result.get("delivery_eta", "")
-
-        try:
-            total_fmt = f"{int(float(total)):,}".replace(",", " ")
-        except (ValueError, TypeError):
-            total_fmt = str(total)
-
-        items_lines = []
-        for item in items:
-            ititle = item.get("title", "?")
-            iprice = item.get("total_price", item.get("unit_price", "?"))
-            try:
-                iprice_fmt = f"{int(float(iprice)):,}".replace(",", " ")
-            except (ValueError, TypeError):
-                iprice_fmt = str(iprice)
-            qty = item.get("qty", 1)
-            qty_str = f" x{qty}" if qty > 1 else ""
-            items_lines.append(f"  - {ititle}{qty_str} — {iprice_fmt}")
-
-        items_text = "\n".join(items_lines)
-        delivery_line = f"\n  - Доставка: {delivery}" if delivery else ""
-        eta_line = f"\nСрок: {eta}" if eta else ""
-
-        if language == "en":
-            return (
-                f"Order confirmed! 🎉\n\n"
-                f"Order number: {order_num}\n"
-                f"Items:\n{items_text}{delivery_line}\n\n"
-                f"Total: {total_fmt} UZS{eta_line}\n\n"
-                f"Thank you for your purchase! If you need anything, just write!"
-            )
-        elif language == "uz_cyrillic":
-            return (
-                f"Буюртма расмийлаштирилди! 🎉\n\n"
-                f"Буюртма рақами: {order_num}\n"
-                f"Товарлар:\n{items_text}{delivery_line}\n\n"
-                f"Жами: {total_fmt} сўм{eta_line}\n\n"
-                f"Харидингиз учун раҳмат! Яна нима керак бўлса, ёзинг!"
-            )
-        elif language == "uz_latin":
-            return (
-                f"Buyurtma rasmiylashtirildi! 🎉\n\n"
-                f"Buyurtma raqami: {order_num}\n"
-                f"Tovarlar:\n{items_text}{delivery_line}\n\n"
-                f"Jami: {total_fmt} so'm{eta_line}\n\n"
-                f"Xaridingiz uchun rahmat! Yana nima kerak bo'lsa, yozing!"
-            )
-        else:  # ru
-            return (
-                f"Заказ оформлен! 🎉\n\n"
-                f"Номер заказа: {order_num}\n"
-                f"Товары:\n{items_text}{delivery_line}\n\n"
-                f"Итого: {total_fmt} сум{eta_line}\n\n"
-                f"Спасибо за покупку! Если что — пишите!"
-            )
-
-    return None
-
-
-def _build_context_summary(state_context: dict | None) -> str:
-    """Build a summary of known products/variants from state_context for the system prompt."""
-    if not state_context:
-        return ""
-
-    parts = []
-
-    # Cart (most important — these will be ordered)
-    cart = state_context.get("cart", [])
-    if cart:
-        try:
-            total = sum(float(item.get("price", 0)) * int(item.get("qty", 1)) for item in cart)
-            total_fmt = f"{int(total):,}".replace(",", " ")
-        except (ValueError, TypeError):
-            total_fmt = "?"
-        parts.append("═══ РЕАЛЬНАЯ КОРЗИНА КЛИЕНТА (ТОЛЬКО ЭТИ ТОВАРЫ!) ═══")
-        parts.append(f"⚠️ ВАЖНО: В корзине ровно {len(cart)} товар(ов). НЕ добавляй другие товары в список при оформлении!")
-        for i, item in enumerate(cart, 1):
-            title = item.get("title", "?")
-            price = item.get("price", "?")
-            qty = item.get("qty", 1)
-            vid = item.get("variant_id", "?")
-            try:
-                price_fmt = f"{int(float(price)):,}".replace(",", " ")
-            except (ValueError, TypeError):
-                price_fmt = str(price)
-            parts.append(f"  {i}. {title} — {price_fmt} сум x{qty} (variant_id: {vid})")
-        parts.append(f"  Итого товаров: {total_fmt} сум")
-        parts.append("═══════════════════════════════════════════════")
-        parts.append("")
-
-    # Known products from search
-    products = state_context.get("products", {})
-    if products:
-        parts.append("Известные товары в этом диалоге:")
-        for name, info in products.items():
-            pid = info.get("product_id", "?")
-            parts.append(f"  {name} (product_id: {pid})")
-            for i, v in enumerate(info.get("variants", []), 1):
-                vid = v.get("variant_id", "?")
-                title = v.get("title", "?")
-                price = v.get("price", "?")
-                stock = v.get("available_quantity", "?")
-                specs = v.get("specs")
-                spec_str = ""
-                if specs and isinstance(specs, dict):
-                    spec_parts = [f"{k}: {val}" for k, val in specs.items()]
-                    spec_str = f" | {', '.join(spec_parts)}"
-                parts.append(f"    {i}. {title} — {price} сум, {stock} шт (variant_id: {vid}){spec_str}")
-
-    # Proactive suggestion: products shown but not in cart
-    shown = state_context.get("shown_products", [])
-    if cart and shown:
-        cart_vids = {item.get("variant_id") for item in cart}
-        cart_pids = set()
-        for item in cart:
-            vid = item.get("variant_id")
-            for prod_info in state_context.get("products", {}).values():
-                for v in prod_info.get("variants", []):
-                    if v.get("variant_id") == vid:
-                        cart_pids.add(prod_info.get("product_id"))
-        not_carted = [s for s in shown if s.get("variant_id") not in cart_vids and s.get("product_id") not in cart_pids]
-        if not_carted:
-            parts.append("ТОВАРЫ КОТОРЫЕ КЛИЕНТ СМОТРЕЛ НО НЕ ДОБАВИЛ В КОРЗИНУ:")
-            for s in not_carted[-3:]:  # Last 3 at most
-                parts.append(f"  → {s.get('title', '?')} — {s.get('price', '?')} сум")
-            parts.append("  💡 Когда клиент переходит к оформлению — ОДИН раз спроси: 'Вы также смотрели [товар]. Добавить в заказ?' Если игнорирует — не повторяй.")
-            parts.append("")
-
-    # Previous orders
-    orders = state_context.get("orders", [])
-    if orders:
-        parts.append("\nЗаказы клиента:")
-        for o in orders:
-            parts.append(f"  {o.get('order_number', '?')} — {o.get('total_amount', '?')} сум")
-
-    customer = state_context.get("customer", {})
-    if customer:
-        parts.append(f"\nДанные клиента: имя={customer.get('name','?')}, тел={customer.get('phone','?')}, город={customer.get('city','?')}, адрес={customer.get('address','?')}")
-
-    # Recent order modifications (what AI actually did)
-    mods = state_context.get("last_order_modifications", [])
-    if mods:
-        parts.append("\nПОСЛЕДНИЕ ИЗМЕНЕНИЯ ЗАКАЗОВ (ты это сделал!):")
-        for m in mods:
-            action = "Добавил" if m.get("action") == "added" else "Убрал"
-            parts.append(f"  ✓ {action} {m.get('item', '?')} в заказ {m.get('order', '?')}")
-
-    return "\n".join(parts) if parts else ""
+from src.ai.responses import _build_order_modification_response, _build_context_summary
 
 
 def _determine_state(conversation: Conversation, state_context: dict) -> str:
@@ -1154,20 +716,19 @@ def _update_context_from_tool(state_context: dict, tool_name: str, tool_args: di
         # (1-2 results). Category listings (3+ results) are too broad — user didn't
         # specifically ask about any of those products.
         shown = state_context.setdefault("shown_products", [])
-        in_stock_results = [p for p in result_products if p.get("in_stock", True) and p.get("total_available_stock", 0) > 0]
+        in_stock_results = [p for p in result_products if p.get("in_stock", True)]
         is_specific_search = len(in_stock_results) <= 2
         for p in result_products:
             products[p["name"]] = {
                 "product_id": p["product_id"],
                 "brand": p.get("brand"),
                 "model": p.get("model"),
-                "total_available_stock": p.get("total_available_stock", 0),
                 "in_stock": p.get("in_stock", True),
                 "price_range": p.get("price_range"),
                 "variants": [],
             }
             # Only track for proactive suggestion if this was a specific search (1-2 results)
-            if is_specific_search and p.get("in_stock", True) and p.get("total_available_stock", 0) > 0:
+            if is_specific_search and p.get("in_stock", True):
                 pid = p["product_id"]
                 price_range = p.get("price_range", "?")
                 if not any(s.get("product_id") == pid for s in shown):
@@ -1228,6 +789,8 @@ def _update_context_from_tool(state_context: dict, tool_name: str, tool_args: di
         order_num = tool_result.get("order_number")
         orders = state_context.get("orders", [])
         state_context["orders"] = [o for o in orders if o.get("order_number") != order_num]
+        # Clear cart — items belonged to this order, no longer relevant
+        state_context["cart"] = []
 
     elif tool_name in ("add_item_to_order", "remove_item_from_order") and tool_result.get("success"):
         # Update order total and items in context
@@ -1307,6 +870,7 @@ async def _preprocess_order_request(
     user_message: str,
     state_context: dict,
     db: AsyncSession,
+    ai_settings=None,
 ) -> dict:
     """Pre-process user message to detect order numbers and handle deterministically.
 
@@ -1419,11 +983,30 @@ async def _preprocess_order_request(
             db.add(handoff)
             conversation.status = "handoff"
             conversation.ai_enabled = False
+            await db.flush()
             return {
                 "forced_response": f"Заказ {order.order_number} сейчас в обработке. Для изменений подключу оператора, подождите немного 🙏"
             }
 
         if status in AI_EDITABLE_STATUSES:
+            # Check if ai_settings requires operator for edits
+            if ai_settings and ai_settings.require_operator_for_edit:
+                from src.handoffs.models import Handoff
+                handoff = Handoff(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation.id,
+                    reason=f"Клиент хочет изменить заказ {order.order_number} (оператор обязателен по настройкам)",
+                    priority="high",
+                    summary=f"Заказ {order.order_number} на сумму {total_fmt} сум, клиент хочет изменить (require_operator_for_edit=True)",
+                    linked_order_id=order.id,
+                )
+                db.add(handoff)
+                conversation.status = "handoff"
+                conversation.ai_enabled = False
+                await db.flush()
+                return {
+                    "forced_response": f"Для изменения заказа {order.order_number} подключу оператора, подождите немного 🙏"
+                }
             # AI can help — inject order info for LLM
             order_info = (
                 f"Заказ {order.order_number} — статус: {status_label}\n"
@@ -1443,7 +1026,10 @@ async def _preprocess_order_request(
             f"Итого: {total_fmt} сум"
         )
         if status in AI_EDITABLE_STATUSES:
-            order_info += "\nСтатус позволяет изменение (add_item_to_order / remove_item_from_order)."
+            if ai_settings and ai_settings.require_operator_for_edit:
+                order_info += "\nДля изменений нужен оператор (настройки магазина). Используй request_handoff."
+            else:
+                order_info += "\nСтатус позволяет изменение (add_item_to_order / remove_item_from_order)."
         elif status in LOCKED_STATUSES:
             order_info += f"\nСтатус \"{status_label}\" — изменения НЕВОЗМОЖНЫ."
         return {"order_context_injection": order_info}
@@ -1451,13 +1037,39 @@ async def _preprocess_order_request(
     return {}
 
 
+async def _openai_with_retry(client, **kwargs):
+    """Call OpenAI completions.create with retry on transient errors."""
+    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+    import openai as _oai
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((_oai.APITimeoutError, _oai.APIConnectionError, _oai.RateLimitError, _oai.InternalServerError)),
+        before_sleep=lambda rs: logger.warning("OpenAI retry #%d after %s", rs.attempt_number, type(rs.outcome.exception()).__name__),
+    )
+    async def _call():
+        return await client.chat.completions.create(**kwargs)
+
+    return await _call()
+
+
 async def process_dm_message(
     tenant_id: UUID,
     conversation_id: UUID,
     user_message: str,
     db: AsyncSession,
-) -> str | None:
-    """Process an incoming DM and generate AI response."""
+    comment_hint: dict | None = None,
+) -> dict | None:
+    """Process an incoming DM and generate AI response.
+
+    Args:
+        comment_hint: Optional context from channel comments — if user asked about
+            a product in comments and then DM'd, this contains product info so AI
+            knows what they're referring to.
+
+    Returns dict {"text": str, "image_urls": list[str]} or None.
+    """
     try:
         import openai
 
@@ -1474,9 +1086,53 @@ async def process_dm_message(
 
         state_context = copy.deepcopy(conversation.state_context) if conversation.state_context else {}
 
+        # --- Step 0.9: Guard for empty/whitespace messages ---
+        if not user_message or not user_message.strip():
+            return None
+
+        # --- Step 1.0: Load AI settings for this tenant ---
+        from src.ai.models import AiSettings
+        _ai_s_result = await db.execute(
+            select(AiSettings).where(AiSettings.tenant_id == tenant_id)
+        )
+        ai_settings = _ai_s_result.scalar_one_or_none()
+
+        # --- Step 0.95: Kill switch — allow_auto_dm_reply ---
+        if ai_settings and not ai_settings.allow_auto_dm_reply:
+            logger.info("DM auto-reply disabled for tenant %s — skipping AI", tenant_id)
+            return None
+
         # --- Step 1.1: Detect language ---
-        current_lang = state_context.get("language", "ru")
+        # Use ai_settings.language as default for first message (when no language in state_context yet)
+        _default_lang = ai_settings.language if ai_settings else "ru"
+        current_lang = state_context.get("language", _default_lang)
         detected_lang = _detect_language(user_message, current_lang)
+
+        # --- Step 1.1b: Explicit language-switch request ---
+        _msg_lower = user_message.lower().strip()
+        _switch_uz_cyr = any(p in _msg_lower for p in (
+            "узбекча гапир", "узбекча ёз", "ўзбекча гапир", "ўзбекча ёз",
+            "на узбекском", "по-узбекски", "по узбекски",
+        ))
+        _switch_uz_lat = any(p in _msg_lower for p in (
+            "uzbecha gapir", "o'zbekcha gapir", "ozbekcha yoz",
+            "uzbecha yoz", "speak uzbek", "in uzbek",
+        ))
+        _switch_ru = any(p in _msg_lower for p in (
+            "по-русски", "по русски", "на русском", "русча гапир", "ruscha gapir",
+        ))
+        _switch_en = any(p in _msg_lower for p in (
+            "speak english", "in english", "английски",
+        ))
+        if _switch_uz_cyr:
+            detected_lang = "uz_cyrillic"
+        elif _switch_uz_lat:
+            detected_lang = "uz_latin"
+        elif _switch_ru:
+            detected_lang = "ru"
+        elif _switch_en:
+            detected_lang = "en"
+
         state_context["language"] = detected_lang
 
         # --- Step 1.2: Deterministic greeting handler ---
@@ -1491,7 +1147,7 @@ async def process_dm_message(
             conversation.state_context = state_context
             flag_modified(conversation, "state_context")
             await db.flush()
-            return greeting_response
+            return {"text": greeting_response, "image_urls": []}
 
         # --- Step 1.3: Proactive suggestion at checkout transition ---
         # When user says "оформляем"/"го"/"всё" and there are products they viewed but didn't add,
@@ -1563,11 +1219,12 @@ async def process_dm_message(
                 conversation.state_context = state_context
                 flag_modified(conversation, "state_context")
                 await db.flush()
-                return suggestions.get(detected_lang, suggestions["ru"])
+                return {"text": suggestions.get(detected_lang, suggestions["ru"]), "image_urls": []}
 
         # --- Step 1.5: Pre-process order requests deterministically ---
         order_precheck = await _preprocess_order_request(
-            tenant_id, conversation, user_message, state_context, db
+            tenant_id, conversation, user_message, state_context, db,
+            ai_settings=ai_settings,
         )
         if order_precheck.get("forced_response"):
             # Deterministic response — skip LLM entirely
@@ -1575,11 +1232,38 @@ async def process_dm_message(
             conversation.state_context = state_context
             flag_modified(conversation, "state_context")
             await db.flush()
-            return order_precheck["forced_response"]
+            return {"text": order_precheck["forced_response"], "image_urls": []}
 
         # Inject order info into state_context if found
         if order_precheck.get("order_context_injection"):
             state_context["_current_order_info"] = order_precheck["order_context_injection"]
+
+        # --- Step 1.6: Profanity detection (code-level, respects ai_settings) ---
+        if ai_settings and ai_settings.auto_handoff_on_profanity:
+            # Instant handoff on FIRST profanity message
+            if _contains_profanity(user_message):
+                logger.info("PROFANITY DETECTED (instant handoff enabled): %r", user_message[:60])
+                from src.handoffs.models import Handoff
+                handoff = Handoff(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    priority="urgent",
+                    summary="Автоматический handoff: обнаружена нецензурная лексика (instant mode)",
+                )
+                db.add(handoff)
+                conversation.state_context = state_context
+                flag_modified(conversation, "state_context")
+                await db.flush()
+                # Notify operator
+                if ai_settings.operator_telegram_username:
+                    state_context["_pending_operator_notify"] = ai_settings.operator_telegram_username
+                _prof_responses = {
+                    "ru": "Подключаю оператора, подождите немного \U0001f64f",
+                    "uz_cyrillic": "Операторни улаяпман, озгина кутинг \U0001f64f",
+                    "uz_latin": "Operatorni ulayapman, ozgina kuting \U0001f64f",
+                    "en": "Connecting you with an operator, please wait \U0001f64f",
+                }
+                return {"text": _prof_responses.get(detected_lang, _prof_responses["ru"]), "image_urls": []}
 
         # --- Step 2: Determine current state and build state-aware prompt ---
         current_state = _determine_state(conversation, state_context)
@@ -1601,6 +1285,20 @@ async def process_dm_message(
         lang_label, lang_instruction = lang_labels.get(detected_lang, ("русском", "Пиши ВСЁ по-русски."))
         system_content += f"\n\n══════ ТЕКУЩИЙ КОНТЕКСТ ══════"
         system_content += f"\nЯЗЫК КЛИЕНТА: {lang_label}. {lang_instruction}"
+
+        # Inject tone setting
+        if ai_settings:
+            tone_instructions = {
+                "friendly_sales": "Общайся дружелюбно, с эмодзи, как живой продавец-консультант.",
+                "formal": "Общайся формально и вежливо. Без эмодзи, без сленга. Пиши 'Вы' с заглавной.",
+                "casual": "Общайся максимально неформально, как друг. Можно шутить, использовать эмодзи.",
+            }
+            tone_hint = tone_instructions.get(ai_settings.tone, tone_instructions["friendly_sales"])
+            system_content += f"\nТОН ОБЩЕНИЯ: {tone_hint}"
+
+            # Inject confirm_before_order directive
+            if ai_settings.confirm_before_order:
+                system_content += "\nПОДТВЕРЖДЕНИЕ ЗАКАЗА: Перед вызовом create_order_draft ОБЯЗАТЕЛЬНО подтверди у клиента: перечисли товары, итоговую сумму, адрес и спроси 'Всё верно, оформляем?'. Только после явного 'да' создавай заказ."
 
         # Inject Telegram profile name so AI can use it as customer name
         tg_name = getattr(conversation, "telegram_first_name", "") or ""
@@ -1640,14 +1338,30 @@ async def process_dm_message(
             elif msg.direction == "outbound" and msg.ai_generated:
                 messages.append({"role": "assistant", "content": msg.raw_text or ""})
 
+        # Inject comment→DM context if user came from channel comments
+        if comment_hint:
+            hint_text = (
+                f"[КОНТЕКСТ: Этот клиент только что спрашивал в комментариях канала "
+                f"про {comment_hint.get('product_name', 'товар')}. "
+            )
+            if comment_hint.get("variants_summary"):
+                hint_text += f"Доступные варианты: {comment_hint['variants_summary']}. "
+            hint_text += (
+                "Клиент пришёл из канала — помоги с этим товаром. "
+                "Если клиент спрашивает про этот товар, покажи варианты и цены через tools.]"
+            )
+            messages.append({"role": "system", "content": hint_text})
+
         messages.append({"role": "user", "content": user_message})
 
         # --- Step 4: Multi-round tool calling (up to 3 rounds) ---
         final_text = None
+        collected_image_urls = []  # Product images to send alongside response
         tools_called = set()  # Track which tools were actually called
         cart_before_ai = [item.get("title", "") for item in state_context.get("cart", [])]  # Snapshot cart titles before AI
         for round_num in range(3):
-            response = await client.chat.completions.create(
+            response = await _openai_with_retry(
+                client,
                 model=settings.openai_model_main,
                 messages=messages,
                 tools=TOOL_DEFINITIONS,
@@ -1672,15 +1386,23 @@ async def process_dm_message(
 
                 # CODE-LEVEL GUARD: block select_for_cart in the same round as get_variant_candidates
                 # The AI must show variants to the user first, then wait for their choice.
+                # EXCEPTION: if user already confirmed (short message like "да", "yes", "sure"),
+                # allow same-round — AI is just fetching variant_id to fulfill the confirmation.
                 if tool_call.function.name == "select_for_cart" and "get_variant_candidates" in round_tool_names:
-                    logger.warning("BLOCKED select_for_cart in same round as get_variant_candidates — must show variants first")
-                    result = {"error": "Сначала покажи варианты клиенту и дождись его выбора. Нельзя добавлять в корзину автоматически."}
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps(result, ensure_ascii=False),
-                    })
-                    continue
+                    _confirm_words = {"да", "yes", "yea", "sure", "давай", "конечно", "го", "ок", "ok", "ofc", "ладно", "хорошо", "добавь", "добавьте", "беру", "берём", "ха", "хоп"}
+                    _msg_lower = user_message.lower().strip()
+                    _is_short_confirmation = len(_msg_lower.split()) <= 5 and any(w in _msg_lower.split() for w in _confirm_words)
+                    if not _is_short_confirmation:
+                        logger.warning("BLOCKED select_for_cart in same round as get_variant_candidates — must show variants first")
+                        result = {"error": "Сначала покажи варианты клиенту и дождись его выбора. Нельзя добавлять в корзину автоматически."}
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": json.dumps(result, ensure_ascii=False),
+                        })
+                        continue
+                    else:
+                        logger.info("ALLOWED select_for_cart + get_variant_candidates in same round (user confirmed: %r)", _msg_lower)
 
                 result = await _execute_tool(
                     tool_call.function.name,
@@ -1689,7 +1411,33 @@ async def process_dm_message(
                     conversation=conversation,
                     state_context=state_context,
                     db=db,
+                    ai_settings=ai_settings,
                 )
+
+                # Extract image URLs from tool results — replace with flags (saves tokens)
+                # AI sees "photos_attached": true so it knows photos will be sent.
+                # get_variant_candidates is more specific → REPLACES any previously collected images.
+                if isinstance(result, dict):
+                    if tool_call.function.name == "get_product_candidates":
+                        for prod in result.get("products", []):
+                            img = prod.pop("image_url", None)
+                            total_ph = prod.get("total_photos", 0)
+                            if img:
+                                prod["photo_available"] = True
+                                prod["total_photos"] = total_ph
+                                if img not in collected_image_urls:
+                                    collected_image_urls.append(img)
+                            else:
+                                prod["total_photos"] = total_ph
+                    elif tool_call.function.name == "get_variant_candidates":
+                        variant_imgs = result.pop("image_urls", [])
+                        if variant_imgs:
+                            collected_image_urls = [img for img in variant_imgs if img]
+                            result["photos_attached"] = len(collected_image_urls)
+                            result["total_photos"] = len(collected_image_urls)
+                        else:
+                            result["photos_attached"] = 0
+                            result["total_photos"] = 0
 
                 # Update state_context
                 if isinstance(result, dict):
@@ -1722,7 +1470,8 @@ async def process_dm_message(
                 break
         else:
             # Max rounds reached, get final response without tools
-            response = await client.chat.completions.create(
+            response = await _openai_with_retry(
+                client,
                 model=settings.openai_model_main,
                 messages=messages,
                 max_tokens=500,
@@ -1732,6 +1481,11 @@ async def process_dm_message(
 
         # --- Step 4.5: Post-processing — catch AI hallucinations ---
         if final_text:
+            # Strip markdown links that Telegram renders as clickable: [text](url), ![text](url)
+            import re as _re_md
+            final_text = _re_md.sub(r'!\[([^\]]*)\]\([^)]*\)', r'\1', final_text)
+            final_text = _re_md.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', final_text)
+
             text_lower = final_text.lower()
             cart = state_context.get("cart", [])
 
@@ -1772,8 +1526,8 @@ async def process_dm_message(
             # Catch AI showing prices/stock without calling get_variant_candidates
             import re as _re_check
             has_price_pattern = bool(_re_check.search(r'\d{1,3}[\s,]\d{3}[\s,]\d{3}', final_text))
-            price_tools = {"get_variant_candidates", "get_variant_price", "get_variant_stock",
-                           "check_order_status", "get_product_candidates", "create_order_draft"}
+            price_tools = {"get_variant_candidates", "check_order_status",
+                           "get_product_candidates", "create_order_draft"}
             if has_price_pattern and not (tools_called & price_tools) and not cart:
                 known_prices = set()
                 # Prices from variant data
@@ -1856,13 +1610,107 @@ async def process_dm_message(
                     if any(w in text_lower for w in ["готово", "обновлён", "обращайтесь", "тайёр"]):
                         final_text = "Tayyor! Buyurtmangiz yangilandi 👍 Yana nima kerak bo'lsa, yozing!"
 
+        # --- Step 4.5: Force-fetch photos if user asked but AI didn't provide ---
+        _photo_keywords = {"фото", "фотк", "фотог", "фоточ", "покажи", "photo", "picture", "pic", "image", "show me", "расм", "rasm", "сурат", "увидеть"}
+        _user_wants_photos = any(kw in user_message.lower() for kw in _photo_keywords)
+        logger.info("PHOTO CHECK: wants=%s, collected=%d, msg=%r", _user_wants_photos, len(collected_image_urls), user_message[:50])
+
+        # Only send photos when user explicitly asks to see/show products
+        # "покажи", "фото", "покажите", "увидеть" → photos OK
+        # "добавь в корзину", "да", "2", "оформим" → NO photos
+        if not _user_wants_photos:
+            if collected_image_urls:
+                logger.info("PHOTO: clearing %d photos — user didn't ask to see", len(collected_image_urls))
+            collected_image_urls = []
+
+        if _user_wants_photos and not collected_image_urls:
+            # Search DB directly for the product mentioned in user message
+            _product_uuid = None
+            try:
+                _search_result = await get_product_candidates(tenant_id, user_message, db)
+                if _search_result.get("found") and _search_result.get("products"):
+                    _product_uuid = _search_result["products"][0]["product_id"]
+                    logger.info("PHOTO: found product via search: %s (%s)", _search_result["products"][0].get("name"), _product_uuid)
+            except Exception:
+                pass
+
+            # Fallback: use last product from state_context
+            if not _product_uuid:
+                _products = state_context.get("products", {})
+                for pkey, pinfo in reversed(list(_products.items())):
+                    pid = pinfo.get("product_id")
+                    if pid:
+                        _product_uuid = pid
+                        logger.info("PHOTO: fallback to state_context product %s (user asked for photos)", pkey)
+                        break
+
+            if _product_uuid:
+                try:
+                    from src.ai.truth_tools import get_variant_candidates as _gvc
+                    _photo_result = await _gvc(tenant_id, UUID(str(_product_uuid)), db)
+                    _imgs = _photo_result.get("image_urls", [])
+                    if _imgs:
+                        collected_image_urls = _imgs
+                        logger.info("PHOTO FORCE-FETCH: got %d photos for %s", len(_imgs), _product_uuid)
+                    else:
+                        logger.info("PHOTO FORCE-FETCH: no images for %s", _product_uuid)
+                except Exception:
+                    logger.warning("Photo force-fetch failed", exc_info=True)
+            else:
+                logger.info("PHOTO: no product found to fetch photos for")
+
+        # Clean AI text that contradicts photo sending
+        if collected_image_urls and final_text:
+            import re as _re_clean
+            _cleaned = final_text
+            _deny_patterns = [
+                r'[Кк]\s*сожалени\w*[,.]?\s*(?:не удалось|не могу|нет возможности)\s*(?:найти|показать|отправить|предоставить)\s*фотограф\w*[^.]*\.?\s*',
+                r'(?:[Нн]е удалось|[Нн]е могу)\s*(?:найти|показать|отправить|предоставить)\s*фотограф\w*[^.]*\.?\s*',
+                r'[Нн]о\s+(?:они|у нас|я могу)\s',
+                r'I\s+(?:apologize|cannot|can\'t|am unable)[^.]*photo[^.]*\.?\s*',
+            ]
+            for pat in _deny_patterns:
+                _cleaned = _re_clean.sub(pat, '', _cleaned, flags=_re_clean.IGNORECASE)
+            _cleaned = _cleaned.strip()
+            if _cleaned and len(_cleaned) > 5:
+                final_text = _cleaned
+            else:
+                final_text = "Вот фотографии товара:"
+
         # --- Step 5: Persist state_context + state ---
-        # Keep only last 5 products to avoid bloating
+        # --- Step 5.1: Cleanup state_context to prevent JSONB bloat ---
+
+        # Keep only last 5 products
         products = state_context.get("products", {})
         if len(products) > 5:
             keys = list(products.keys())
             for k in keys[:-5]:
                 del products[k]
+
+        # Keep only last 10 shown_products (should already be capped, but enforce)
+        shown = state_context.get("shown_products", [])
+        if len(shown) > 10:
+            state_context["shown_products"] = shown[-10:]
+
+        # Keep only last 5 orders (old orders are rarely referenced)
+        orders = state_context.get("orders", [])
+        if len(orders) > 5:
+            state_context["orders"] = orders[-5:]
+
+        # Remove per-request temporary keys (not needed across messages)
+        state_context.pop("_current_order_info", None)
+
+        # Trim variant lists inside products to max 8 per product
+        for prod_info in state_context.get("products", {}).values():
+            variants = prod_info.get("variants", [])
+            if len(variants) > 8:
+                prod_info["variants"] = variants[:8]
+
+        # Remove empty collections to keep JSONB compact
+        for key in ("cart", "products", "shown_products", "orders"):
+            val = state_context.get(key)
+            if val is not None and not val:
+                del state_context[key]
 
         # Log cart state for debugging
         _cart_save = state_context.get("cart", [])
@@ -1874,43 +1722,98 @@ async def process_dm_message(
         flag_modified(conversation, "state_context")
         await db.flush()
 
-        return final_text
+        return {"text": final_text, "image_urls": collected_image_urls}
 
-    except Exception:
+    except Exception as exc:
         logger.exception("AI processing error for tenant %s, conversation %s", tenant_id, conversation_id)
+
+        # --- Fallback mode ---
+        try:
+            from src.ai.models import AiSettings as _AiS
+            _fb_result = await db.execute(select(_AiS).where(_AiS.tenant_id == tenant_id))
+            _fb_settings = _fb_result.scalar_one_or_none()
+            _fb_mode = _fb_settings.fallback_mode if _fb_settings else "handoff"
+
+            if _fb_mode == "fallback_model":
+                # Try with fallback model (e.g. gpt-4o instead of gpt-4o-mini)
+                import openai as _oai_fb
+                _fb_client = _oai_fb.AsyncOpenAI(api_key=settings.openai_api_key)
+                _conv_result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
+                _conv = _conv_result.scalar_one_or_none()
+                if _conv and user_message:
+                    logger.info("Fallback: trying %s for tenant %s", settings.openai_model_fallback, tenant_id)
+                    _fb_response = await _fb_client.chat.completions.create(
+                        model=settings.openai_model_fallback,
+                        messages=[
+                            {"role": "system", "content": "Ты помощник магазина. Основная модель временно недоступна. Ответь кратко и предложи подождать или написать позже."},
+                            {"role": "user", "content": user_message},
+                        ],
+                        max_tokens=300,
+                        temperature=0.5,
+                    )
+                    _fb_text = _fb_response.choices[0].message.content
+                    if _fb_text:
+                        return {"text": _fb_text, "image_urls": []}
+
+            # Default fallback: create handoff
+            if _fb_mode == "handoff" or True:  # also fallback if fallback_model itself failed
+                from src.handoffs.models import Handoff
+                _conv_result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
+                _conv = _conv_result.scalar_one_or_none()
+                if _conv:
+                    handoff = Handoff(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        priority="high",
+                        summary=f"AI ошибка: {type(exc).__name__}. Сообщение клиента: {(user_message or '')[:100]}",
+                    )
+                    db.add(handoff)
+                    await db.flush()
+                    _fallback_responses = {
+                        "ru": "Подключаю оператора, подождите немного 🙏",
+                        "uz_cyrillic": "Операторни улаяпман, озгина кутинг 🙏",
+                        "uz_latin": "Operatorni ulayapman, ozgina kuting 🙏",
+                        "en": "Connecting you with an operator, please wait 🙏",
+                    }
+                    return {"text": _fallback_responses.get("ru"), "image_urls": []}
+        except Exception:
+            logger.exception("Fallback handler also failed for tenant %s", tenant_id)
+
         return None
 
 
 async def _execute_tool(
-    name: str, args: dict, tenant_id: UUID, conversation: Conversation, state_context: dict, db: AsyncSession
+    name: str, args: dict, tenant_id: UUID, conversation: Conversation, state_context: dict, db: AsyncSession,
+    ai_settings=None,
 ) -> dict:
     """Execute a truth tool and return the result."""
     if name == "list_categories":
         return await list_categories(tenant_id, db)
 
     elif name == "get_product_candidates":
-        return await get_product_candidates(tenant_id, args["query"], db)
+        result = await get_product_candidates(tenant_id, args["query"], db)
+        # Enforce require_handoff_for_unknown_product
+        if ai_settings and ai_settings.require_handoff_for_unknown_product:
+            if not result.get("found"):
+                result["_handoff_hint"] = "Товар не найден в каталоге. Подключи оператора через request_handoff — он поможет клиенту."
+        return result
 
     elif name == "get_variant_candidates":
         try:
             pid = UUID(args["product_id"])
         except (ValueError, AttributeError):
             return {"error": f"Invalid product_id '{args.get('product_id')}'. Use get_product_candidates first to get valid product UUIDs."}
-        return await get_variant_candidates(tenant_id, pid, db)
-
-    elif name == "get_variant_price":
-        try:
-            vid = UUID(args["variant_id"])
-        except (ValueError, AttributeError):
-            return {"error": "Invalid variant_id. Use get_variant_candidates first."}
-        return await get_variant_price(tenant_id, vid, db)
-
-    elif name == "get_variant_stock":
-        try:
-            vid = UUID(args["variant_id"])
-        except (ValueError, AttributeError):
-            return {"error": "Invalid variant_id. Use get_variant_candidates first."}
-        return await get_variant_stock(tenant_id, vid, db)
+        result = await get_variant_candidates(tenant_id, pid, db)
+        # Enforce max_variants_in_reply setting
+        if ai_settings and result.get("found") and result.get("variants"):
+            max_v = ai_settings.max_variants_in_reply or 5
+            variants = result["variants"]
+            if len(variants) > max_v:
+                result["variants"] = variants[:max_v]
+                result["total_variants"] = len(variants)
+                result["showing"] = max_v
+                result["note"] = f"Показано {max_v} из {len(variants)} вариантов. Спроси клиента если нужны другие."
+        return result
 
     elif name == "get_delivery_options":
         return await get_delivery_options(tenant_id, args["city"], db)
@@ -1969,7 +1872,9 @@ async def _execute_tool(
             "price": price_info.get("price", 0),
             "qty": qty,
         })
-        return {"status": "added", "cart": cart, "message": f"Добавлено в корзину ({len(cart)} товаров)"}
+        _cn = len(cart)
+        _cw = "товар" if _cn % 10 == 1 and _cn % 100 != 11 else "товара" if 2 <= _cn % 10 <= 4 and not 12 <= _cn % 100 <= 14 else "товаров"
+        return {"status": "added", "cart": cart, "message": f"Добавлено в корзину ({_cn} {_cw})"}
 
     elif name == "remove_from_cart":
         vid_str = args.get("variant_id", "")
@@ -2009,15 +1914,40 @@ async def _execute_tool(
         if len(phone_digits) < 9 or "XXXX" in phone.upper() or phone_digits == "0" * len(phone_digits):
             return {"error": "Номер телефона обязателен! Спроси у клиента реальный номер телефона. Не придумывай номер."}
 
+        # Normalize phone to +998XXXXXXXXX format
+        if phone_digits.startswith("998") and len(phone_digits) == 12:
+            phone = f"+{phone_digits}"
+        elif len(phone_digits) == 9:
+            phone = f"+998{phone_digits}"
+        elif phone_digits.startswith("8") and len(phone_digits) == 10:
+            phone = f"+998{phone_digits[1:]}"
+        else:
+            phone = f"+{phone_digits}" if not phone.startswith("+") else phone
+        args["phone"] = phone
+
         # Validate customer name
         customer_name = (args.get("customer_name") or "").strip()
         if len(customer_name) < 2:
             return {"error": "Имя клиента обязательно! Спроси имя."}
+        # Normalize name: title case ("oybek sobitov" → "Oybek Sobitov")
+        customer_name = " ".join(w.capitalize() for w in customer_name.split())
+        args["customer_name"] = customer_name
 
         # Validate city — MUST be provided to calculate delivery
         city = (args.get("city") or "").strip()
         if not city:
             return {"error": "Город не указан! Спроси у клиента город доставки. Доступные города: Ташкент, Самарканд, Бухара, Фергана, Наманган, Андижан, Нукус, Карши, Навои, Джизак, Ургенч, Термез."}
+
+        # GUARD: Check delivery options for city — if multiple exist, delivery_type is required
+        _delivery_type = (args.get("delivery_type") or "").strip()
+        if city and not _delivery_type:
+            _del_check = await get_delivery_options(tenant_id, city, db)
+            if _del_check.get("found") and len(_del_check.get("options", [])) > 1:
+                _opts = [f"{o['delivery_type']} — {o['price']} {o.get('currency','UZS')}, {o['eta']}" for o in _del_check["options"]]
+                return {
+                    "error": f"Для города {city} доступно несколько вариантов доставки. Спроси у клиента какой выбирает: {'; '.join(_opts)}. Передай delivery_type в create_order_draft.",
+                    "delivery_options": _del_check["options"],
+                }
 
         # Get items from cart
         cart = state_context.get("cart", [])
@@ -2062,11 +1992,13 @@ async def _execute_tool(
             args.get("city"),
             args.get("address"),
             db,
+            delivery_type=args.get("delivery_type"),
         )
 
-        # Clear cart on success
+        # Clear cart and reset proactive suggestion flag on success
         if result.get("order_id"):
             state_context["cart"] = []
+            state_context.pop("_proactive_suggested", None)
 
         return result
 
@@ -2095,16 +2027,16 @@ async def _execute_tool(
             if result.get("status"):
                 # Single order
                 status = result["status"]
-                result["allowed_actions"] = get_allowed_actions(status)
-                cancel_policy = can_cancel_order(status)
-                edit_policy = can_edit_order(status)
+                result["allowed_actions"] = get_allowed_actions(status, ai_settings)
+                cancel_policy = can_cancel_order(status, ai_settings)
+                edit_policy = can_edit_order(status, ai_settings)
                 result["can_cancel"] = cancel_policy
                 result["can_edit"] = edit_policy
             elif result.get("orders"):
                 # Multiple orders — enrich each
                 for order in result["orders"]:
                     status = order.get("status", "")
-                    order["allowed_actions"] = get_allowed_actions(status)
+                    order["allowed_actions"] = get_allowed_actions(status, ai_settings)
         return result
 
     elif name == "cancel_order":
@@ -2113,6 +2045,7 @@ async def _execute_tool(
             tenant_id, conversation.id,
             args["order_number"],
             db,
+            ai_settings=ai_settings,
         )
 
     elif name == "add_item_to_order":
@@ -2143,6 +2076,16 @@ async def _execute_tool(
             db,
         )
 
+    elif name == "request_return":
+        from src.ai.truth_tools import request_return
+        return await request_return(
+            tenant_id, conversation.id,
+            args["order_number"],
+            args.get("reason", "Не указана"),
+            db,
+            ai_settings=ai_settings,
+        )
+
     elif name == "request_handoff":
         from src.handoffs.models import Handoff
         from src.ai.policies import AI_EDITABLE_STATUSES, LOCKED_STATUSES
@@ -2171,14 +2114,21 @@ async def _execute_tool(
             _order = _ord_result.scalar_one_or_none()
             if _order:
                 if _order.status in AI_EDITABLE_STATUSES:
-                    # AI can handle this! Don't create handoff
-                    return {
-                        "status": "handoff_rejected",
-                        "reason": f"Заказ {_order.order_number} в статусе \"{_order.status}\" — ты можешь изменить его сам! Используй add_item_to_order или remove_item_from_order. НЕ вызывай request_handoff для этого заказа.",
-                        "order_number": _order.order_number,
-                        "order_status": _order.status,
-                        "use_tools": ["add_item_to_order", "remove_item_from_order", "cancel_order"],
-                    }
+                    # Check if ai_settings requires operator for edits — if so, allow handoff
+                    _needs_operator = ai_settings and ai_settings.require_operator_for_edit
+                    # Also check cancel-specific: if reason is cancel and allow_ai_cancel_draft is False
+                    _is_cancel = any(kw in reason for kw in ["отменить", "cancel"])
+                    if _is_cancel and _order.status == "draft" and ai_settings and not ai_settings.allow_ai_cancel_draft:
+                        _needs_operator = True
+                    if not _needs_operator:
+                        # AI can handle this! Don't create handoff
+                        return {
+                            "status": "handoff_rejected",
+                            "reason": f"Заказ {_order.order_number} в статусе \"{_order.status}\" — ты можешь изменить его сам! Используй add_item_to_order или remove_item_from_order. НЕ вызывай request_handoff для этого заказа.",
+                            "order_number": _order.order_number,
+                            "order_status": _order.status,
+                            "use_tools": ["add_item_to_order", "remove_item_from_order", "cancel_order"],
+                        }
                 if _order.status in LOCKED_STATUSES:
                     # No point in handoff — changes are impossible
                     from src.ai.policies import STATUS_LABELS_RU
@@ -2208,7 +2158,9 @@ async def _execute_tool(
         summary_parts = []
         cart = state_context.get("cart", [])
         if cart:
-            summary_parts.append(f"Корзина: {len(cart)} товаров")
+            _n = len(cart)
+            _w = "товар" if _n % 10 == 1 and _n % 100 != 11 else "товара" if 2 <= _n % 10 <= 4 and not 12 <= _n % 100 <= 14 else "товаров"
+            summary_parts.append(f"Корзина: {_n} {_w}")
         orders = state_context.get("orders", [])
         if orders:
             summary_parts.append(f"Заказы: {', '.join(o.get('order_number', '?') for o in orders)}")

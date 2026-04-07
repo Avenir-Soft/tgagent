@@ -4,6 +4,7 @@ import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,6 +78,92 @@ async def _clear_pending_auth(phone: str):
     _pending_clients.pop(phone, None)
 
 
+class ResolveLinkRequest(BaseModel):
+    link: str  # t.me/..., @username, or username
+
+
+class ResolveLinkResponse(BaseModel):
+    entity_type: str  # "channel", "group", "user"
+    telegram_id: int
+    title: str
+    username: str | None = None
+    linked_chat_id: int | None = None  # discussion group for channels
+    linked_chat_title: str | None = None
+
+
+@router.post("/resolve-link")
+async def resolve_link(
+    body: ResolveLinkRequest,
+    user: User = Depends(require_store_owner),
+):
+    """Resolve a Telegram link/username to entity info using the connected client."""
+    from src.telegram.service import telegram_manager
+
+    client = telegram_manager.get_client(user.tenant_id)
+    if not client:
+        raise HTTPException(status_code=400, detail="Нет подключенного Telegram аккаунта")
+
+    link = body.link.strip()
+
+    try:
+        entity = await client.get_entity(link)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Не удалось найти: {e}")
+
+    from telethon.tl.types import Channel, Chat, User as TgUser
+
+    if isinstance(entity, Channel):
+        if entity.megagroup or entity.gigagroup:
+            entity_type = "group"
+        else:
+            entity_type = "channel"
+        result = {
+            "entity_type": entity_type,
+            "telegram_id": entity.id,
+            "title": entity.title,
+            "username": entity.username,
+            "linked_chat_id": None,
+            "linked_chat_title": None,
+        }
+        # Try to get linked discussion group for channels
+        if entity_type == "channel":
+            try:
+                from telethon.tl.functions.channels import GetFullChannelRequest
+                full = await client(GetFullChannelRequest(entity))
+                if full.full_chat.linked_chat_id:
+                    result["linked_chat_id"] = full.full_chat.linked_chat_id
+                    # Resolve linked chat title
+                    try:
+                        linked = await client.get_entity(full.full_chat.linked_chat_id)
+                        result["linked_chat_title"] = getattr(linked, 'title', None)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        return result
+    elif isinstance(entity, Chat):
+        return {
+            "entity_type": "group",
+            "telegram_id": entity.id,
+            "title": entity.title,
+            "username": None,
+            "linked_chat_id": None,
+            "linked_chat_title": None,
+        }
+    elif isinstance(entity, TgUser):
+        name = " ".join(filter(None, [entity.first_name, entity.last_name]))
+        return {
+            "entity_type": "user",
+            "telegram_id": entity.id,
+            "title": name or "User",
+            "username": entity.username,
+            "linked_chat_id": None,
+            "linked_chat_title": None,
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Неизвестный тип сущности")
+
+
 class SendCodeRequest(BaseModel):
     phone_number: str
     display_name: str | None = None
@@ -99,7 +186,12 @@ async def send_code(
     """Step 1: Send authorization code to the phone number."""
     from telethon import TelegramClient
 
-    session_path = f"{settings.telegram_sessions_dir}/{user.tenant_id}_{body.phone_number}"
+    # Sanitize phone number to prevent path traversal
+    import re
+    safe_phone = re.sub(r"[^0-9+]", "", body.phone_number)
+    if not safe_phone or len(safe_phone) < 5:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    session_path = f"{settings.telegram_sessions_dir}/{user.tenant_id}_{safe_phone}"
     client = TelegramClient(
         session_path,
         settings.telegram_api_id,
@@ -137,6 +229,10 @@ async def verify_code(
     user: User = Depends(require_store_owner),
 ):
     """Step 2: Verify the code and complete authentication."""
+    import re
+    safe_phone = re.sub(r"[^0-9+]", "", body.phone_number)
+    if not safe_phone or len(safe_phone) < 5:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
     pending, client = await _get_pending_auth(body.phone_number)
     if not pending or not client:
         raise HTTPException(status_code=400, detail="No pending auth for this phone. Send code first.")
@@ -170,10 +266,10 @@ async def verify_code(
     # Save account to DB
     account = TelegramAccount(
         tenant_id=user.tenant_id,
-        phone_number=body.phone_number,
+        phone_number=safe_phone,
         display_name=pending.get("display_name") or me.first_name,
         username=me.username,
-        session_ref=f"{user.tenant_id}_{body.phone_number}",
+        session_ref=f"{user.tenant_id}_{safe_phone}",
         status="connected",
     )
     db.add(account)
@@ -419,9 +515,106 @@ async def activity_logs(
             "id": str(r.id),
             "conversation_id": str(r.conversation_id),
             "sender_type": r.sender_type,
-            "text_preview": (r.raw_text or "")[:80],
+            "text_preview": (r.raw_text or "")[:150],
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "customer_name": r.telegram_first_name,
             "customer_username": r.telegram_username,
         })
     return logs
+
+
+@router.get("/media/{message_id}")
+async def get_media(
+    message_id: UUID,
+    request: Request,
+    token: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download media from Telegram for a message. Returns the file bytes.
+
+    Supports auth via Bearer header OR ?token= query param (needed for <img>/<video>/<audio> tags).
+    """
+    from src.core.security import decode_access_token
+
+    # Try Bearer header first, then query param
+    jwt_token = None
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        jwt_token = auth_header[7:]
+    elif token:
+        jwt_token = token
+
+    if not jwt_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    payload = decode_access_token(jwt_token)
+    if not payload or not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user_result = await db.execute(
+        select(User).where(User.id == UUID(payload["sub"]), User.is_active.is_(True))
+    )
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    from src.conversations.models import Message
+    from src.telegram.service import telegram_manager
+
+    result = await db.execute(
+        select(Message).where(
+            Message.id == message_id,
+            Message.tenant_id == user.tenant_id,
+            Message.media_type.isnot(None),
+        )
+    )
+    msg = result.scalar_one_or_none()
+    if not msg or not msg.media_file_id:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    client = telegram_manager.get_client(user.tenant_id)
+    if not client:
+        raise HTTPException(status_code=400, detail="Telegram not connected")
+
+    # Find the original Telegram message to download media
+    try:
+        from src.conversations.models import Conversation
+        conv_r = await db.execute(
+            select(Conversation).where(Conversation.id == msg.conversation_id)
+        )
+        conv = conv_r.scalar_one_or_none()
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Get the Telegram message
+        tg_msg = await client.get_messages(conv.telegram_chat_id, ids=msg.telegram_message_id)
+        if not tg_msg or not tg_msg.media:
+            raise HTTPException(status_code=404, detail="Telegram message not found")
+
+        # Download media to bytes
+        file_bytes = await client.download_media(tg_msg, bytes)
+        if not file_bytes:
+            raise HTTPException(status_code=404, detail="Failed to download media")
+
+        # Determine content type
+        content_types = {
+            "photo": "image/jpeg",
+            "sticker": "image/webp",
+            "gif": "video/mp4",
+            "voice": "audio/ogg",
+            "video_note": "video/mp4",
+            "video": "video/mp4",
+            "document": "application/octet-stream",
+        }
+        content_type = content_types.get(msg.media_type, "application/octet-stream")
+
+        return Response(
+            content=file_bytes,
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to download media for message %s: %s", message_id, e)
+        raise HTTPException(status_code=500, detail="Failed to download media")

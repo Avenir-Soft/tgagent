@@ -24,7 +24,7 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
         if result.get("action") == "quantity_updated":
             new_qty = result.get("new_qty", "?")
             templates = {
-                "ru": f"Обновил количество {title} в заказе {order_num} — теперь {new_qty} шт. Общая сумма: {total_fmt} сум 👍 Яна нима керак бўлса, ёзинг!",
+                "ru": f"Обновил количество {title} в заказе {order_num} — теперь {new_qty} шт. Общая сумма: {total_fmt} сум 👍 Ещё что-то нужно?",
                 "uz_cyrillic": f"{title} миқдори {order_num} буюртмада янгиланди — энди {new_qty} дона. Жами: {total_fmt} сўм 👍 Яна нима керак бўлса, ёзинг!",
                 "uz_latin": f"{title} miqdori {order_num} buyurtmada yangilandi — endi {new_qty} dona. Jami: {total_fmt} so'm 👍 Yana nima kerak bo'lsa, yozing!",
                 "en": f"Updated {title} quantity in order {order_num} — now {new_qty} pcs. Total: {total_fmt} UZS 👍 Let me know if you need anything else!",

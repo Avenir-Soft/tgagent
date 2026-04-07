@@ -38,7 +38,7 @@ class Order(PkMixin, TenantMixin, UpdatableMixin, Base):
     )
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, server_default=text("'draft'")
-    )  # draft, confirmed, processing, shipped, delivered, cancelled
+    )  # draft, confirmed, processing, shipped, delivered, cancelled, returned
 
     items = relationship("OrderItem", back_populates="order", lazy="selectin")
 

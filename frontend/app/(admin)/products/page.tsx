@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
+import { plural } from "@/lib/utils";
 
 interface Variant {
   id: string;
@@ -131,7 +132,7 @@ export default function ProductsPage() {
     try {
       await Promise.all([...selected].map((id) => api.patch(`/products/${id}`, { is_active: active })));
       setProducts((prev) => prev.map((p) => selected.has(p.id) ? { ...p, is_active: active } : p));
-      toast(`${selected.size} товаров ${active ? "активировано" : "скрыто"}`, "success");
+      toast(`${selected.size} ${plural(selected.size, "товар", "товара", "товаров")} ${active ? "активировано" : "скрыто"}`, "success");
       setSelected(new Set());
     } catch {
       toast("Ошибка массового обновления", "error");

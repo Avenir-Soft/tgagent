@@ -66,6 +66,7 @@ class ProductDetailOut(ProductOut):
     min_price: Decimal | None = None
     max_price: Decimal | None = None
     category_name: str | None = None
+    image_url: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -17,7 +17,7 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 
 def _generate_order_number() -> str:
-    return f"ORD-{uuid_mod.uuid4().hex[:8].upper()}"
+    return f"ORD-{uuid_mod.uuid4().hex[:12].upper()}"
 
 
 async def _build_orders_out(orders: list[Order], db: AsyncSession) -> list[OrderOut]:
@@ -81,22 +81,63 @@ async def create_order(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # Validate all product_ids and variant_ids exist and belong to tenant
+    product_ids = {item.product_id for item in body.items}
+    variant_ids = {item.product_variant_id for item in body.items if item.product_variant_id}
+
+    if product_ids:
+        result = await db.execute(
+            select(Product.id).where(Product.id.in_(product_ids), Product.tenant_id == user.tenant_id)
+        )
+        found_products = {row[0] for row in result.fetchall()}
+        missing = product_ids - found_products
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Products not found: {[str(p) for p in missing]}")
+
+    if variant_ids:
+        result = await db.execute(
+            select(ProductVariant.id).where(ProductVariant.id.in_(variant_ids))
+        )
+        found_variants = {row[0] for row in result.fetchall()}
+        missing = variant_ids - found_variants
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Variants not found: {[str(v) for v in missing]}")
+
+    # Validate item total_price = qty * unit_price
+    for item in body.items:
+        expected = item.qty * item.unit_price
+        if abs(item.total_price - expected) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Item total_price mismatch: {item.total_price} != {item.qty} x {item.unit_price}",
+            )
+
     total = sum(item.total_price for item in body.items)
-    order = Order(
-        tenant_id=user.tenant_id,
-        lead_id=body.lead_id,
-        order_number=_generate_order_number(),
-        customer_name=body.customer_name,
-        phone=body.phone,
-        city=body.city,
-        address=body.address,
-        delivery_type=body.delivery_type,
-        payment_type=body.payment_type,
-        total_amount=total,
-        currency=body.currency,
-    )
-    db.add(order)
-    await db.flush()
+
+    # Generate order number with retry on collision
+    from sqlalchemy.exc import IntegrityError
+    for _attempt in range(5):
+        order = Order(
+            tenant_id=user.tenant_id,
+            lead_id=body.lead_id,
+            order_number=_generate_order_number(),
+            customer_name=body.customer_name,
+            phone=body.phone,
+            city=body.city,
+            address=body.address,
+            delivery_type=body.delivery_type,
+            payment_type=body.payment_type,
+            total_amount=total,
+            currency=body.currency,
+        )
+        db.add(order)
+        try:
+            await db.flush()
+            break
+        except IntegrityError:
+            await db.rollback()
+    else:
+        raise HTTPException(status_code=500, detail="Failed to generate unique order number")
 
     for item_data in body.items:
         item = OrderItem(order_id=order.id, **item_data.model_dump())

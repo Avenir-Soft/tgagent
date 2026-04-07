@@ -2,27 +2,34 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class OrderItemCreate(BaseModel):
     product_id: UUID
     product_variant_id: UUID | None = None
-    qty: int = 1
-    unit_price: Decimal
-    total_price: Decimal
+    qty: int = Field(default=1, ge=1, le=9999)
+    unit_price: Decimal = Field(ge=0)
+    total_price: Decimal = Field(ge=0)
 
 
 class OrderCreate(BaseModel):
     lead_id: UUID | None = None
-    customer_name: str
-    phone: str
-    city: str | None = None
-    address: str | None = None
-    delivery_type: str | None = None
-    payment_type: str | None = None
-    currency: str = "UZS"
-    items: list[OrderItemCreate]
+    customer_name: str = Field(min_length=1, max_length=255)
+    phone: str = Field(min_length=3, max_length=30)
+    city: str | None = Field(default=None, max_length=255)
+    address: str | None = Field(default=None, max_length=500)
+    delivery_type: str | None = Field(default=None, max_length=50)
+    payment_type: str | None = Field(default=None, max_length=50)
+    currency: str = Field(default="UZS", max_length=10)
+    items: list[OrderItemCreate] = Field(min_length=1)
+
+    @field_validator("customer_name")
+    @classmethod
+    def name_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("customer_name cannot be blank")
+        return v.strip()
 
 
 class OrderUpdate(BaseModel):

@@ -55,12 +55,13 @@ async def main():
 
         for msg in test_messages:
             print(f"👤 Клиент: {msg}")
-            response = await process_dm_message(
+            result = await process_dm_message(
                 tenant_id=tenant.id,
                 conversation=conv,
                 user_text=msg,
                 db=db,
             )
+            response = result.get("text") if isinstance(result, dict) else result
             print(f"🤖 AI: {response}")
             print(f"   [state: {conv.state}]")
             print()

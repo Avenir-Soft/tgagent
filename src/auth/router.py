@@ -18,7 +18,7 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
@@ -49,8 +49,10 @@ async def change_password(
 ):
     if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Неверный текущий пароль")
-    if len(body.new_password) < 4:
-        raise HTTPException(status_code=400, detail="Пароль минимум 4 символа")
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Пароль минимум 8 символов")
+    if body.new_password.isdigit() or body.new_password.isalpha():
+        raise HTTPException(status_code=400, detail="Пароль должен содержать буквы и цифры")
     user.password_hash = hash_password(body.new_password)
     await db.flush()
     return {"status": "ok"}

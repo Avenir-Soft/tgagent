@@ -59,6 +59,8 @@ class MessageOut(BaseModel):
     rejection_reason: str | None = None
     rejection_selected_text: str | None = None
     delivery_status: str
+    media_type: str | None = None
+    media_file_id: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

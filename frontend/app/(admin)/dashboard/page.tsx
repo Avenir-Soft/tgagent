@@ -329,7 +329,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Дашборд</h1>
         <p className="text-sm text-slate-400 mt-0.5">Обзор вашего магазина</p>
       </div>
 

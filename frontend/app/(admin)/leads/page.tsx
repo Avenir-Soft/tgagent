@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { timeAgo } from "@/lib/time-ago";
+import { getInitial } from "@/lib/utils";
 
 interface Lead {
   id: string;
@@ -304,7 +305,7 @@ export default function LeadsPage() {
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-full ${cfg.bg} ${cfg.color} flex items-center justify-center text-sm font-bold shrink-0`}>
-                            {(l.customer_name || "?")[0].toUpperCase()}
+                            {getInitial(l.customer_name)}
                           </div>
                           <div className="min-w-0">
                             <p className="font-medium text-sm text-slate-900 truncate">{l.customer_name || "Без имени"}</p>

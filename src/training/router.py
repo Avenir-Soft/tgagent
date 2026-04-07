@@ -94,30 +94,39 @@ async def list_training_conversations(
         .limit(100)
     )
     convs = result.scalars().all()
+    if not convs:
+        return []
+
+    # Batch aggregation — single query instead of 3 per conversation
+    conv_ids = [c.id for c in convs]
+    from sqlalchemy import case
+    stats_q = (
+        select(
+            Message.conversation_id,
+            func.count().filter(Message.ai_generated == True).label("ai_total"),  # noqa: E712
+            func.count().filter(Message.training_label == "approved").label("approved"),
+            func.count().filter(Message.training_label == "rejected").label("rejected"),
+        )
+        .where(Message.conversation_id.in_(conv_ids))
+        .group_by(Message.conversation_id)
+    )
+    stats_result = await db.execute(stats_q)
+    stats_map = {}
+    for row in stats_result.fetchall():
+        stats_map[row[0]] = {"ai_total": row[1], "approved": row[2], "rejected": row[3]}
+
     out = []
     for c in convs:
-        # Count AI messages and labels
-        ai_total = (await db.execute(
-            select(func.count()).select_from(Message)
-            .where(Message.conversation_id == c.id, Message.ai_generated == True)  # noqa: E712
-        )).scalar() or 0
-        approved = (await db.execute(
-            select(func.count()).select_from(Message)
-            .where(Message.conversation_id == c.id, Message.training_label == "approved")
-        )).scalar() or 0
-        rejected = (await db.execute(
-            select(func.count()).select_from(Message)
-            .where(Message.conversation_id == c.id, Message.training_label == "rejected")
-        )).scalar() or 0
+        s = stats_map.get(c.id, {"ai_total": 0, "approved": 0, "rejected": 0})
         out.append({
             "id": str(c.id),
             "customer": c.telegram_first_name or f"#{c.telegram_user_id}",
             "username": c.telegram_username,
             "last_message_at": c.last_message_at.isoformat() if c.last_message_at else None,
-            "ai_messages": ai_total,
-            "approved": approved,
-            "rejected": rejected,
-            "unlabeled": ai_total - approved - rejected,
+            "ai_messages": s["ai_total"],
+            "approved": s["approved"],
+            "rejected": s["rejected"],
+            "unlabeled": s["ai_total"] - s["approved"] - s["rejected"],
         })
     return out
 
@@ -347,7 +356,7 @@ async def smart_label_conversation(
                         msg.rejection_reason = reason
                     if label == "approved":
                         approved_count += 1
-                    else:
+                    elif label == "rejected":
                         rejected_count += 1
 
     conv.is_training_candidate = True
@@ -429,7 +438,7 @@ async def smart_label_all(
                             msg.rejection_reason = reason
                         if label == "approved":
                             total_approved += 1
-                        else:
+                        elif label == "rejected":
                             total_rejected += 1
 
         total_reviewed += len(turns_to_review)
@@ -492,18 +501,18 @@ async def start_fine_tuning(
 
     jsonl_content = "\n".join(lines)
 
-    # Upload file to OpenAI
-    client = openai.OpenAI(api_key=settings.openai_api_key)
+    # Upload file to OpenAI (async to avoid blocking event loop)
+    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
 
-    file_obj = client.files.create(
+    file_obj = await client.files.create(
         file=("training_data.jsonl", jsonl_content.encode("utf-8")),
         purpose="fine-tune",
     )
 
     # Start fine-tuning job
-    job = client.fine_tuning.jobs.create(
+    job = await client.fine_tuning.jobs.create(
         training_file=file_obj.id,
-        model="gpt-4o-mini-2024-07-18",
+        model=settings.openai_model_main,
         hyperparameters={"n_epochs": 3},
         suffix=f"ai-closer-{tid.hex[:8]}",
     )
@@ -511,7 +520,7 @@ async def start_fine_tuning(
     return {
         "job_id": job.id,
         "status": job.status,
-        "base_model": "gpt-4o-mini",
+        "base_model": settings.openai_model_main,
         "training_file_id": file_obj.id,
         "training_examples": len(lines),
         "message": "Fine-tuning started. Check status at /training/fine-tune-status",
@@ -524,9 +533,9 @@ async def fine_tune_status(
 ):
     """List recent fine-tuning jobs."""
     import openai
-    client = openai.OpenAI(api_key=settings.openai_api_key)
+    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
 
-    jobs = client.fine_tuning.jobs.list(limit=5)
+    jobs = await client.fine_tuning.jobs.list(limit=5)
     return [
         {
             "job_id": j.id,

@@ -81,20 +81,30 @@ async def send_message(db, conv_id: UUID, text: str) -> str:
         db=db,
     )
 
-    if response:
+    # Handle dict return (text + image_urls) or plain string
+    if isinstance(response, dict):
+        response_text = response.get("text")
+        image_urls = response.get("image_urls", [])
+    else:
+        response_text = response
+        image_urls = []
+
+    if response_text:
         # Save outbound message
         out_msg = Message(
             tenant_id=TENANT_ID,
             conversation_id=conv_id,
             direction="outbound",
             sender_type="ai",
-            raw_text=response,
+            raw_text=response_text,
             ai_generated=True,
         )
         db.add(out_msg)
         await db.flush()
 
-    return response or "(no response)"
+    if image_urls:
+        print(f"  📷 Images: {image_urls}")
+    return response_text or "(no response)"
 
 
 def check_language(response: str, expected_script: str) -> str:

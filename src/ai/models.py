@@ -54,3 +54,19 @@ class AiSettings(PkMixin, TenantMixin, UpdatableMixin, Base):
     auto_handoff_on_profanity: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )  # Auto-handoff on first profanity (vs 2nd message)
+
+    # Operator notifications
+    operator_telegram_username: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+
+    # Channel comment auto-responses
+    channel_cta_handle: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    channel_ai_replies_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    channel_show_price: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )

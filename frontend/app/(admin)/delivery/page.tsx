@@ -98,6 +98,25 @@ export default function DeliveryPage() {
     });
   }, [rules, filterCity, filterType]);
 
+  // City name mapping: English DB names → Russian display names
+  const cityDisplayName: Record<string, string> = {
+    "Tashkent": "Ташкент", "Samarkand": "Самарканд", "Bukhara": "Бухара",
+    "Fergana": "Фергана", "Namangan": "Наманган", "Andijan": "Андижан",
+    "Nukus": "Нукус", "Karshi": "Карши", "Navoi": "Навои",
+    "Jizzakh": "Джизак", "Urgench": "Ургенч", "Termez": "Термез",
+    "Gulistan": "Гулистан", "Kokand": "Коканд", "Margilan": "Маргилан",
+    "Chirchik": "Чирчик", "Almalyk": "Алмалык", "Angren": "Ангрен",
+  };
+  const getCityLabel = (city: string) => cityDisplayName[city] || city;
+
+  // ETA display: "1-1 дн." → "В тот же день", "0-1 дн." → "0-1 дн."
+  const formatEta = (min: number, max: number) => {
+    if (min === 0 && max === 0) return "В тот же день";
+    if (min === max && min <= 1) return "В тот же день";
+    if (min === max) return `${min} дн.`;
+    return `${min}-${max} дн.`;
+  };
+
   // Group filtered rules by city
   const groupedRules = useMemo(() => {
     const groups: { city: string; displayName: string; rules: DeliveryRule[] }[] = [];
@@ -115,10 +134,10 @@ export default function DeliveryPage() {
       cityMap.delete("__null__");
     }
 
-    // Remaining cities sorted alphabetically
-    const sortedKeys = Array.from(cityMap.keys()).sort((a, b) => a.localeCompare(b, "ru"));
+    // Remaining cities sorted alphabetically (by Russian display name)
+    const sortedKeys = Array.from(cityMap.keys()).sort((a, b) => getCityLabel(a).localeCompare(getCityLabel(b), "ru"));
     sortedKeys.forEach((key) => {
-      groups.push({ city: key, displayName: key, rules: cityMap.get(key)! });
+      groups.push({ city: key, displayName: getCityLabel(key), rules: cityMap.get(key)! });
     });
 
     return groups;
@@ -469,14 +488,14 @@ export default function DeliveryPage() {
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-slate-900">{r.city || "Все города"}</span>
+                        <span className="font-medium text-sm text-slate-900">{r.city ? getCityLabel(r.city) : "Все города"}</span>
                         {r.zone && <span className="text-xs text-slate-400">({r.zone})</span>}
                         <span className={`px-2 py-0.5 rounded-lg text-xs ${typeColors[r.delivery_type] || "bg-slate-100"}`}>
                           {typeLabels[r.delivery_type] || r.delivery_type}
                         </span>
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5">
-                        {r.eta_min_days}-{r.eta_max_days} дн.
+                        {formatEta(r.eta_min_days, r.eta_max_days)}
                         {r.cod_available && <span className="ml-2 text-emerald-600">Наложенный платёж</span>}
                       </div>
                     </div>

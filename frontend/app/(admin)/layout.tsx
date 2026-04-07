@@ -9,12 +9,31 @@ import { ToastProvider } from "@/components/ui/toast";
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
       router.push("/login");
+    } else {
+      setAuthChecked(true);
     }
   }, [router]);
+
+  // Don't render admin content until auth is verified
+  if (!authChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center animate-pulse">
+            <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </div>
+          <div className="text-sm text-slate-400">Загрузка...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ToastProvider>

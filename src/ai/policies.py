@@ -13,7 +13,10 @@ CANCELLABLE_STATUSES = {"draft", "confirmed"}
 OPERATOR_REQUIRED_STATUSES = {"processing"}
 
 # Statuses where changes are impossible (final states)
-LOCKED_STATUSES = {"shipped", "delivered", "cancelled"}
+LOCKED_STATUSES = {"shipped", "delivered", "cancelled", "returned"}
+
+# Statuses eligible for return request
+RETURNABLE_STATUSES = {"delivered"}
 
 STATUS_LABELS_RU = {
     "draft": "Ожидает подтверждения",
@@ -22,13 +25,20 @@ STATUS_LABELS_RU = {
     "shipped": "Отправлен",
     "delivered": "Доставлен",
     "cancelled": "Отменён",
+    "returned": "Возвращён",
 }
 
 
-def can_cancel_order(status: str) -> dict:
-    """Check if order can be cancelled by customer."""
+def can_cancel_order(status: str, ai_settings=None) -> dict:
+    """Check if order can be cancelled by customer.
+
+    Respects ai_settings.allow_ai_cancel_draft when provided.
+    """
     if status in CANCELLABLE_STATUSES:
         if status == "draft":
+            # Check if AI is allowed to cancel drafts without operator
+            if ai_settings and not ai_settings.allow_ai_cancel_draft:
+                return {"allowed": True, "needs_operator": True, "message": "Подключу оператора для отмены заказа"}
             return {"allowed": True, "needs_operator": False, "message": None}
         return {"allowed": True, "needs_operator": True, "message": "Заказ подтверждён — подключу оператора для отмены"}
     return {
@@ -38,9 +48,15 @@ def can_cancel_order(status: str) -> dict:
     }
 
 
-def can_edit_order(status: str) -> dict:
-    """Check if order can be edited by customer."""
+def can_edit_order(status: str, ai_settings=None) -> dict:
+    """Check if order can be edited by customer.
+
+    Respects ai_settings.require_operator_for_edit when provided.
+    """
     if status in AI_EDITABLE_STATUSES:
+        # Check if operator is always required for edits
+        if ai_settings and ai_settings.require_operator_for_edit:
+            return {"allowed": True, "needs_operator": True, "message": "Подключу оператора для изменения заказа"}
         return {"allowed": True, "needs_operator": False, "message": None}
     if status in OPERATOR_REQUIRED_STATUSES:
         return {"allowed": True, "needs_operator": True, "message": "Заказ в обработке — подключу оператора для изменений"}
@@ -51,16 +67,43 @@ def can_edit_order(status: str) -> dict:
     }
 
 
-def get_allowed_actions(status: str) -> list[str]:
+def can_return_order(status: str, ai_settings=None) -> dict:
+    """Check if order is eligible for a return request.
+
+    Returns are only possible for delivered orders.
+    By default (or when require_operator_for_returns=True), always routes to operator.
+    """
+    if status not in RETURNABLE_STATUSES:
+        reason = STATUS_LABELS_RU.get(status, status)
+        if status in ("draft", "confirmed", "processing", "shipped"):
+            return {"allowed": False, "needs_operator": False,
+                    "message": f"Заказ в статусе \"{reason}\" — можно отменить, но не вернуть. Для отмены используй cancel_order."}
+        return {"allowed": False, "needs_operator": False,
+                "message": f"Заказ в статусе \"{reason}\" — возврат невозможен"}
+
+    # Delivered — return is possible
+    if ai_settings and not ai_settings.require_operator_for_returns:
+        # AI can process return directly (future: auto-return flow)
+        return {"allowed": True, "needs_operator": False, "message": None}
+    # Default: always require operator for returns
+    return {"allowed": True, "needs_operator": True,
+            "message": "Для оформления возврата подключу оператора"}
+
+
+def get_allowed_actions(status: str, ai_settings=None) -> list[str]:
     """Return list of actions available for given order status."""
     actions = ["check_status"]
     if status in CANCELLABLE_STATUSES:
+        # If cancel not allowed by AI for drafts, still show cancel but it will route to operator
         actions.append("cancel")
     if status in AI_EDITABLE_STATUSES:
-        actions.append("edit")
+        if ai_settings and ai_settings.require_operator_for_edit:
+            actions.append("edit_via_operator")
+        else:
+            actions.append("edit")
     if status in OPERATOR_REQUIRED_STATUSES:
         actions.append("edit_via_operator")
-    if status == "delivered":
+    if status in RETURNABLE_STATUSES:
         actions.append("return_request")
     return actions
 
@@ -78,6 +121,7 @@ STATE_AFTER_TOOL = {
     "add_item_to_order": "post_order",
     "remove_item_from_order": "post_order",
     "request_handoff": "handoff",
+    "request_return": "post_order",
 }
 
 

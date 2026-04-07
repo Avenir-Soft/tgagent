@@ -170,21 +170,25 @@ async def get_stats(
         )
     ).all()
     orders_by_status = {row[0]: {"count": row[1], "revenue": float(row[2])} for row in status_rows}
-    total_revenue = sum(v["revenue"] for v in orders_by_status.values())
+    # Revenue excludes cancelled and draft orders
+    _active_statuses = {"confirmed", "processing", "shipped", "delivered"}
+    total_revenue = sum(v["revenue"] for k, v in orders_by_status.items() if k in _active_statuses)
 
-    # Today stats
+    # Today stats (exclude cancelled/draft from revenue)
     today_orders_row = await db.execute(
         select(func.count(), func.coalesce(func.sum(Order.total_amount), 0))
-        .where(Order.tenant_id == tid, Order.created_at >= today_start)
+        .where(Order.tenant_id == tid, Order.created_at >= today_start,
+               Order.status.notin_(["cancelled", "draft"]))
     )
     today_row = today_orders_row.one()
     today_orders = today_row[0]
     today_revenue = float(today_row[1])
 
-    # Yesterday stats (for trend comparison)
+    # Yesterday stats (for trend comparison, exclude cancelled/draft)
     yesterday_orders_row = await db.execute(
         select(func.count(), func.coalesce(func.sum(Order.total_amount), 0))
-        .where(Order.tenant_id == tid, Order.created_at >= yesterday_start, Order.created_at < today_start)
+        .where(Order.tenant_id == tid, Order.created_at >= yesterday_start, Order.created_at < today_start,
+               Order.status.notin_(["cancelled", "draft"]))
     )
     yesterday_row = yesterday_orders_row.one()
     yesterday_orders = yesterday_row[0]
@@ -436,7 +440,11 @@ async def broadcast_estimate(
     """Estimate audience size before sending a broadcast."""
     q = _build_broadcast_query(user.tenant_id, filter)
     count = (await db.execute(select(func.count()).select_from(q.subquery()))).scalar() or 0
-    return {"count": count, "filter": filter}
+    result = {"count": count, "filter": filter}
+    if count > 5000:
+        result["max_sendable"] = 5000
+        result["truncated"] = True
+    return result
 
 
 @router.get("/broadcast-recipients")
@@ -659,7 +667,13 @@ async def send_broadcast(
         await db.flush()
         raise HTTPException(500, f"Broadcast error: {e}")
 
-    return {"sent": sent_count, "failed": failed_count, "total_targets": len(convs)}
+    result = {"sent": sent_count, "failed": failed_count, "total_targets": len(convs)}
+    # Warn if audience was truncated by the 5000 cap
+    actual_count = (await db.execute(select(func.count()).select_from(_get_query().subquery()))).scalar() or 0
+    if actual_count > len(convs):
+        result["truncated"] = True
+        result["total_audience"] = actual_count
+    return result
 
 
 @router.delete("/broadcast-history/{broadcast_id}")

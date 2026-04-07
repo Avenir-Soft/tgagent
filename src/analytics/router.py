@@ -162,26 +162,22 @@ async def list_rfm_customers(
     user: User = Depends(get_current_user),
 ):
     """List customers with RFM data, filterable by segment."""
-    tid = str(user.tenant_id)
-    allowed_sorts = {"monetary": "monetary DESC", "frequency": "frequency DESC", "recency_days": "recency_days ASC"}
-    order_clause = allowed_sorts.get(sort_by, "monetary DESC")
-
-    where = "tenant_id = :tid"
-    params: dict = {"tid": tid, "lim": limit, "off": offset}
+    from src.analytics.models import CustomerSegment
+    q = select(CustomerSegment).where(CustomerSegment.tenant_id == user.tenant_id)
     if segment:
-        where += " AND segment = :seg"
-        params["seg"] = segment
+        q = q.where(CustomerSegment.segment == segment)
 
-    result = await db.execute(
-        text(f"""
-            SELECT lead_id, customer_name, telegram_user_id, recency_days,
-                   frequency, monetary, r_score, f_score, m_score, rfm_score, segment
-            FROM customer_segments WHERE {where}
-            ORDER BY {order_clause} LIMIT :lim OFFSET :off
-        """),
-        params,
-    )
-    return [CustomerSegmentOut(**dict(r)) for r in result.mappings()]
+    allowed_sorts = {
+        "monetary": CustomerSegment.monetary.desc(),
+        "frequency": CustomerSegment.frequency.desc(),
+        "recency_days": CustomerSegment.recency_days.asc(),
+    }
+    q = q.order_by(allowed_sorts.get(sort_by, CustomerSegment.monetary.desc()))
+    q = q.limit(limit).offset(offset)
+
+    result = await db.execute(q)
+    rows = result.scalars().all()
+    return [CustomerSegmentOut.model_validate(r) for r in rows]
 
 
 # ── Conversation Analytics ─────────────────────────────────────────────
@@ -324,7 +320,7 @@ async def get_funnel(
         {"tid": tid, "since": since},
     )
     row = result.mappings().first()
-    visitors = row["visitors"] or 1  # avoid div by zero
+    visitors = row["visitors"] or 0
 
     labels = {
         "visitors": "Посетители",
@@ -338,7 +334,7 @@ async def get_funnel(
     stages = []
     for key in ["visitors", "leads", "cart", "checkout", "orders", "delivered"]:
         count = row[key] or 0
-        pct = round(count / visitors * 100, 1)
+        pct = round(count / visitors * 100, 1) if visitors > 0 else None
         stages.append(FunnelStage(name=key, label=labels[key], count=count, pct=pct))
 
     return FunnelResponse(period_days=days, stages=stages)
@@ -502,21 +498,17 @@ async def list_competitor_prices(
     user: User = Depends(get_current_user),
 ):
     """List competitor price entries."""
-    tid = str(user.tenant_id)
-    where = "tenant_id = :tid"
-    params: dict = {"tid": tid, "lim": limit, "off": offset}
+    from src.analytics.models import CompetitorPrice
+    q = select(CompetitorPrice).where(CompetitorPrice.tenant_id == user.tenant_id)
     if product_id:
-        where += " AND product_id = :pid"
-        params["pid"] = str(product_id)
+        q = q.where(CompetitorPrice.product_id == product_id)
     if competitor_name:
-        where += " AND competitor_name ILIKE :cn"
-        params["cn"] = f"%{competitor_name}%"
+        q = q.where(CompetitorPrice.competitor_name.ilike(f"%{competitor_name}%"))
+    q = q.order_by(CompetitorPrice.captured_at.desc()).limit(limit).offset(offset)
 
-    result = await db.execute(
-        text(f"SELECT * FROM competitor_prices WHERE {where} ORDER BY captured_at DESC LIMIT :lim OFFSET :off"),
-        params,
-    )
-    return [CompetitorPriceOut(**dict(r)) for r in result.mappings()]
+    result = await db.execute(q)
+    rows = result.scalars().all()
+    return [CompetitorPriceOut.model_validate(r) for r in rows]
 
 
 @router.get("/competitors/summary", response_model=list[CompetitorSummary])

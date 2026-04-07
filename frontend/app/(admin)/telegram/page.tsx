@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { timeAgo } from "@/lib/time-ago";
@@ -38,6 +39,7 @@ interface AccountStatus {
 
 interface ActivityLog {
   id: string;
+  conversation_id: string;
   created_at: string;
   customer_name: string | null;
   customer_username: string | null;
@@ -45,8 +47,20 @@ interface ActivityLog {
   text_preview: string;
 }
 
+/** Render basic markdown bold (**text** or __text__) as <strong> */
+function renderMarkdown(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*|__[^_]+__)/g);
+  return parts.map((part, i) => {
+    if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) {
+      return <strong key={i} className="font-semibold text-slate-800">{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}
+
 export default function TelegramPage() {
   const { toast } = useToast();
+  const router = useRouter();
 
   const [accounts, setAccounts] = useState<TgAccount[]>([]);
   const [channels, setChannels] = useState<TgChannel[]>([]);
@@ -55,6 +69,88 @@ export default function TelegramPage() {
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [chForm, setChForm] = useState({ telegram_channel_id: "", title: "", username: "" });
   const [grForm, setGrForm] = useState({ telegram_group_id: "", title: "" });
+
+  // Link resolver state
+  const [linkInput, setLinkInput] = useState("");
+  const [linkResolving, setLinkResolving] = useState(false);
+  const [resolvedEntity, setResolvedEntity] = useState<{
+    entity_type: string;
+    telegram_id: number;
+    title: string;
+    username: string | null;
+    linked_chat_id: number | null;
+    linked_chat_title: string | null;
+  } | null>(null);
+  const [linkError, setLinkError] = useState("");
+  const [linkSaving, setLinkSaving] = useState(false);
+
+  const resolveLink = async () => {
+    if (!linkInput.trim()) return;
+    setLinkResolving(true);
+    setLinkError("");
+    setResolvedEntity(null);
+    try {
+      const res = await api.post<{
+        entity_type: string; telegram_id: number; title: string;
+        username: string | null; linked_chat_id: number | null; linked_chat_title: string | null;
+      }>("/telegram/resolve-link", { link: linkInput.trim() });
+      setResolvedEntity(res);
+    } catch (err: any) {
+      setLinkError(err.message || "Не удалось найти");
+    } finally {
+      setLinkResolving(false);
+    }
+  };
+
+  const saveResolved = async () => {
+    if (!resolvedEntity) return;
+    setLinkSaving(true);
+    try {
+      if (resolvedEntity.entity_type === "channel") {
+        // Save channel
+        await api.post("/telegram/channels", {
+          telegram_channel_id: resolvedEntity.telegram_id,
+          title: resolvedEntity.title,
+          username: resolvedEntity.username,
+        });
+        // If has linked discussion group, save it too
+        if (resolvedEntity.linked_chat_id) {
+          await api.post("/telegram/discussion-groups", {
+            telegram_group_id: resolvedEntity.linked_chat_id,
+            title: resolvedEntity.linked_chat_title || `Обсуждение: ${resolvedEntity.title}`,
+          });
+        }
+        toast("Канал добавлен" + (resolvedEntity.linked_chat_id ? " с группой обсуждения" : ""), "success");
+      } else if (resolvedEntity.entity_type === "group") {
+        await api.post("/telegram/discussion-groups", {
+          telegram_group_id: resolvedEntity.telegram_id,
+          title: resolvedEntity.title,
+        });
+        toast("Группа добавлена", "success");
+      } else {
+        toast("Пользователей нельзя добавить как канал/группу", "error");
+        setLinkSaving(false);
+        return;
+      }
+      setShowChannelForm(false);
+      setShowGroupForm(false);
+      setLinkInput("");
+      setResolvedEntity(null);
+      reload();
+    } catch (err: any) {
+      toast(err.message || "Ошибка сохранения", "error");
+    } finally {
+      setLinkSaving(false);
+    }
+  };
+
+  const resetLinkForm = () => {
+    setLinkInput("");
+    setResolvedEntity(null);
+    setLinkError("");
+    setShowChannelForm(false);
+    setShowGroupForm(false);
+  };
 
   // Real-time status
   const [statuses, setStatuses] = useState<Record<string, string>>({});
@@ -440,32 +536,105 @@ export default function TelegramPage() {
         </div>
       </section>
 
-      {/* Channels */}
+      {/* Channels & Groups — Add via Link */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-slate-900">Каналы</h2>
-          <button onClick={() => setShowChannelForm(!showChannelForm)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-sm font-medium transition-colors">+ Канал</button>
+          <button onClick={() => { setShowChannelForm(!showChannelForm); setShowGroupForm(false); setResolvedEntity(null); setLinkError(""); setLinkInput(""); }} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-sm font-medium transition-colors">+ Канал / Группа</button>
         </div>
         {showChannelForm && (
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await api.post("/telegram/channels", { ...chForm, telegram_channel_id: parseInt(chForm.telegram_channel_id) });
-                toast("Канал добавлен", "success");
-                setShowChannelForm(false);
-                setChForm({ telegram_channel_id: "", title: "", username: "" });
-                reload();
-              } catch (err: any) {
-                toast(err.message || "Ошибка добавления канала", "error");
-              }
-            }}
-            className="card p-4 mb-3 flex gap-3"
-          >
-            <input placeholder="Channel ID" value={chForm.telegram_channel_id} onChange={(e) => setChForm({ ...chForm, telegram_channel_id: e.target.value })} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all flex-1" required />
-            <input placeholder="Название" value={chForm.title} onChange={(e) => setChForm({ ...chForm, title: e.target.value })} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all flex-1" required />
-            <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors">Добавить</button>
-          </form>
+          <div className="card p-5 mb-4 space-y-4">
+            <h3 className="font-semibold text-slate-900">Добавить канал или группу</h3>
+            <p className="text-sm text-slate-500">Вставьте ссылку на канал/группу (например, t.me/channel или t.me/+invite) или @username</p>
+
+            <div className="flex gap-3">
+              <input
+                placeholder="https://t.me/mychannel или @username"
+                value={linkInput}
+                onChange={(e) => { setLinkInput(e.target.value); setResolvedEntity(null); setLinkError(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); resolveLink(); } }}
+                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all flex-1"
+              />
+              <button
+                onClick={resolveLink}
+                disabled={linkResolving || !linkInput.trim()}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {linkResolving ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Поиск...
+                  </>
+                ) : "Найти"}
+              </button>
+            </div>
+
+            {linkError && (
+              <div className="bg-rose-50 text-rose-600 text-sm p-3 rounded-lg">{linkError}</div>
+            )}
+
+            {resolvedEntity && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    resolvedEntity.entity_type === "channel" ? "bg-indigo-100 text-indigo-700" :
+                    resolvedEntity.entity_type === "group" ? "bg-violet-100 text-violet-700" :
+                    "bg-slate-200 text-slate-600"
+                  }`}>
+                    {resolvedEntity.entity_type === "channel" ? "Канал" :
+                     resolvedEntity.entity_type === "group" ? "Группа" : "Пользователь"}
+                  </div>
+                  <span className="font-medium text-slate-900">{resolvedEntity.title}</span>
+                  {resolvedEntity.username && (
+                    <span className="text-slate-400 text-sm">@{resolvedEntity.username}</span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div>Telegram ID: <span className="font-mono">{resolvedEntity.telegram_id}</span></div>
+                  {resolvedEntity.linked_chat_id && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-emerald-600">Группа обсуждения найдена:</span>
+                      <span className="font-medium">{resolvedEntity.linked_chat_title || `ID ${resolvedEntity.linked_chat_id}`}</span>
+                      <span className="text-slate-400">(будет добавлена автоматически)</span>
+                    </div>
+                  )}
+                  {resolvedEntity.entity_type === "channel" && !resolvedEntity.linked_chat_id && (
+                    <div className="text-amber-600">У канала нет привязанной группы обсуждения. Комментарии не будут отслеживаться.</div>
+                  )}
+                </div>
+
+                {resolvedEntity.entity_type !== "user" && (
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={resetLinkForm}
+                      className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      onClick={saveResolved}
+                      disabled={linkSaving}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-6 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+                    >
+                      {linkSaving ? "Сохранение..." : "Сохранить"}
+                    </button>
+                  </div>
+                )}
+                {resolvedEntity.entity_type === "user" && (
+                  <div className="text-amber-600 text-sm">Это пользователь, а не канал или группа. Укажите ссылку на канал/группу.</div>
+                )}
+              </div>
+            )}
+
+            {!resolvedEntity && !linkError && (
+              <div className="flex justify-end">
+                <button onClick={resetLinkForm} className="text-sm text-slate-400 hover:text-slate-600 transition-colors">Отмена</button>
+              </div>
+            )}
+          </div>
         )}
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -494,30 +663,8 @@ export default function TelegramPage() {
       {/* Discussion Groups */}
       <section>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-slate-900">Discussion группы</h2>
-          <button onClick={() => setShowGroupForm(!showGroupForm)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-sm font-medium transition-colors">+ Группа</button>
+          <h2 className="text-xl font-bold text-slate-900">Группы обсуждения</h2>
         </div>
-        {showGroupForm && (
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await api.post("/telegram/discussion-groups", { ...grForm, telegram_group_id: parseInt(grForm.telegram_group_id) });
-                toast("Группа добавлена", "success");
-                setShowGroupForm(false);
-                setGrForm({ telegram_group_id: "", title: "" });
-                reload();
-              } catch (err: any) {
-                toast(err.message || "Ошибка добавления группы", "error");
-              }
-            }}
-            className="card p-4 mb-3 flex gap-3"
-          >
-            <input placeholder="Group ID" value={grForm.telegram_group_id} onChange={(e) => setGrForm({ ...grForm, telegram_group_id: e.target.value })} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all flex-1" required />
-            <input placeholder="Название" value={grForm.title} onChange={(e) => setGrForm({ ...grForm, title: e.target.value })} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all flex-1" required />
-            <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors">Добавить</button>
-          </form>
-        )}
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
@@ -575,15 +722,20 @@ export default function TelegramPage() {
                   const sender = senderLabel(log.sender_type);
                   const displayName = log.customer_name || (log.customer_username ? `@${log.customer_username}` : "\u2014");
                   const rawText = log.text_preview || "";
-                  const preview = rawText.length > 80 ? rawText.slice(0, 80) + "\u2026" : rawText;
+                  const preview = rawText.length > 120 ? rawText.slice(0, 120) + "\u2026" : rawText;
                   return (
-                    <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr
+                      key={log.id}
+                      className="hover:bg-indigo-50/50 transition-colors cursor-pointer"
+                      onClick={() => router.push(`/conversations/${log.conversation_id}?highlight=${log.id}`)}
+                      title="Открыть диалог"
+                    >
                       <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{timeAgo(log.created_at)}</td>
                       <td className="px-4 py-3 text-slate-700 text-sm">{displayName}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded text-xs ${sender.cls}`}>{sender.text}</span>
                       </td>
-                      <td className="px-4 py-3 text-slate-600 text-sm max-w-xs truncate">{preview}</td>
+                      <td className="px-4 py-3 text-slate-600 text-sm max-w-sm">{renderMarkdown(preview)}</td>
                     </tr>
                   );
                 })

@@ -2,13 +2,26 @@
 
 Multi-tenant SaaS платформа — ИИ-продавец для Telegram магазинов. Работает через **реальный Telegram аккаунт** (MTProto/Telethon), НЕ бот.
 
+## Mindset при работе с кодом
+
+> **Правило:** Когда меняешь что-то — проверяй ВСЁ, что с этим связано.
+
+1. **Grep перед фиксом** — найди все места где используется переменная/паттерн. Не чини одно место, если их 5.
+2. **Cascade check** — повлияет ли изменение на другие модули? Если менял schema — проверь router. Если менял model — проверь schema + router + frontend.
+3. **Consistency** — если создал `safe_phone` из `phone_number`, используй `safe_phone` ВЕЗДЕ дальше (БД, session ref, логи). Не миксуй сырое и чистое.
+4. **Будущие баги** — подумай: "а что будет через полгода когда будет 100k чатов / 50k заказов / 1000 товаров?" Memory leaks, N+1 queries, unbounded lists.
+5. **Не ломай работающее** — если фиксишь баг в одной функции, проверь что аналогичные функции рядом не имеют такой же проблемы.
+
+Полный аудит багов и TODO → `~/Desktop/AI_CLOSER_AUDIT_2.0.md`
+
 ## Стек
 
 - **Backend**: FastAPI + async SQLAlchemy 2.x + PostgreSQL (asyncpg)
 - **Frontend**: Next.js 14 (App Router) + Tailwind CSS
 - **Telegram**: Telethon (MTProto) — подключается как пользовательский аккаунт
 - **AI**: OpenAI API с function calling (tools)
-- **Auth**: JWT + bcrypt
+- **Auth**: JWT + bcrypt + Redis token blacklist
+- **Retry**: tenacity (OpenAI), custom retry (Telegram FloodWait)
 - **Git**: `v2.0` branch, remote `Avenir-Soft/tgagent`
 
 ## Как запустить
@@ -74,11 +87,12 @@ src/
 │   ├── config.py        # Settings (из .env), CORS origins
 │   ├── database.py      # async SQLAlchemy engine + session
 │   ├── models.py        # PkMixin, TenantMixin, TimestampMixin, UpdatableMixin
+│   ├── security.py      # JWT encode/decode, bcrypt, Redis token blacklist
 │   └── rate_limit.py    # slowapi limiter
 ├── auth/
 │   ├── models.py        # User (NOT Tenant — Tenant in tenants/models.py)
-│   ├── router.py        # POST /auth/login, /auth/register
-│   ├── deps.py          # get_current_user, require_store_owner, require_operator
+│   ├── router.py        # POST /auth/login, /auth/logout, /auth/change-password
+│   ├── deps.py          # get_current_user (+ blacklist check), require_store_owner, require_operator
 │   └── schemas.py
 ├── tenants/
 │   ├── models.py        # Tenant (relationship → users, telegram_accounts)
@@ -97,35 +111,35 @@ src/
 │   └── router.py
 ├── orders/
 │   ├── models.py        # Order, OrderItem (NO tenant_id!)
-│   ├── router.py        # CRUD + status change → Telegram notification with entity resolution
-│   └── schemas.py       # OrderOut has conversation_id field
+│   ├── router.py        # CRUD + validation (product/variant existence, price check) + status → TG notification
+│   └── schemas.py       # OrderCreate (validated: items≥1, qty≥1, prices≥0, name/phone length)
 ├── telegram/
 │   ├── models.py        # TelegramAccount, TelegramDiscussionGroup
-│   ├── router.py        # send-code, verify-code, accounts, status, reconnect, activity-logs
-│   └── service.py       # TelegramClientManager: DM handling + typing + comment templates + debounce + entity resolution
+│   ├── router.py        # send-code, verify-code (sanitized phone), accounts, status, reconnect, activity-logs
+│   └── service.py       # TelegramClientManager: DM handling + read receipts + human-like typing + debounce + entity resolution + periodic memory cleanup
 ├── ai/
-│   ├── orchestrator.py  # process_dm_message() — system prompt + multi-round tool calling + order pre-processor
-│   ├── truth_tools.py   # 15 tool functions
-│   ├── policies.py      # Codified business rules — can_cancel, can_edit, get_allowed_actions, next_state
+│   ├── orchestrator.py  # process_dm_message() — system prompt + multi-round tool calling + order pre-processor + retry (tenacity) + fallback mode
+│   ├── truth_tools.py   # 16 tool functions (включая request_return)
+│   ├── policies.py      # Codified business rules — can_cancel, can_edit, can_return, get_allowed_actions, next_state
 │   ├── prompts.py       # State-aware system prompts (STATE_PROMPTS)
 │   ├── language.py      # Language detection + post-processing (ru/uz_cyrillic/uz_latin/en)
-│   ├── preprocessor.py  # Order pre-processor (deterministic, before LLM)
+│   ├── preprocessor.py  # Order pre-processor (deterministic, before LLM) + handoff flush
 │   ├── responses.py     # Forced response templates
 │   ├── state_manager.py # State context management, proactive suggestions
 │   ├── anomaly.py       # Anomaly detection (6 failure types → training candidates)
 │   ├── context_schema.py # JSONB schema for state_context
-│   ├── models.py        # AiSettings (policy columns + operator_telegram_username)
+│   ├── models.py        # AiSettings (14 settings — all enforced at runtime)
 │   ├── router.py        # GET/PUT /ai-settings, test notification, reset
 │   └── schemas.py
 ├── dashboard/
 │   ├── models.py        # BroadcastHistory
-│   ├── router.py        # stats, broadcast (immediate+scheduled), broadcast-history, broadcast-recipients, abandoned-carts, cleanup_expired_drafts
+│   ├── router.py        # stats, broadcast (immediate+scheduled, 5000 cap), broadcast-history, abandoned-carts, cleanup
 │   └── schemas.py
 ├── training/
-│   └── router.py        # stats, conversations, label message, smart-label (GPT-4o), export JSONL
+│   └── router.py        # stats, conversations (batch aggregation), label, smart-label (GPT-4o), export JSONL, fine-tune (async OpenAI)
 ├── analytics/
 │   ├── models.py        # CustomerSegment, CompetitorPrice
-│   ├── router.py        # RFM segmentation, conversation metrics, funnel, stock-forecast, revenue, competitors
+│   ├── router.py        # RFM segmentation, conversation metrics, funnel (safe division), stock-forecast, revenue, competitors
 │   └── schemas.py
 ├── handoffs/
 │   ├── models.py        # Handoff (summary, linked_order_id, resolution_notes)
@@ -140,20 +154,25 @@ src/
 1. Пользователь пишет в DM Telegram аккаунту магазина
 2. Telethon получает сообщение → `service.py` (debounce 3.5s для быстрых сообщений)
 3. **Per-conversation lock** (`asyncio.Lock`) — предотвращает race condition
-4. **Typing анимация** начинается (показывает "печатает..." пока AI думает)
-5. Вызывается `process_dm_message(tenant_id, conversation_id, user_message, db)`
-6. **Order pre-processor** (`preprocessor.py`) — детерминированная проверка заказов ДО вызова LLM
-7. **Conversation state** определяется из `conversation.state` + `state_context`
-8. **State-aware system prompt** — базовый промпт + секция для текущего состояния
-9. Orchestrator строит контекст (последние 20 сообщений) + state_context + system prompt
-10. OpenAI с function calling — **multi-round** (до 3 раундов tool calls за одно сообщение)
-11. AI НИКОГДА не придумывает цены/наличие — только из БД через tools
-12. **Hallucination guards**: cart claims, price/spec fabrication, language mismatch — код-уровневая проверка
-13. **State transition** — после каждого tool call через `policies.next_state()`
-14. **Forced responses** — для add_item_to_order / remove_item_from_order / locked orders — ответ кодом
-15. **Language post-processing** — детект и коррекция языка (ru↔uz_cyrillic↔uz_latin)
-16. **Задержка** пропорционально длине ответа (1-5 сек) — симуляция набора текста
-17. Ответ отправляется в Telegram через `event.respond()`, `telegram_message_id` сохраняется
+4. **Read receipt** (✓✓) — `send_read_acknowledge()` мгновенно
+5. **"Reading" пауза** (1.5–3.5с) — пропорционально длине сообщения, имитация чтения
+6. **Typing анимация** (`SetTypingRequest`) — показывает "печатает..." пока AI думает
+7. Вызывается `process_dm_message(tenant_id, conversation_id, user_message, db)`
+8. **Kill switch** — если `allow_auto_dm_reply=False`, return None (AI молчит)
+9. **Order pre-processor** (`preprocessor.py`) — детерминированная проверка заказов ДО вызова LLM
+10. **Conversation state** определяется из `conversation.state` + `state_context`
+11. **State-aware system prompt** — базовый промпт + секция для текущего состояния + настройки (tone, language, confirm_before_order)
+12. Orchestrator строит контекст (последние 20 сообщений) + state_context + system prompt
+13. OpenAI с function calling + **retry** (tenacity, 3 попытки, exponential backoff) — **multi-round** (до 3 раундов tool calls)
+14. AI НИКОГДА не придумывает цены/наличие — только из БД через tools
+15. **Hallucination guards**: cart claims, price/spec fabrication, language mismatch — код-уровневая проверка
+16. **State transition** — после каждого tool call через `policies.next_state()`
+17. **Forced responses** — для add/remove_item_to_order, locked orders, returns — ответ кодом
+18. **Language post-processing** — детект и коррекция языка (ru↔uz_cyrillic↔uz_latin)
+19. **State context cleanup** — cap: products≤5, orders≤5, variants≤8/product
+20. **Typing delay** пропорционально длине ответа (1–6 сек) — имитация набора
+21. Ответ отправляется с retry (FloodWait handling), `telegram_message_id` сохраняется
+22. **Fallback mode** — при ошибке AI: попытка fallback model (gpt-4o) или создание handoff
 
 ### Telethon Entity Resolution (важный паттерн!)
 После перезапуска сервера Telethon не имеет entity пользователей в кэше. Все исходящие отправки (broadcast, operator reply, notifications) используют паттерн:
@@ -169,6 +188,14 @@ await client.send_message(entity, text)
 ```
 Это НЕ нужно для `event.respond()` / `event.reply()` — они уже имеют entity из входящего сообщения.
 
+### Human-like Telegram поведение
+```
+Клиент отправил → ✓✓ мгновенно → пауза 1.5-3.5с ("читает") → typing... → AI думает → typing ещё 1-6с → отправка
+```
+- Typing через `SetTypingRequest` (НЕ `client.action()` — он не отправляет, только создаёт объект!)
+- Read receipt через `client.send_read_acknowledge(chat_id)`
+- Задержки пропорциональны длине: короткий "привет" → 1.5с+1с, длинный вопрос → 3.5с+6с
+
 ### Order Pre-Processor
 Детерминированная обработка заказов **ДО** вызова LLM:
 
@@ -176,8 +203,8 @@ await client.send_message(entity, text)
 |---|---|
 | Заказ не найден | Forced: "Заказ не найден. Проверьте номер" |
 | Чужой заказ | Forced: "Заказ не найден" (не раскрывает!) |
-| Locked (cancelled/shipped/delivered) + "изменить" | Forced: "Статус X — изменения невозможны" |
-| Processing + "изменить" | Forced: создаёт handoff + "Подключу оператора" |
+| Locked (cancelled/shipped/delivered/returned) + "изменить" | Forced: "Статус X — изменения невозможны" |
+| Processing + "изменить" | Forced: создаёт handoff + `await db.flush()` + "Подключу оператора" |
 | Draft/Confirmed + "изменить" | Inject: передаёт в LLM с инфой |
 | Просто номер / статус | Inject: передаёт в LLM |
 
@@ -187,11 +214,30 @@ await client.send_message(entity, text)
 ### Policy Layer (`src/ai/policies.py`)
 - `AI_EDITABLE_STATUSES` = {"draft", "confirmed"}
 - `OPERATOR_REQUIRED_STATUSES` = {"processing"}
-- `LOCKED_STATUSES` = {"shipped", "delivered", "cancelled"}
-- `can_cancel_order(status)`, `can_edit_order(status)`, `get_allowed_actions(status)`, `next_state(current, tool_name)`
+- `LOCKED_STATUSES` = {"shipped", "delivered", "cancelled", "returned"}
+- `RETURNABLE_STATUSES` = {"delivered"}
+- `can_cancel_order(status)`, `can_edit_order(status)`, `can_return_order(status)`, `get_allowed_actions(status)`, `next_state(current, tool_name)`
 
-### AI Tools (15 функций)
-`list_categories`, `get_product_candidates`, `get_variant_candidates`, `get_variant_price`, `get_variant_stock`, `get_delivery_options`, `get_customer_history`, `select_for_cart`, `remove_from_cart`, `create_order_draft`, `check_order_status`, `cancel_order`, `add_item_to_order`, `remove_item_from_order`, `request_handoff`
+### AI Tools (16 функций)
+`list_categories`, `get_product_candidates`, `get_variant_candidates`, `get_variant_price`, `get_variant_stock`, `get_delivery_options`, `get_customer_history`, `select_for_cart`, `remove_from_cart`, `create_order_draft`, `check_order_status`, `cancel_order`, `add_item_to_order`, `remove_item_from_order`, `request_handoff`, `request_return`
+
+### AI Settings (14 — все работают)
+| Setting | Тип | Где проверяется |
+|---|---|---|
+| `allow_auto_dm_reply` | bool | orchestrator.py — kill switch (Step 0.95) |
+| `allow_auto_comment_reply` | bool | service.py — comment handler |
+| `allow_ai_cancel_draft` | bool | truth_tools.py — cancel_order |
+| `require_operator_for_edit` | bool | orchestrator.py — order preprocessor |
+| `require_handoff_for_unknown_product` | bool | orchestrator.py — get_product_candidates hint |
+| `max_variants_in_reply` | int | orchestrator.py — get_variant_candidates trim |
+| `confirm_before_order` | bool | orchestrator.py — system prompt injection |
+| `tone` | str | orchestrator.py — system prompt injection |
+| `language` | str | orchestrator.py — default language for new chats |
+| `fallback_mode` | str | orchestrator.py — "handoff" or "fallback_model" |
+| `channel_show_price` | bool | service.py — comment reply with price range |
+| `operator_telegram_username` | str | orchestrator.py — handoff notification |
+| `operator_notification_enabled` | bool | orchestrator.py — send TG notification to operator |
+| `auto_handoff_on_negative_sentiment` | bool | orchestrator.py — sentiment detection |
 
 ### Frontend Design System
 - **Palette**: slate grays, indigo primary, violet accent, emerald success, amber warning, rose error
@@ -200,6 +246,8 @@ await client.send_message(entity, text)
 - **Sidebar**: dark gradient (slate-900 to slate-950), 13 SVG icons, 5 nav groups, moon/sun toggle
 - **Login**: glassmorphism (`bg-white/[0.07] backdrop-blur-xl`)
 - **Animations**: slide-up, fade-in, shimmer (skeleton), pulse-soft
+- **Error boundaries**: `app/error.tsx` (global) + `app/(admin)/error.tsx` (admin routes)
+- **Auth guard**: admin layout blocks render until `isAuthenticated()` returns true
 
 ### Frontend страницы (15)
 - `/login` — glassmorphism авторизация
@@ -213,16 +261,16 @@ await client.send_message(entity, text)
 - `/delivery` — правила (group by city, filter, CSV import, edit, delete)
 - `/telegram` — подключение (status polling, reconnect, activity logs)
 - `/templates` — шаблоны комментариев
-- `/settings` — AI настройки (toggles, operator TG username, test notification)
+- `/settings` — AI настройки (14 toggles/dropdowns, operator TG username, test notification)
 - `/handoffs` — карточки (priority badge, summary, linked order, filter, "Решено")
-- `/broadcast` — рассылка (audience estimate, scheduled, history, image, abandoned carts)
-- `/training` — обучение AI (label messages, smart-label GPT-4o, export JSONL)
+- `/broadcast` — рассылка (audience estimate, 5000 cap warning, scheduled, history, image, abandoned carts)
+- `/training` — обучение AI (label messages, smart-label GPT-4o, export JSONL, fine-tune)
 - `/analytics` — RFM, funnel, revenue, stock-forecast, competitors
 
 ### API endpoints (ключевые)
 ```
 # Auth
-POST /auth/login, GET /auth/me
+POST /auth/login, POST /auth/logout, GET /auth/me, POST /auth/change-password
 
 # Catalog (NO prefix — routes at root)
 GET/POST /products, GET/PATCH /products/{id}
@@ -267,6 +315,7 @@ POST /dashboard/abandoned-carts/{id}/remind, GET /dashboard/abandoned-carts
 GET /training/stats, GET /training/conversations
 PATCH /training/messages/{id}/label, POST /training/messages/{id}/smart-label
 GET /training/export.jsonl
+POST /training/fine-tune, GET /training/fine-tune-status
 
 # Analytics (prefix /analytics)
 POST /analytics/rfm/compute, GET /analytics/rfm/segments, GET /analytics/rfm/customers
@@ -291,65 +340,33 @@ GET/POST /tenants
 - **Pydantic v2**: нельзя делать `model.extra_field = value` если поле не объявлено в схеме — будет `ValueError`. Все поля, устанавливаемые в коде (conversation_id в OrderOut, assigned_to_user_name в HandoffOut), ДОЛЖНЫ быть в Pydantic schema с `= None`.
 - **SQLAlchemy models vs DB columns**: если startup migration (main.py) добавляет колонку в БД, она ДОЛЖНА быть объявлена и в SQLAlchemy model. Иначе ORM-запросы по этой колонке падают с `AttributeError`.
 - **CORS**: origins в `src/core/config.py`. При доступе с другого устройства — добавить его origin.
-- **Auth**: фронтенд хранит JWT в localStorage, шлёт в `Authorization: Bearer`. НЕ удалять токен при 401 (иначе cascade failure). НЕ использовать `_redirecting` flag.
+- **Auth**: фронтенд хранит JWT в localStorage, шлёт в `Authorization: Bearer`. НЕ удалять токен при 401 (иначе cascade failure). НЕ использовать `_redirecting` flag. Бэкенд проверяет blacklist при каждом запросе (fail-open если Redis недоступен).
+- **Password policy**: минимум 8 символов, обязательно буквы И цифры.
+- **Phone sanitization**: в Telegram router `phone_number` проходит через `re.sub(r"[^0-9+]", "", phone)` перед использованием в filesystem path и БД.
 - **Polling с auth**: при 401 — останавливать polling interval, не спамить логи.
-- **Telegram sessions**: хранятся в `sessions/` (gitignored). После удаления/восстановки проекта нужно переподключить аккаунт через UI.
-- **Telethon entity resolution**: ОБЯЗАТЕЛЬНО `get_input_entity()` перед `send_message()` для всех исходящих (кроме event.respond/reply). Без этого после рестарта — `ValueError: Could not find the input entity`.
+- **Telegram sessions**: хранятся в `sessions/` (gitignored). После удаления/восстановления проекта нужно переподключить аккаунт через UI.
+- **Telethon typing**: использовать `SetTypingRequest` напрямую, НЕ `client.action()` (он не отправляет, только создаёт объект).
+- **Telethon entity resolution**: ОБЯЗАТЕЛЬНО `get_input_entity()` перед `send_message()` для всех исходящих (кроме event.respond/reply).
 - **Per-conversation lock**: `asyncio.Lock` per chat_id — предотвращает race condition при быстрых сообщениях.
+- **Memory cleanup**: `TelegramClientManager._periodic_cleanup()` раз в час чистит stale entries из in-memory dicts (dedup 5min, hints 1h, locks/chat_map cap 10k). Только RAM, не БД.
 - **Message debounce**: 3.5s — буферизует быстрые сообщения в одно.
+- **Order creation validation**: product/variant existence check, qty≥1, prices≥0, total_price = qty×unit_price, order number collision retry (12 hex = 2^48).
+- **Handoff flush**: ОБЯЗАТЕЛЬНО `await db.flush()` после `db.add(handoff)` + изменений conversation. Без flush данные теряются при return.
+- **Training aggregation**: batch query с `func.count().filter()` и `GROUP BY`, НЕ цикл с 3 запросами на conversation.
+- **Fine-tuning**: `openai.AsyncOpenAI` (не sync), модель из `settings.openai_model_main` (не hardcoded).
 - **CITY_ALIASES**: маппинг город → алиасы (RU/EN/UZ + declensions + районы Ташкента + опечатки)
 - **State context**: cart + products + orders + customer + last_order_modifications, JSONB на Conversation
-- **Forced responses**: add/remove_item_to_order, locked orders — ответ кодом, НЕ LLM
+- **Forced responses**: add/remove_item_to_order, locked orders, returns — ответ кодом, НЕ LLM
 - **Language post-processing**: детект + замена если AI ответил не на том языке
 - **Hallucination guards**: regex ловит fabricated specs, cart claims без tool call, price без БД
 - **Anomaly detection**: 6 типов ошибок → автоматически помечает conversation как training candidate
 - **Delivery**: если правило не найдено → "стоимость уточняется" (НЕ "бесплатно"). price=0 → "доставка включена"
 - **Handoff**: AI пробует разрешить 1 раз, потом передаёт. Одиночные эмоциональные слова — НЕ агрессия.
 
-## Исправленные баги (сессия 4 апреля 2026)
-
-1. **Orders 500** — `OrderOut` не имел `conversation_id` → Pydantic ValueError при `data.conversation_id = ...`
-2. **Handoffs 500** — `HandoffOut` не имел `assigned_to_user_name` → аналогичный ValueError
-3. **Training 500** — `Conversation` модель не объявляла `is_training_candidate`, `Message` не объявлял `training_label`/`rejection_reason`/`rejection_selected_text` (колонки были в БД, но не в ORM)
-4. **Delete conversation crash** — `OrderItem.tenant_id` не существует, фильтр удалён
-5. **Broadcast не отправляет** — Telethon не имеет entity в кэше после рестарта → добавлен `get_input_entity()` fallback во всех 5 местах исходящих отправок
-6. **Auth cascade failure** — `_redirecting` flag + удаление токена при 401 ломало все запросы после re-login
-7. **401 spam в логах** — polling продолжался после auth failure → добавлен stop interval
-8. **Hydration error** — `getUser()` читал localStorage при SSR → перенесён в useEffect
-
-## TODO (запланированные улучшения)
-
-### Критические
-- [ ] **AI policy settings enforcement** — AiSettings (allow_ai_cancel_draft, require_operator_for_edit и т.д.) хранятся в БД, но НЕ читаются orchestrator'ом при runtime
-- [ ] **delivery_type в create_order_draft** — Order модель имеет поле, но tool не передаёт его
-
-### UI/UX улучшения (из аудита)
-- [ ] Last message preview в списке conversations (важно для операторов!)
-- [ ] Product detail editing (name/variants/aliases/images) — сейчас read-only
-- [ ] Export orders CSV
-- [ ] Auto-refresh на Handoffs (оператор не видит новые)
-- [ ] Pagination на Orders + Products
-- [ ] Quick reply templates в чате
-- [ ] Date range picker на Analytics
-- [ ] Upload product images
-- [ ] Unread/new message indicator
-- [ ] Search within messages
-
-### Backend
-- [ ] Intent logging — логирование state transitions для отладки
-- [ ] Test scenarios — автотесты (mock OpenAI, forced responses, policy checks)
-- [ ] Рассмотреть gpt-4o вместо gpt-4o-mini — mini плохо следует сложным инструкциям
-
-### Frontend (мелкие баги)
-- [ ] Training export JSONL — использует старый proxy URL, нужен прямой API call
-- [ ] PageHeader badge цвет `bg-red-500` → `bg-rose-500` (design system)
-- [ ] Toast цвета `bg-green-600` → `bg-emerald-600` (design system)
-- [ ] Orders: plural "товара" неправильно для 5+ ("товаров")
-- [ ] Orders: currency inconsistent "сум" vs "UZS"
-
 ## .env переменные
 ```
 DATABASE_URL=postgresql+asyncpg://USER@localhost:5432/ai_closer
+REDIS_URL=redis://localhost:6379/0
 SECRET_KEY=your-secret-key
 TELEGRAM_API_ID=...
 TELEGRAM_API_HASH=...

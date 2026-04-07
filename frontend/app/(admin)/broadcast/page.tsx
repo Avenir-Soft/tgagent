@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { timeAgo } from "@/lib/time-ago";
+import { plural } from "@/lib/utils";
 
 interface AbandonedCart {
   id: string;
@@ -20,6 +21,8 @@ interface BroadcastResult {
   sent: number;
   failed: number;
   total_targets: number;
+  truncated?: boolean;
+  total_audience?: number;
 }
 
 interface HistoryRecipient {
@@ -84,6 +87,9 @@ export default function BroadcastPage() {
   const [showRecipients, setShowRecipients] = useState(false);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
+  // Audience estimate (detects 5000 cap truncation)
+  const [totalAudience, setTotalAudience] = useState<number | null>(null);
+
   // Delete conversation state
   const [deletingRecipient, setDeletingRecipient] = useState<Recipient | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -114,6 +120,10 @@ export default function BroadcastPage() {
       })
       .catch(console.error)
       .finally(() => setLoadingRecipients(false));
+    // Check actual audience size (may be > 5000)
+    api.get<{ count: number; truncated?: boolean }>(`/dashboard/broadcast-estimate?filter=${broadcastFilter}`)
+      .then((r) => setTotalAudience(r.count))
+      .catch(() => setTotalAudience(null));
   }, [broadcastFilter]);
 
   useEffect(() => { loadRecipients(); }, [loadRecipients]);
@@ -311,6 +321,18 @@ export default function BroadcastPage() {
             </span>
           </div>
 
+          {/* 5000 cap warning */}
+          {totalAudience !== null && totalAudience > 5000 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 flex items-center gap-2 text-sm text-amber-700">
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              </svg>
+              <span>
+                Всего клиентов: <strong>{totalAudience.toLocaleString("ru")}</strong>, но за одну рассылку можно отправить максимум <strong>5 000</strong>. Остальные {(totalAudience - 5000).toLocaleString("ru")} не будут охвачены.
+              </span>
+            </div>
+          )}
+
           {/* Recipients list toggle */}
           <button
             type="button"
@@ -501,9 +523,14 @@ export default function BroadcastPage() {
               <p className="text-emerald-600 mt-1">
                 Отправлено: {broadcastResult.sent} / {broadcastResult.total_targets}
                 {broadcastResult.failed > 0 && (
-                  <span className="text-rose-500 ml-2">({broadcastResult.failed} ошибок)</span>
+                  <span className="text-rose-500 ml-2">({broadcastResult.failed} {plural(broadcastResult.failed, "ошибка", "ошибки", "ошибок")})</span>
                 )}
               </p>
+              {broadcastResult.truncated && broadcastResult.total_audience && (
+                <p className="text-amber-600 mt-1">
+                  Аудитория была ограничена до 5 000 из {broadcastResult.total_audience.toLocaleString("ru")} клиентов
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -579,7 +606,7 @@ export default function BroadcastPage() {
                       {h.status === "sent" && (
                         <span className="text-xs text-emerald-600 font-medium">
                           {h.sent_count}/{h.total_targets}
-                          {h.failed_count > 0 && <span className="text-rose-500 ml-1">({h.failed_count} ошибок)</span>}
+                          {h.failed_count > 0 && <span className="text-rose-500 ml-1">({h.failed_count} {plural(h.failed_count, "ошибка", "ошибки", "ошибок")})</span>}
                         </span>
                       )}
                       {h.status === "scheduled" && h.scheduled_at && (

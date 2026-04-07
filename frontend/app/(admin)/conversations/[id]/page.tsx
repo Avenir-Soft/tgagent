@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, API_BASE } from "@/lib/api";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import { getInitial } from "@/lib/utils";
 
 interface Message {
   id: string;
@@ -16,6 +17,8 @@ interface Message {
   training_label: string | null;
   rejection_reason: string | null;
   rejection_selected_text: string | null;
+  media_type: string | null;
+  media_file_id: string | null;
   created_at: string;
 }
 
@@ -170,6 +173,21 @@ export default function ConversationDetailPage() {
   }, [id, msgLimit]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
+
+  // Scroll to highlighted message from URL param (e.g., from activity log click)
+  useEffect(() => {
+    const hlId = searchParams.get("highlight");
+    if (hlId && messages.length > 0) {
+      setHighlightedMsgId(hlId);
+      // Wait for DOM to render, then scroll
+      setTimeout(() => {
+        msgRefs.current[hlId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 300);
+      // Auto-clear highlight after 4s
+      const t = setTimeout(() => setHighlightedMsgId(null), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [searchParams, messages.length]);
 
   // Keyboard shortcuts: Esc to cancel edit
   useEffect(() => {
@@ -519,7 +537,45 @@ export default function ConversationDetailPage() {
                             ? msg.ai_generated ? "bg-indigo-500 text-white" : "bg-emerald-500 text-white"
                             : "bg-white text-slate-900 shadow-sm"
                         }`}>
-                          <p className="text-sm whitespace-pre-wrap">{msg.raw_text || "(пусто)"}</p>
+                          {/* Media content */}
+                          {msg.media_type && msg.media_file_id && (() => {
+                            const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+                            const mediaUrl = `${API_BASE}/telegram/media/${msg.id}?token=${token || ""}`;
+                            const t = msg.media_type;
+                            if (t === "photo") return (
+                              <img src={mediaUrl} alt="Фото" className="max-w-[280px] max-h-[320px] rounded-xl mb-1 cursor-pointer" loading="lazy" onClick={() => window.open(mediaUrl, "_blank")} />
+                            );
+                            if (t === "sticker") return (
+                              <img src={mediaUrl} alt="Стикер" className="w-32 h-32 object-contain mb-1" loading="lazy" />
+                            );
+                            if (t === "gif") return (
+                              <video src={mediaUrl} autoPlay loop muted playsInline className="max-w-[240px] rounded-xl mb-1" />
+                            );
+                            if (t === "voice") return (
+                              <div className="flex items-center gap-2 mb-1">
+                                <svg className="w-4 h-4 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 15a3 3 0 003-3V5a3 3 0 00-6 0v7a3 3 0 003 3z" /></svg>
+                                <audio controls preload="none" src={mediaUrl} className="h-8 max-w-[220px]" />
+                              </div>
+                            );
+                            if (t === "video_note") return (
+                              <video src={mediaUrl} controls preload="none" className="w-40 h-40 rounded-full object-cover mb-1" />
+                            );
+                            if (t === "video") return (
+                              <video src={mediaUrl} controls preload="none" className="max-w-[280px] max-h-[320px] rounded-xl mb-1" />
+                            );
+                            if (t === "document") return (
+                              <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 mb-1 text-xs underline ${isOut ? "text-white/80" : "text-indigo-600"}`}>
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                Файл
+                              </a>
+                            );
+                            return null;
+                          })()}
+                          {/* Text content */}
+                          {msg.raw_text && !msg.raw_text.startsWith("[Клиент отправил") && (
+                            <p className="text-sm whitespace-pre-wrap">{msg.raw_text}</p>
+                          )}
+                          {!msg.media_type && <p className="text-sm whitespace-pre-wrap">{msg.raw_text || "(пусто)"}</p>}
                           <div className="flex items-center gap-2 mt-1">
                             <span className={`text-[10px] ${isOut ? "opacity-60" : "text-slate-400"}`}>
                               {formatTime(msg.created_at)}
@@ -603,7 +659,7 @@ export default function ConversationDetailPage() {
               {/* Customer card */}
               <div>
                 <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg font-bold mb-2">
-                  {(history.customer_name || "?")[0].toUpperCase()}
+                  {getInitial(history.customer_name)}
                 </div>
                 <h3 className="font-semibold text-sm text-slate-900">{history.customer_name || conv.telegram_first_name}</h3>
                 {history.telegram_username && <p className="text-xs text-indigo-500">@{history.telegram_username}</p>}

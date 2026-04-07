@@ -205,6 +205,23 @@ html.dark .border-amber-200 { border-color: rgba(245,158,11,0.25); }
 html.dark .border-rose-200 { border-color: rgba(244,63,94,0.25); }
 html.dark .border-violet-200 { border-color: rgba(139,92,246,0.25); }
 
+/* ── Slate grays (mid-range) ──────────────────────── */
+html.dark .bg-slate-300 { background-color: #1e293b; }
+html.dark .bg-slate-400 { background-color: #334155; }
+html.dark .bg-slate-500 { background-color: #475569; }
+html.dark .border-slate-300 { border-color: #334155; }
+
+/* ── Colored hover states (100-level) ────────────── */
+html.dark .hover\:bg-amber-100:hover { background-color: rgba(245,158,11,0.18) !important; }
+html.dark .hover\:bg-violet-100:hover { background-color: rgba(139,92,246,0.18) !important; }
+html.dark .hover\:bg-rose-100:hover { background-color: rgba(244,63,94,0.18) !important; }
+html.dark .hover\:bg-indigo-100:hover { background-color: rgba(99,102,241,0.18) !important; }
+html.dark .hover\:bg-emerald-100:hover { background-color: rgba(16,185,129,0.18) !important; }
+html.dark .hover\:bg-blue-100:hover { background-color: rgba(59,130,246,0.18) !important; }
+
+/* ── Extra colored backgrounds ───────────────────── */
+html.dark .bg-rose-300 { background-color: rgba(244,63,94,0.35); }
+
 /* ── Shadows ──────────────────────────────────────── */
 html.dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
 html.dark .shadow-md { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.4); }
