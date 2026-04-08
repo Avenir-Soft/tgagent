@@ -67,10 +67,13 @@ def can_edit_order(status: str, ai_settings=None) -> dict:
     }
 
 
-def can_return_order(status: str, ai_settings=None) -> dict:
+RETURN_WINDOW_DAYS = 14  # Days after delivery when returns are still accepted
+
+
+def can_return_order(status: str, ai_settings=None, delivered_at=None) -> dict:
     """Check if order is eligible for a return request.
 
-    Returns are only possible for delivered orders.
+    Returns are only possible for delivered orders within RETURN_WINDOW_DAYS.
     By default (or when require_operator_for_returns=True), always routes to operator.
     """
     if status not in RETURNABLE_STATUSES:
@@ -81,8 +84,19 @@ def can_return_order(status: str, ai_settings=None) -> dict:
         return {"allowed": False, "needs_operator": False,
                 "message": f"Заказ в статусе \"{reason}\" — возврат невозможен"}
 
+    # Check return window (if delivery date is known)
+    if delivered_at:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        if delivered_at.tzinfo is None:
+            delivered_at = delivered_at.replace(tzinfo=timezone.utc)
+        days_since = (now - delivered_at).days
+        if days_since > RETURN_WINDOW_DAYS:
+            return {"allowed": False, "needs_operator": False,
+                    "message": f"Срок возврата ({RETURN_WINDOW_DAYS} дней) истёк. Заказ доставлен {days_since} дней назад."}
+
     # Delivered — return is possible
-    if ai_settings and not ai_settings.require_operator_for_returns:
+    if ai_settings and not getattr(ai_settings, "require_operator_for_returns", True):
         # AI can process return directly (future: auto-return flow)
         return {"allowed": True, "needs_operator": False, "message": None}
     # Default: always require operator for returns

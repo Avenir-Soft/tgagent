@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 
 interface Toast {
-  id: number;
+  id: string;
   message: string;
   type: "success" | "error" | "info";
 }
@@ -27,17 +27,16 @@ export function showToast(message: string, type: Toast["type"] = "error") {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  let nextId = 0;
 
   const addToast = useCallback((message: string, type: Toast["type"] = "info") => {
-    const id = Date.now() + Math.random();
+    const id = crypto.randomUUID();
     setToasts((prev) => [...prev.slice(-4), { id, message, type }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
   }, []);
 
   useEffect(() => { _globalToast = addToast; return () => { _globalToast = null; }; }, [addToast]);
 
-  const dismiss = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
+  const dismiss = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   const colors = {
     success: "bg-emerald-600",

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import Link from "next/link";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ interface FunnelResponse {
 
 interface StockForecastItem {
   variant_id: string;
+  product_id: string | null;
   variant_title: string;
   product_name: string;
   available_stock: number;
@@ -94,10 +96,23 @@ interface CompetitorSummary {
   more_expensive_count: number;
 }
 
+interface CustomerDetail {
+  conversation_id: string | null;
+  reason: string;
+  messages: Array<{ text: string; sender_type: string; created_at: string | null }>;
+}
+
+interface ProductOption {
+  id: string;
+  name: string;
+  variants: Array<{ id: string; title: string; price: number }>;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function fmt(n: number) {
-  return n.toLocaleString("ru-RU");
+function fmt(n: number | null | undefined) {
+  if (n == null || Number.isNaN(n)) return "0";
+  return Number(n).toLocaleString("ru-RU");
 }
 
 function fmtTime(seconds: number | null): string {
@@ -148,10 +163,32 @@ export default function AnalyticsPage() {
   const [competitors, setCompetitors] = useState<CompetitorPrice[]>([]);
   const [competitorSummary, setCompetitorSummary] = useState<CompetitorSummary[]>([]);
   const [computing, setComputing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Sorting
-  const [stockSort, setStockSort] = useState<{ col: string; asc: boolean }>({ col: "days_until_stockout", asc: true });
-  const [custSort, setCustSort] = useState<{ col: string; asc: boolean }>({ col: "monetary", asc: false });
+  // Sorting: null = default (no active sort)
+  const [stockSort, setStockSort] = useState<{ col: string; asc: boolean } | null>(null);
+  const [custSort, setCustSort] = useState<{ col: string; asc: boolean } | null>(null);
+
+  const cycleSort = (
+    current: { col: string; asc: boolean } | null,
+    col: string,
+    defaultAsc: boolean,
+  ): { col: string; asc: boolean } | null => {
+    if (!current || current.col !== col) return { col, asc: defaultAsc };
+    if (current.asc === defaultAsc) return { col, asc: !defaultAsc };
+    return null; // 3rd click → reset
+  };
+
+  // Customer detail dropdown (keyed by lead_id)
+  const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(null);
+  const [customerDetailLoading, setCustomerDetailLoading] = useState(false);
+
+  // Competitor expand
+  const [expandedCompetitors, setExpandedCompetitors] = useState<Set<string>>(new Set());
+
+  // Stock alerts expand
+  const [showAllAlerts, setShowAllAlerts] = useState(false);
 
   // Competitor form
   const [showCompForm, setShowCompForm] = useState(false);
@@ -161,16 +198,26 @@ export default function AnalyticsPage() {
     competitor_price: "",
     our_price: "",
     competitor_channel: "",
+    product_id: "" as string,
   });
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [productsLoaded, setProductsLoaded] = useState(false);
 
-  const loadAll = useCallback(() => {
-    api.get<RFMSummary>("/analytics/rfm/segments").then(setRfm).catch(() => {});
-    api.get<ConversationAnalytics>(`/analytics/conversations?days=${days}`).then(setConvAnalytics).catch(() => {});
-    api.get<FunnelResponse>(`/analytics/funnel?days=${days}`).then(setFunnel).catch(() => {});
-    api.get<StockForecast>("/analytics/stock-forecast?forecast_days=14").then(setStock).catch(() => {});
-    api.get<RevenueData>(`/analytics/revenue?days=${days}`).then(setRevenue).catch(() => {});
-    api.get<CompetitorPrice[]>("/analytics/competitors").then(setCompetitors).catch(() => {});
-    api.get<CompetitorSummary[]>("/analytics/competitors/summary").then(setCompetitorSummary).catch(() => {});
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        api.get<RFMSummary>("/analytics/rfm/segments").then(setRfm).catch(() => {}),
+        api.get<ConversationAnalytics>(`/analytics/conversations?days=${days}`).then(setConvAnalytics).catch(() => {}),
+        api.get<FunnelResponse>(`/analytics/funnel?days=${days}`).then(setFunnel).catch(() => {}),
+        api.get<StockForecast>(`/analytics/stock-forecast?forecast_days=${days}`).then(setStock).catch(() => {}),
+        api.get<RevenueData>(`/analytics/revenue?days=${days}`).then(setRevenue).catch(() => {}),
+        api.get<CompetitorPrice[]>("/analytics/competitors").then(setCompetitors).catch(() => {}),
+        api.get<CompetitorSummary[]>("/analytics/competitors/summary").then(setCompetitorSummary).catch(() => {}),
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }, [days]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -188,6 +235,32 @@ export default function AnalyticsPage() {
     }
   };
 
+  const loadProducts = () => {
+    if (productsLoaded) return;
+    api.get<ProductOption[]>("/products").then((data) => {
+      setProducts(data.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        variants: (p.variants || []).map((v: any) => ({ id: v.id, title: v.title, price: Number(v.price) })),
+      })));
+      setProductsLoaded(true);
+    }).catch(() => {});
+  };
+
+  const onSelectProduct = (productId: string) => {
+    const p = products.find((pr) => pr.id === productId);
+    if (!p) return;
+    const minPrice = p.variants.length > 0 ? Math.min(...p.variants.map((v) => v.price)) : 0;
+    const maxPrice = p.variants.length > 0 ? Math.max(...p.variants.map((v) => v.price)) : 0;
+    const priceStr = minPrice === maxPrice ? String(minPrice) : String(minPrice);
+    setCompForm((f) => ({
+      ...f,
+      product_id: productId,
+      product_title: f.product_title || p.name,
+      our_price: priceStr,
+    }));
+  };
+
   const addCompetitorPrice = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -197,10 +270,11 @@ export default function AnalyticsPage() {
         competitor_price: parseFloat(compForm.competitor_price),
         our_price: compForm.our_price ? parseFloat(compForm.our_price) : null,
         competitor_channel: compForm.competitor_channel || null,
+        product_id: compForm.product_id || null,
       });
       toast("Цена конкурента добавлена", "success");
       setShowCompForm(false);
-      setCompForm({ competitor_name: "", product_title: "", competitor_price: "", our_price: "", competitor_channel: "" });
+      setCompForm({ competitor_name: "", product_title: "", competitor_price: "", our_price: "", competitor_channel: "", product_id: "" });
       api.get<CompetitorPrice[]>("/analytics/competitors").then(setCompetitors);
       api.get<CompetitorSummary[]>("/analytics/competitors/summary").then(setCompetitorSummary);
     } catch {
@@ -209,8 +283,61 @@ export default function AnalyticsPage() {
   };
 
   const deleteCompetitor = async (id: string) => {
-    await api.delete(`/analytics/competitors/${id}`);
-    setCompetitors((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await api.delete(`/analytics/competitors/${id}`);
+    } catch (e: any) {
+      toast(e?.detail || "Ошибка удаления", "error");
+      return;
+    }
+    setCompetitors((prev) => {
+      const updated = prev.filter((c) => c.id !== id);
+      // Recalculate summary from remaining data
+      const byName = new Map<string, CompetitorPrice[]>();
+      updated.forEach((c) => {
+        const arr = byName.get(c.competitor_name) || [];
+        arr.push(c);
+        byName.set(c.competitor_name, arr);
+      });
+      const newSummary: CompetitorSummary[] = [];
+      byName.forEach((prices, name) => {
+        let cheaper = 0, expensive = 0, diffs: number[] = [];
+        prices.forEach((p) => {
+          if (p.our_price && p.our_price > 0) {
+            const diff = (p.competitor_price - p.our_price) / p.our_price * 100;
+            diffs.push(diff);
+            if (p.competitor_price < p.our_price) cheaper++;
+            if (p.competitor_price > p.our_price) expensive++;
+          }
+        });
+        newSummary.push({
+          competitor_name: name,
+          products_tracked: prices.length,
+          avg_price_diff_pct: diffs.length > 0 ? diffs.reduce((a, b) => a + b, 0) / diffs.length : null,
+          cheaper_count: cheaper,
+          more_expensive_count: expensive,
+        });
+      });
+      setCompetitorSummary(newSummary);
+      return updated;
+    });
+  };
+
+  const toggleCustomerDetail = async (leadId: string, telegramUserId: number) => {
+    if (expandedCustomer === leadId) {
+      setExpandedCustomer(null);
+      setCustomerDetail(null);
+      return;
+    }
+    setExpandedCustomer(leadId);
+    setCustomerDetailLoading(true);
+    try {
+      const detail = await api.get<CustomerDetail>(`/analytics/rfm/customer-detail?telegram_user_id=${telegramUserId}`);
+      setCustomerDetail(detail);
+    } catch {
+      setCustomerDetail(null);
+    } finally {
+      setCustomerDetailLoading(false);
+    }
   };
 
   // ── Tab: Overview ──
@@ -241,21 +368,24 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Funnel mini */}
         <div className="card p-5">
-          <h3 className="text-sm font-bold text-slate-900 mb-3">Воронка (30 дней)</h3>
+          <h3 className="text-sm font-bold text-slate-900 mb-3">Воронка ({days} дней)</h3>
           <div className="space-y-2">
-            {(funnel?.stages || []).map((s, i) => (
-              <div key={s.name} className="flex items-center gap-3">
-                <span className="text-xs text-slate-500 w-24 shrink-0">{s.label}</span>
-                <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 rounded-full transition-all"
-                    style={{ width: `${s.pct}%` }}
-                  />
+            {(funnel?.stages || []).map((s, i) => {
+              const pct = s.pct ?? 0;
+              return (
+                <div key={s.name} className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500 w-24 shrink-0">{s.label}</span>
+                  <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 rounded-full transition-all"
+                      style={{ width: `${Math.max(pct, s.count > 0 ? 4 : 0)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-medium w-12 text-right">{s.count}</span>
+                  <span className="text-xs text-slate-400 w-10 text-right">{pct.toFixed(0)}%</span>
                 </div>
-                <span className="text-xs font-medium w-12 text-right">{s.count}</span>
-                <span className="text-xs text-slate-400 w-10 text-right">{s.pct}%</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -264,7 +394,7 @@ export default function AnalyticsPage() {
           <h3 className="text-sm font-bold text-slate-900 mb-3">Сегменты клиентов</h3>
           {rfm && rfm.total_customers > 0 ? (
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(rfm.segments).sort((a, b) => b[1] - a[1]).map(([seg, count]) => {
+              {Object.entries(rfm.segments || {}).sort((a, b) => b[1] - a[1]).map(([seg, count]) => {
                 const cfg = segmentConfig[seg] || segmentConfig.regular;
                 return (
                   <div key={seg} className={`${cfg.bg} rounded-lg px-3 py-2`}>
@@ -299,24 +429,47 @@ export default function AnalyticsPage() {
       )}
 
       {/* Stock alerts */}
-      {stock && (stock.risk_summary.critical > 0 || stock.risk_summary.warning > 0) && (
-        <div className="card p-5">
-          <h3 className="text-sm font-bold text-slate-900 mb-3">Предупреждения по складу</h3>
-          <div className="space-y-2">
-            {stock.items.filter((i) => i.risk === "critical" || i.risk === "warning").slice(0, 5).map((item) => (
-              <div key={item.variant_id} className="flex items-center gap-3">
-                <span className={`px-2 py-0.5 rounded text-xs ${riskConfig[item.risk].bg} ${riskConfig[item.risk].color}`}>
-                  {riskConfig[item.risk].label}
-                </span>
-                <span className="text-sm text-slate-900">{item.product_name} — {item.variant_title}</span>
-                <span className="text-xs text-slate-400 ml-auto">
-                  {item.available_stock} шт, ~{item.days_until_stockout ?? "?"} дней
-                </span>
-              </div>
-            ))}
+      {stock && ((stock.risk_summary?.critical ?? 0) > 0 || (stock.risk_summary?.warning ?? 0) > 0) && (() => {
+        const alertItems = stock.items.filter((i) => i.risk === "critical" || i.risk === "warning");
+        const visibleItems = showAllAlerts ? alertItems : alertItems.slice(0, 5);
+        return (
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-slate-900">Предупреждения по складу</h3>
+              {alertItems.length > 5 && (
+                <button
+                  onClick={() => setShowAllAlerts(!showAllAlerts)}
+                  className="text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
+                >
+                  {showAllAlerts ? "Свернуть" : `Смотреть все (${alertItems.length})`}
+                </button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {visibleItems.map((item) => {
+                const rc = riskConfig[item.risk] || riskConfig.ok;
+                return (
+                <div key={item.variant_id} className="flex items-center gap-3">
+                  <span className={`px-2 py-0.5 rounded text-xs ${rc.bg} ${rc.color}`}>
+                    {rc.label}
+                  </span>
+                  {item.product_id ? (
+                    <Link href={`/products/${item.product_id}`} className="text-sm text-slate-900 hover:text-indigo-600 transition-colors">
+                      {item.product_name} — {item.variant_title}
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-slate-900">{item.product_name} — {item.variant_title}</span>
+                  )}
+                  <span className="text-xs text-slate-400 ml-auto">
+                    {item.available_stock} шт, ~{item.days_until_stockout ?? "?"} дней
+                  </span>
+                </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 
@@ -370,31 +523,102 @@ export default function AnalyticsPage() {
                   <th
                     key={h.col}
                     className="px-4 py-3 text-slate-500 font-medium cursor-pointer hover:text-indigo-600 select-none transition-colors"
-                    onClick={() => setCustSort((s) => ({ col: h.col, asc: s.col === h.col ? !s.asc : false }))}
+                    onClick={() => setCustSort((s) => cycleSort(s, h.col, false))}
                   >
-                    {h.label} {custSort.col === h.col ? (custSort.asc ? "↑" : "↓") : ""}
+                    {h.label}{custSort?.col === h.col ? (custSort.asc ? " ↑" : " ↓") : ""}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rfm.top_customers.slice().sort((a, b) => {
+                if (!custSort) return 0;
                 const k = custSort.col as keyof CustomerSegment;
                 const av = Number(a[k]) || 0;
                 const bv = Number(b[k]) || 0;
                 return custSort.asc ? av - bv : bv - av;
               }).map((c) => {
                 const cfg = segmentConfig[c.segment] || segmentConfig.regular;
+                const isExpanded = expandedCustomer === c.lead_id;
                 return (
-                  <tr key={c.lead_id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-slate-900">{c.customer_name || "Без имени"}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
+                  <tr key={c.lead_id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="px-4 py-3 relative" colSpan={isExpanded ? 6 : 1}>
+                      {isExpanded ? (
+                        /* Expanded detail row */
+                        <div>
+                          <button
+                            onClick={() => toggleCustomerDetail(c.lead_id, c.telegram_user_id)}
+                            className="font-medium text-indigo-600 hover:text-indigo-700 mb-3 flex items-center gap-1"
+                          >
+                            <span className="text-xs">▼</span> {c.customer_name || "Без имени"}
+                          </button>
+                          {customerDetailLoading ? (
+                            <p className="text-xs text-slate-400">Загрузка...</p>
+                          ) : customerDetail ? (
+                            <div className="space-y-3 max-w-xl">
+                              {/* Segment + reason */}
+                              <div className="flex items-start gap-2">
+                                <span className={`px-2 py-0.5 rounded text-xs ${cfg.bg} ${cfg.color} shrink-0`}>{cfg.label}</span>
+                                <p className="text-xs text-slate-600">{customerDetail.reason || "Нет данных"}</p>
+                              </div>
+                              {/* RFM scores */}
+                              <div className="flex gap-4 text-xs text-slate-500">
+                                <span>Заказов: <b className="text-slate-700">{c.frequency}</b></span>
+                                <span>Потрачено: <b className="text-slate-700">{fmt(Number(c.monetary))} UZS</b></span>
+                                <span>Был: <b className="text-slate-700">{c.recency_days} дн. назад</b></span>
+                                <span>RFM: <b className="font-mono text-slate-700">{c.rfm_score}</b></span>
+                              </div>
+                              {/* Recent messages */}
+                              {customerDetail.messages.length > 0 && (
+                                <div>
+                                  <p className="text-xs font-medium text-slate-500 mb-1">Последние сообщения:</p>
+                                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                                    {customerDetail.messages.map((m, i) => (
+                                      <div key={i} className={`text-xs px-2 py-1 rounded ${
+                                        m.sender_type === "customer" ? "bg-slate-100 text-slate-700" : "bg-indigo-50 text-indigo-700"
+                                      }`}>
+                                        <span className="font-medium">{m.sender_type === "customer" ? "Клиент" : "AI"}:</span>{" "}
+                                        {m.text}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {/* Link to chat */}
+                              {customerDetail.conversation_id && (
+                                <Link
+                                  href={`/conversations/${customerDetail.conversation_id}`}
+                                  className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+                                >
+                                  Перейти в чат →
+                                </Link>
+                              )}
+                              <Link href="/leads" className="text-xs text-emerald-600 hover:text-emerald-700 font-medium transition-colors ml-3">Карточка лида →</Link>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-400">Данные не найдены</p>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => toggleCustomerDetail(c.lead_id, c.telegram_user_id)}
+                          className="font-medium text-slate-900 hover:text-indigo-600 transition-colors flex items-center gap-1"
+                        >
+                          <span className="text-xs text-slate-300 group-hover:text-indigo-400">▶</span> {c.customer_name || "Без имени"}
+                        </button>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{c.frequency}</td>
-                    <td className="px-4 py-3 text-slate-700">{fmt(Number(c.monetary))} UZS</td>
-                    <td className="px-4 py-3 text-slate-400">{c.recency_days} дн. назад</td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{c.rfm_score}</td>
+                    {!isExpanded && (
+                      <>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded text-xs ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{c.frequency}</td>
+                        <td className="px-4 py-3 text-slate-700">{fmt(Number(c.monetary))} UZS</td>
+                        <td className="px-4 py-3 text-slate-400">{c.recency_days} дн. назад</td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-500">{c.rfm_score}</td>
+                      </>
+                    )}
                   </tr>
                 );
               })}
@@ -409,7 +633,8 @@ export default function AnalyticsPage() {
 
   const renderConversations = () => {
     const ca = convAnalytics;
-    const totalMsgs = ca ? Object.values(ca.messages_by_sender).reduce((s, v) => s + v, 0) : 0;
+    const senderMap = ca?.messages_by_sender || {};
+    const totalMsgs = Object.values(senderMap).reduce((s, v) => s + (v || 0), 0);
 
     return (
       <div className="space-y-4">
@@ -437,7 +662,7 @@ export default function AnalyticsPage() {
         <div className="card p-5">
           <h3 className="text-sm font-bold text-slate-900 mb-3">Сообщения по типу ({fmt(totalMsgs)} всего)</h3>
           <div className="space-y-2">
-            {ca && Object.entries(ca.messages_by_sender).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
+            {ca && Object.entries(senderMap).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
               const pct = totalMsgs > 0 ? (count / totalMsgs * 100) : 0;
               const colors: Record<string, string> = {
                 ai: "bg-indigo-500", customer: "bg-emerald-500", human_admin: "bg-violet-500", system: "bg-slate-400",
@@ -460,7 +685,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Daily trend chart (SVG) */}
-        {ca && ca.daily_trend.length > 0 && (
+        {ca && (ca.daily_trend?.length ?? 0) > 0 && (
           <div className="card p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-slate-900">Диалоги за {days} дней</h3>
@@ -515,7 +740,7 @@ export default function AnalyticsPage() {
                       <span className="text-white text-sm font-bold">{fmt(s.count)}</span>
                     </div>
                   </div>
-                  <span className="text-sm text-slate-400 w-12 text-right">{s.pct}%</span>
+                  <span className="text-sm text-slate-400 w-12 text-right">{(s.pct ?? 0).toFixed(0)}%</span>
                 </div>
               </div>
             );
@@ -536,7 +761,7 @@ export default function AnalyticsPage() {
             const cfg = riskConfig[risk];
             return (
               <div key={risk} className={`${cfg.bg} rounded-xl px-4 py-3`}>
-                <p className={`text-2xl font-bold ${cfg.color}`}>{stock.risk_summary[risk] || 0}</p>
+                <p className={`text-2xl font-bold ${cfg.color}`}>{stock.risk_summary?.[risk] ?? 0}</p>
                 <p className="text-xs text-slate-500 mt-0.5">{cfg.label}</p>
               </div>
             );
@@ -559,14 +784,14 @@ export default function AnalyticsPage() {
                 { col: "available_stock", label: "Остаток" },
                 { col: "avg_daily_sales", label: "Продаж/день" },
                 { col: "days_until_stockout", label: "До стокаута" },
-                { col: "forecasted_demand", label: "Прогноз (14д)" },
+                { col: "forecasted_demand", label: `Прогноз (${days}д)` },
               ].map((h) => (
                 <th
                   key={h.col}
                   className="px-4 py-3 text-slate-500 font-medium cursor-pointer hover:text-indigo-600 select-none transition-colors"
-                  onClick={() => setStockSort((s) => ({ col: h.col, asc: s.col === h.col ? !s.asc : true }))}
+                  onClick={() => setStockSort((s) => cycleSort(s, h.col, h.col === "days_until_stockout"))}
                 >
-                  {h.label} {stockSort.col === h.col ? (stockSort.asc ? "↑" : "↓") : ""}
+                  {h.label}{stockSort?.col === h.col ? (stockSort.asc ? " ↑" : " ↓") : ""}
                 </th>
               ))}
               <th className="px-4 py-3 text-slate-500 font-medium">Риск</th>
@@ -574,15 +799,24 @@ export default function AnalyticsPage() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {(stock?.items || []).slice().sort((a, b) => {
+              if (!stockSort) return 0; // default order from API
               const k = stockSort.col as keyof StockForecastItem;
               const av = a[k] ?? 9999;
               const bv = b[k] ?? 9999;
-              return stockSort.asc ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+              return stockSort.asc ? (av > bv ? 1 : av < bv ? -1 : 0) : (av < bv ? 1 : av > bv ? -1 : 0);
             }).map((item) => {
               const cfg = riskConfig[item.risk] || riskConfig.ok;
               return (
                 <tr key={item.variant_id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-900">{item.product_name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {item.product_id ? (
+                      <Link href={`/products/${item.product_id}`} className="text-slate-900 hover:text-indigo-600 transition-colors">
+                        {item.product_name}
+                      </Link>
+                    ) : (
+                      <span className="text-slate-900">{item.product_name}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{item.variant_title}</td>
                   <td className="px-4 py-3 text-slate-700">{item.available_stock} шт</td>
                   <td className="px-4 py-3 text-slate-700">{item.avg_daily_sales}</td>
@@ -609,36 +843,77 @@ export default function AnalyticsPage() {
 
   const renderCompetitors = () => (
     <div className="space-y-4">
-      {/* Summary cards */}
+      {/* Summary cards — expandable */}
       {competitorSummary.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {competitorSummary.map((cs) => (
-            <div key={cs.competitor_name} className="card p-4">
-              <p className="font-bold text-sm text-slate-900">{cs.competitor_name}</p>
-              <p className="text-xs text-slate-500 mt-1">{cs.products_tracked} товаров</p>
-              <div className="flex gap-4 mt-2">
-                <div>
-                  <p className="text-xs text-emerald-600">{cs.cheaper_count} дешевле</p>
-                </div>
-                <div>
-                  <p className="text-xs text-rose-600">{cs.more_expensive_count} дороже</p>
-                </div>
-                {cs.avg_price_diff_pct != null && (
-                  <div>
-                    <p className={`text-xs ${cs.avg_price_diff_pct > 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                      {cs.avg_price_diff_pct > 0 ? "+" : ""}{cs.avg_price_diff_pct.toFixed(1)}%
-                    </p>
+          {competitorSummary.map((cs) => {
+            const isExpanded = expandedCompetitors.has(cs.competitor_name);
+            const compProducts = competitors.filter((c) => c.competitor_name === cs.competitor_name);
+            return (
+              <div key={cs.competitor_name} className="card overflow-hidden">
+                <button
+                  onClick={() => setExpandedCompetitors((prev) => { const next = new Set(prev); if (next.has(cs.competitor_name)) next.delete(cs.competitor_name); else next.add(cs.competitor_name); return next; })}
+                  className="w-full text-left p-4 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="font-bold text-sm text-slate-900">{cs.competitor_name}</p>
+                    <span className="text-xs text-slate-400">{isExpanded ? "▲" : "▼"}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">{cs.products_tracked} товаров</p>
+                  <div className="flex gap-4 mt-2">
+                    <p className="text-xs text-emerald-600">{cs.cheaper_count} дешевле</p>
+                    <p className="text-xs text-rose-600">{cs.more_expensive_count} дороже</p>
+                    {cs.avg_price_diff_pct != null && (
+                      <p className={`text-xs ${cs.avg_price_diff_pct > 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                        {cs.avg_price_diff_pct > 0 ? "+" : ""}{cs.avg_price_diff_pct.toFixed(1)}%
+                      </p>
+                    )}
+                  </div>
+                </button>
+                {isExpanded && compProducts.length > 0 && (
+                  <div className="border-t border-slate-100 px-4 py-3 space-y-2 bg-slate-50/50">
+                    {compProducts.map((cp) => {
+                      const diff = cp.our_price ? ((cp.competitor_price - cp.our_price) / cp.our_price * 100) : null;
+                      return (
+                        <div key={cp.id} className="flex items-center justify-between text-xs">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-slate-900 font-medium truncate">{cp.product_title}</p>
+                            {cp.competitor_channel && <p className="text-indigo-500 text-[10px]">{cp.competitor_channel}</p>}
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 ml-3">
+                            <span className="text-slate-500">{fmt(Number(cp.competitor_price))}</span>
+                            {cp.our_price && <span className="text-slate-400">vs {fmt(Number(cp.our_price))}</span>}
+                            {diff != null && (
+                              <span className={`font-medium ${diff > 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                                {diff > 0 ? "+" : ""}{diff.toFixed(0)}%
+                              </span>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deleteCompetitor(cp.id); }}
+                              className="text-rose-400 hover:text-rose-600"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {isExpanded && compProducts.length === 0 && (
+                  <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
+                    Нет товаров
                   </div>
                 )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* Add button + form */}
       <button
-        onClick={() => setShowCompForm(!showCompForm)}
+        onClick={() => { setShowCompForm(!showCompForm); loadProducts(); }}
         className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
       >
         + Добавить цену
@@ -646,7 +921,7 @@ export default function AnalyticsPage() {
 
       {showCompForm && (
         <form onSubmit={addCompetitorPrice} className="card p-5 space-y-3">
-          <h3 className="text-sm font-semibold text-slate-900">Новая цена конкурента</h3>
+          <h3 className="text-sm font-semibold text-slate-900">Сравнить цену конкурента</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <input
               type="text"
@@ -659,12 +934,27 @@ export default function AnalyticsPage() {
             />
             <input
               type="text"
-              placeholder="@channel (опционально)"
+              placeholder="@channel конкурента (опционально)"
               value={compForm.competitor_channel}
               onChange={(e) => setCompForm({ ...compForm, competitor_channel: e.target.value })}
               className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
               maxLength={255}
             />
+            {/* Our product selector — auto-fills price */}
+            <div>
+              <select
+                value={compForm.product_id}
+                onChange={(e) => onSelectProduct(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+              >
+                <option value="">Наш товар (для авто-цены)</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — {p.variants.length > 0 ? `от ${fmt(Math.min(...p.variants.map((v) => v.price)))} UZS` : "нет вариантов"}
+                  </option>
+                ))}
+              </select>
+            </div>
             <input
               type="text"
               placeholder="Название товара у конкурента"
@@ -676,7 +966,7 @@ export default function AnalyticsPage() {
             />
             <input
               type="number"
-              placeholder="Цена конкурента"
+              placeholder="Цена у конкурента"
               value={compForm.competitor_price}
               onChange={(e) => setCompForm({ ...compForm, competitor_price: e.target.value })}
               className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
@@ -686,7 +976,7 @@ export default function AnalyticsPage() {
             />
             <input
               type="number"
-              placeholder="Наша цена (опционально)"
+              placeholder="Наша цена"
               value={compForm.our_price}
               onChange={(e) => setCompForm({ ...compForm, our_price: e.target.value })}
               className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
@@ -710,30 +1000,37 @@ export default function AnalyticsPage() {
               <th className="px-4 py-3 text-slate-500 font-medium">Товар</th>
               <th className="px-4 py-3 text-slate-500 font-medium">Их цена</th>
               <th className="px-4 py-3 text-slate-500 font-medium">Наша цена</th>
-              <th className="px-4 py-3 text-slate-500 font-medium">Разница</th>
+              <th className="px-4 py-3 text-slate-500 font-medium">Кто выгоднее</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {competitors.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Нет данных по конкурентам</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Добавьте цены конкурентов для сравнения</td></tr>
             ) : competitors.map((c) => {
-              const diff = c.our_price ? ((c.competitor_price - c.our_price) / c.our_price * 100) : null;
+              const cp = Number(c.competitor_price);
+              const op = c.our_price ? Number(c.our_price) : null;
+              const diff = op && op > 0 ? ((cp - op) / op * 100) : null;
+              // positive diff = competitor more expensive = we are cheaper (good)
+              // negative diff = competitor cheaper = we are more expensive (bad)
+              let verdict = "";
+              let verdictClass = "text-slate-400";
+              if (diff != null) {
+                if (diff > 1) { verdict = `Мы дешевле на ${diff.toFixed(1)}%`; verdictClass = "text-emerald-600"; }
+                else if (diff < -1) { verdict = `Мы дороже на ${Math.abs(diff).toFixed(1)}%`; verdictClass = "text-rose-600"; }
+                else { verdict = `Цены ~равны`; verdictClass = "text-slate-500"; }
+              }
               return (
                 <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{c.competitor_name}</div>
-                    {c.competitor_channel && <div className="text-xs text-indigo-600">{c.competitor_channel}</div>}
+                    {c.competitor_channel && <div className="text-xs text-indigo-500">{c.competitor_channel}</div>}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{c.product_title}</td>
-                  <td className="px-4 py-3 text-slate-700">{fmt(Number(c.competitor_price))} {c.currency}</td>
-                  <td className="px-4 py-3 text-slate-700">{c.our_price ? `${fmt(Number(c.our_price))} ${c.currency}` : "--"}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">{fmt(cp)} {c.currency}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">{op ? `${fmt(op)} ${c.currency}` : <span className="text-slate-400">не указана</span>}</td>
                   <td className="px-4 py-3">
-                    {diff != null && (
-                      <span className={diff > 0 ? "text-emerald-600" : "text-rose-600"}>
-                        {diff > 0 ? "+" : ""}{diff.toFixed(1)}%
-                      </span>
-                    )}
+                    <span className={`text-xs font-medium ${verdictClass}`}>{verdict || "--"}</span>
                   </td>
                   <td className="px-4 py-3">
                     <button
@@ -824,12 +1121,25 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Content */}
-      {tab === "overview" && renderOverview()}
-      {tab === "customers" && renderCustomers()}
-      {tab === "conversations" && renderConversations()}
-      {tab === "funnel" && renderFunnel()}
-      {tab === "stock" && renderStock()}
-      {tab === "competitors" && renderCompetitors()}
+      {loading ? (
+        <div className="space-y-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="card p-6 animate-pulse">
+              <div className="h-4 bg-slate-200 rounded w-1/3 mb-3" />
+              <div className="h-8 bg-slate-200 rounded w-1/2" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          {tab === "overview" && renderOverview()}
+          {tab === "customers" && renderCustomers()}
+          {tab === "conversations" && renderConversations()}
+          {tab === "funnel" && renderFunnel()}
+          {tab === "stock" && renderStock()}
+          {tab === "competitors" && renderCompetitors()}
+        </>
+      )}
     </div>
   );
 }

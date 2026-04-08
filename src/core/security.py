@@ -1,27 +1,27 @@
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-import redis
+import redis.asyncio as aioredis
 from jose import JWTError, jwt
 
 from src.core.config import settings
 
-_redis = redis.from_url(settings.redis_url, decode_responses=True)
+_redis = aioredis.from_url(settings.redis_url, decode_responses=True)
 
 
-def blacklist_token(token: str) -> None:
+async def blacklist_token(token: str) -> None:
     """Add a JWT token to the blacklist in Redis."""
     payload = decode_access_token(token)
     if payload and "exp" in payload:
         ttl = int(payload["exp"] - datetime.now(timezone.utc).timestamp())
         if ttl > 0:
-            _redis.setex(f"bl:{token}", ttl, "1")
+            await _redis.setex(f"bl:{token}", ttl, "1")
             return
-    _redis.setex(f"bl:{token}", settings.access_token_expire_minutes * 60, "1")
+    await _redis.setex(f"bl:{token}", settings.access_token_expire_minutes * 60, "1")
 
 
-def is_token_blacklisted(token: str) -> bool:
-    return _redis.exists(f"bl:{token}") > 0
+async def is_token_blacklisted(token: str) -> bool:
+    return await _redis.exists(f"bl:{token}") > 0
 
 
 def hash_password(password: str) -> str:
@@ -46,3 +46,15 @@ def decode_access_token(token: str) -> dict | None:
         return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
     except JWTError:
         return None
+
+
+def create_media_token(user_id: str, ttl_seconds: int = 300) -> str:
+    """Create a short-lived HMAC-signed token for media access (no JWT in URL)."""
+    import hmac
+    import hashlib
+    import time
+
+    expires = int(time.time()) + ttl_seconds
+    payload = f"{user_id}.{expires}"
+    sig = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{payload}.{sig}"

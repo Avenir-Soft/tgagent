@@ -107,6 +107,8 @@ def _product_query_with_relations():
 async def list_products(
     category_id: UUID | None = None,
     active_only: bool = False,
+    limit: int = Query(200, le=1000),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -115,7 +117,7 @@ async def list_products(
         q = q.where(Product.is_active.is_(True))
     if category_id:
         q = q.where(Product.category_id == category_id)
-    result = await db.execute(q.order_by(Product.created_at.desc()))
+    result = await db.execute(q.order_by(Product.created_at.desc()).offset(offset).limit(limit))
     return [_build_product_detail(p) for p in result.scalars().unique().all()]
 
 
@@ -227,6 +229,13 @@ async def delete_variant(
     variant = result.scalar_one_or_none()
     if not variant:
         raise HTTPException(status_code=404, detail="Variant not found")
+    # Prevent deletion if variant is referenced by existing orders
+    from src.orders.models import OrderItem
+    order_ref = await db.execute(
+        select(OrderItem.id).where(OrderItem.product_variant_id == variant_id).limit(1)
+    )
+    if order_ref.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Cannot delete variant: referenced by existing orders")
     await db.delete(variant)
     await db.flush()
 
@@ -239,6 +248,8 @@ async def update_inventory(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
+    if body.reserved_quantity > body.quantity:
+        raise HTTPException(status_code=400, detail="reserved_quantity cannot exceed quantity")
     result = await db.execute(
         select(Inventory).where(
             Inventory.variant_id == variant_id,
@@ -268,6 +279,8 @@ async def create_delivery_rule(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
+    if body.eta_min_days > body.eta_max_days:
+        raise HTTPException(status_code=400, detail="eta_min_days cannot exceed eta_max_days")
     rule = DeliveryRule(tenant_id=user.tenant_id, **body.model_dump())
     db.add(rule)
     await db.flush()
@@ -299,6 +312,8 @@ async def import_delivery_rules_csv(
     import csv
     import io
 
+    MAX_CSV_SIZE = 10 * 1024 * 1024  # 10 MB
+
     content_type = request.headers.get("content-type", "")
     if "multipart/form-data" in content_type:
         form = await request.form()
@@ -306,9 +321,13 @@ async def import_delivery_rules_csv(
         if not file:
             raise HTTPException(status_code=400, detail="No file uploaded")
         raw = await file.read()
+        if len(raw) > MAX_CSV_SIZE:
+            raise HTTPException(status_code=400, detail=f"Файл слишком большой (макс. {MAX_CSV_SIZE // 1024 // 1024} МБ)")
         text = raw.decode("utf-8-sig")
     else:
         body_bytes = await request.body()
+        if len(body_bytes) > MAX_CSV_SIZE:
+            raise HTTPException(status_code=400, detail=f"Файл слишком большой (макс. {MAX_CSV_SIZE // 1024 // 1024} МБ)")
         text = body_bytes.decode("utf-8-sig")
 
     reader = csv.DictReader(io.StringIO(text), delimiter=",")
@@ -316,14 +335,19 @@ async def import_delivery_rules_csv(
     errors = []
     for i, row in enumerate(reader, start=2):
         try:
+            eta_min = int(row.get("eta_min_days", 1))
+            eta_max = int(row.get("eta_max_days", 3))
+            if eta_min > eta_max:
+                errors.append(f"Row {i}: eta_min_days ({eta_min}) > eta_max_days ({eta_max})")
+                continue
             rule = DeliveryRule(
                 tenant_id=user.tenant_id,
                 city=row.get("city") or None,
                 zone=row.get("zone") or None,
                 delivery_type=row.get("delivery_type", "courier"),
                 price=float(row.get("price", 0)),
-                eta_min_days=int(row.get("eta_min_days", 1)),
-                eta_max_days=int(row.get("eta_max_days", 3)),
+                eta_min_days=eta_min,
+                eta_max_days=eta_max,
                 cod_available=row.get("cod_available", "").lower() in ("true", "1", "yes", "да"),
             )
             db.add(rule)
@@ -352,6 +376,8 @@ async def update_delivery_rule(
         raise HTTPException(status_code=404, detail="Delivery rule not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(rule, field, value)
+    if rule.eta_min_days > rule.eta_max_days:
+        raise HTTPException(status_code=400, detail="eta_min_days cannot exceed eta_max_days")
     await db.flush()
     await db.refresh(rule)
     return DeliveryRuleOut.model_validate(rule)

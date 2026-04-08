@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { useEventSource, SSEEvent } from "@/lib/use-event-source";
 
 interface DailyCount { date: string; count: number }
 interface RecentOrder { order_number: string; customer: string; amount: number; status: string; created_at: string | null }
@@ -310,17 +311,27 @@ export default function DashboardPage() {
   const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
   const [chartDays, setChartDays] = useState(7);
 
-  const load = (days?: number) => {
+  const load = useCallback((days?: number) => {
     const d = days ?? chartDays;
     api.get<Stats>(`/dashboard/stats?days=${d}`).then(setStats).catch(console.error);
     api.get<LowStockItem[]>("/dashboard/low-stock").then(setLowStock).catch(console.error);
-  };
+  }, [chartDays]);
 
-  useEffect(() => { load(); const id = setInterval(() => load(), 30_000); return () => clearInterval(id); }, []);
+  // SSE: refresh dashboard on relevant events (debounced)
+  const sseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSSE = useCallback((event: SSEEvent) => {
+    if (["order_status_changed", "new_conversation", "conversation_updated", "new_message"].includes(event.event)) {
+      if (sseTimerRef.current) clearTimeout(sseTimerRef.current);
+      sseTimerRef.current = setTimeout(() => load(), 1000);
+    }
+  }, [load]);
+  useEventSource(undefined, handleSSE);
+
+  // Initial load + slow fallback poll (60s)
+  useEffect(() => { load(); const id = setInterval(() => load(), 60_000); return () => clearInterval(id); }, [load]);
 
   const handlePeriodChange = (days: number) => {
     setChartDays(days);
-    api.get<Stats>(`/dashboard/stats?days=${days}`).then(setStats).catch(console.error);
   };
 
   if (!stats) return <DashSkeleton />;

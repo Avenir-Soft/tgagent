@@ -6,7 +6,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import text
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import get_current_user, require_store_owner
@@ -113,8 +113,27 @@ async def compute_rfm(
             updated_at = now()
     """)
 
-    for row in rows:
-        await db.execute(upsert_query, {"tid": tid, **dict(row)})
+    # Batch upsert in chunks of 100 to reduce memory pressure
+    batch_size = 100
+    for batch_start in range(0, len(rows), batch_size):
+        batch = rows[batch_start:batch_start + batch_size]
+        for row in batch:
+            await db.execute(upsert_query, {"tid": tid, **dict(row)})
+        await db.flush()
+
+    # Remove stale segments (leads without qualifying orders anymore)
+    active_lead_ids = [r["lead_id"] for r in rows]
+    if active_lead_ids:
+        await db.execute(
+            delete(CustomerSegment).where(
+                CustomerSegment.tenant_id == user.tenant_id,
+                CustomerSegment.lead_id.notin_(active_lead_ids),
+            )
+        )
+    else:
+        await db.execute(
+            delete(CustomerSegment).where(CustomerSegment.tenant_id == user.tenant_id)
+        )
 
     await db.flush()
     logger.info("RFM computed for tenant %s: %d customers", tid[:8], len(rows))
@@ -180,6 +199,88 @@ async def list_rfm_customers(
     return [CustomerSegmentOut.model_validate(r) for r in rows]
 
 
+@router.get("/rfm/customer-detail")
+async def get_customer_detail(
+    telegram_user_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get customer segment reason, conversation link, and recent messages."""
+    tid = str(user.tenant_id)
+
+    # Find conversation for this telegram user
+    conv_result = await db.execute(
+        text("""
+            SELECT id, telegram_chat_id, last_message_at, state
+            FROM conversations
+            WHERE tenant_id = :tid AND telegram_user_id = :tuid
+            ORDER BY last_message_at DESC NULLS LAST
+            LIMIT 1
+        """),
+        {"tid": tid, "tuid": telegram_user_id},
+    )
+    conv = conv_result.mappings().first()
+    conversation_id = str(conv["id"]) if conv else None
+
+    # Get last customer messages (to explain segment)
+    messages = []
+    if conversation_id:
+        msg_result = await db.execute(
+            text("""
+                SELECT raw_text, sender_type, created_at
+                FROM messages
+                WHERE conversation_id = :cid
+                ORDER BY created_at DESC
+                LIMIT 10
+            """),
+            {"cid": conversation_id},
+        )
+        for m in msg_result.mappings():
+            messages.append({
+                "text": (m["raw_text"] or "")[:200],
+                "sender_type": m["sender_type"],
+                "created_at": m["created_at"].isoformat() if m["created_at"] else None,
+            })
+        messages.reverse()
+
+    # Get segment info
+    seg_result = await db.execute(
+        text("""
+            SELECT segment, recency_days, frequency, monetary, r_score, f_score, m_score
+            FROM customer_segments
+            WHERE tenant_id = :tid AND telegram_user_id = :tuid
+            LIMIT 1
+        """),
+        {"tid": tid, "tuid": telegram_user_id},
+    )
+    seg = seg_result.mappings().first()
+
+    # Build reason explanation
+    reason = ""
+    if seg:
+        segment = seg["segment"]
+        r, f, m = seg["r_score"], seg["f_score"], seg["m_score"]
+        recency = seg["recency_days"]
+        freq = seg["frequency"]
+
+        reasons = {
+            "vip": f"Частые покупки ({freq} заказов), высокий чек, активен {recency} дн. назад",
+            "loyal": f"Стабильные покупки ({freq} заказов), был {recency} дн. назад",
+            "promising": f"Недавно активен ({recency} дн.), потенциал роста (R={r}, F={f})",
+            "new": f"Новый клиент, первая покупка {recency} дн. назад",
+            "at_risk": f"Давно не покупал ({recency} дн.), раньше было {freq} заказов. R={r}, F={f}",
+            "lost": f"Не активен {recency} дн., был {freq} заказ(ов). Возможно ушёл к конкуренту",
+            "regular": f"Стандартная активность: {freq} заказов, {recency} дн. назад",
+        }
+        reason = reasons.get(segment, f"R={r} F={f} M={m}")
+
+    return {
+        "conversation_id": conversation_id,
+        "reason": reason,
+        "messages": messages,
+    }
+
+
 # ── Conversation Analytics ─────────────────────────────────────────────
 
 
@@ -193,27 +294,29 @@ async def get_conversation_analytics(
     tid = str(user.tenant_id)
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Avg & median response time
+    # Avg & median response time (using LEAD window function instead of correlated subquery)
     rt_result = await db.execute(
         text("""
-            WITH pairs AS (
+            WITH ordered_msgs AS (
                 SELECT
-                    m1.conversation_id,
-                    m1.created_at AS customer_at,
-                    (SELECT MIN(m2.created_at) FROM messages m2
-                     WHERE m2.conversation_id = m1.conversation_id
-                       AND m2.created_at > m1.created_at
-                       AND m2.direction = 'outbound') AS response_at
-                FROM messages m1
-                WHERE m1.tenant_id = :tid
-                  AND m1.direction = 'inbound'
-                  AND m1.created_at >= :since
+                    direction,
+                    created_at,
+                    LEAD(created_at) OVER (PARTITION BY conversation_id ORDER BY created_at) AS next_at,
+                    LEAD(direction) OVER (PARTITION BY conversation_id ORDER BY created_at) AS next_dir
+                FROM messages
+                WHERE tenant_id = :tid
+                  AND created_at >= :since
+            ),
+            pairs AS (
+                SELECT
+                    EXTRACT(EPOCH FROM (next_at - created_at)) AS rt_seconds
+                FROM ordered_msgs
+                WHERE direction = 'inbound' AND next_dir = 'outbound'
             )
             SELECT
-                AVG(EXTRACT(EPOCH FROM (response_at - customer_at)))::float AS avg_rt,
-                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (response_at - customer_at)))::float AS median_rt
+                AVG(rt_seconds)::float AS avg_rt,
+                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rt_seconds)::float AS median_rt
             FROM pairs
-            WHERE response_at IS NOT NULL
         """),
         {"tid": tid, "since": since},
     )
@@ -345,7 +448,7 @@ async def get_funnel(
 
 @router.get("/stock-forecast", response_model=StockForecastResponse)
 async def get_stock_forecast(
-    forecast_days: int = Query(14, ge=1, le=60),
+    forecast_days: int = Query(14, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -377,6 +480,7 @@ async def get_stock_forecast(
             )
             SELECT
                 i.variant_id,
+                pv.product_id,
                 pv.title AS variant_title,
                 p.name AS product_name,
                 (i.quantity - i.reserved_quantity)::int AS available_stock,
@@ -412,6 +516,7 @@ async def get_stock_forecast(
         risk_summary[risk] += 1
         items.append(StockForecastItem(
             variant_id=row["variant_id"],
+            product_id=row["product_id"],
             variant_title=row["variant_title"] or "",
             product_name=row["product_name"] or "",
             available_stock=row["available_stock"],
@@ -543,9 +648,8 @@ async def delete_competitor_price(
     user: User = Depends(require_store_owner),
 ):
     """Delete a competitor price entry."""
-    from sqlalchemy import select as sa_select
     result = await db.execute(
-        sa_select(CompetitorPrice).where(
+        select(CompetitorPrice).where(
             CompetitorPrice.id == entry_id,
             CompetitorPrice.tenant_id == user.tenant_id,
         )

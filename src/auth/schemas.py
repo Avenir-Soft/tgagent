@@ -1,14 +1,17 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
+
+VALID_ROLES = Literal["super_admin", "store_owner", "operator"]
 
 
 class UserCreate(BaseModel):
     full_name: str
     email: EmailStr
     password: str
-    role: str = "store_owner"
+    role: VALID_ROLES = "store_owner"
 
 
 class UserOut(BaseModel):

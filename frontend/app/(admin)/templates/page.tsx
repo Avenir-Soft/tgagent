@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import Link from "next/link";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Template {
   id: string;
@@ -43,6 +44,9 @@ export default function TemplatesPage() {
     language: "ru",
     template_text: "",
   });
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // Preview toggle
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -108,7 +112,6 @@ export default function TemplatesPage() {
   };
 
   const deleteTemplate = async (id: string) => {
-    if (!confirm("Удалить шаблон?")) return;
     await api.delete(`/templates/${id}`);
     load();
   };
@@ -388,7 +391,7 @@ export default function TemplatesPage() {
                     Изменить
                   </button>
                   <button
-                    onClick={() => deleteTemplate(t.id)}
+                    onClick={() => setDeleteTarget(t.id)}
                     className="px-2 py-0.5 rounded text-xs bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors"
                   >
                     Удалить
@@ -428,6 +431,19 @@ export default function TemplatesPage() {
           ))
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Удалить шаблон"
+        message="Удалить этот шаблон? Это действие нельзя отменить."
+        confirmText="Удалить"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget) deleteTemplate(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

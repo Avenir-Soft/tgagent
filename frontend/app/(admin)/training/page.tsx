@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, API_BASE } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import Link from "next/link";
 
 interface TrainingStats {
@@ -98,6 +99,7 @@ export default function TrainingPage() {
   const [rejectingMsgId, setRejectingMsgId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectSelected, setRejectSelected] = useState("");
+  const [pendingConfirm, setPendingConfirm] = useState<{ title: string; message: string; variant: "danger" | "warning" | "info"; action: () => void } | null>(null);
 
   const { toast } = useToast();
 
@@ -140,35 +142,47 @@ export default function TrainingPage() {
     }
   };
 
-  const smartLabelAll = async () => {
-    if (!confirm("Запустить GPT-4o оценку ВСЕХ неразмеченных ответов?\nЭто может занять 1-2 минуты и стоить ~$1-3.")) return;
-    setSmartLabelingAll(true);
-    try {
-      const r = await api.post<{ approved: number; rejected: number; total_reviewed: number; conversations_processed: number }>(
-        "/training/smart-label-all",
-        {}
-      );
-      toast(`Готово! ${r.conversations_processed} диалогов: +${r.approved} / -${r.rejected}`, "success");
-      refresh();
-    } catch {
-      toast("Ошибка", "error");
-    } finally {
-      setSmartLabelingAll(false);
-    }
+  const smartLabelAll = () => {
+    setPendingConfirm({
+      title: "Автооценка GPT-4o",
+      message: "Запустить GPT-4o оценку ВСЕХ неразмеченных ответов?\nЭто может занять 1-2 минуты и стоить ~$1-3.",
+      variant: "warning",
+      action: async () => {
+        setSmartLabelingAll(true);
+        try {
+          const r = await api.post<{ approved: number; rejected: number; total_reviewed: number; conversations_processed: number }>(
+            "/training/smart-label-all",
+            {}
+          );
+          toast(`Готово! ${r.conversations_processed} диалогов: +${r.approved} / -${r.rejected}`, "success");
+          refresh();
+        } catch {
+          toast("Ошибка", "error");
+        } finally {
+          setSmartLabelingAll(false);
+        }
+      },
+    });
   };
 
-  const resetLabels = async (id: string) => {
-    if (!confirm("Сбросить все метки для этого диалога? Можно будет переразметить.")) return;
-    setResetting(id);
-    try {
-      const r = await api.post<{ reset_count: number }>(`/training/conversations/${id}/reset-labels`, {});
-      toast(`Сброшено ${r.reset_count} меток`, "success");
-      refresh();
-    } catch {
-      toast("Ошибка", "error");
-    } finally {
-      setResetting(null);
-    }
+  const resetLabels = (id: string) => {
+    setPendingConfirm({
+      title: "Сброс меток",
+      message: "Сбросить все метки для этого диалога? Можно будет переразметить.",
+      variant: "warning",
+      action: async () => {
+        setResetting(id);
+        try {
+          const r = await api.post<{ reset_count: number }>(`/training/conversations/${id}/reset-labels`, {});
+          toast(`Сброшено ${r.reset_count} меток`, "success");
+          refresh();
+        } catch {
+          toast("Ошибка", "error");
+        } finally {
+          setResetting(null);
+        }
+      },
+    });
   };
 
   const toggleExpand = async (convId: string) => {
@@ -223,54 +237,71 @@ export default function TrainingPage() {
   const exportJSONL = async () => {
     setExporting(true);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      let token: string | null = null;
+      try { token = localStorage.getItem("token"); } catch { /* SSR / disabled storage */ }
       const res = await fetch(`${API_BASE}/training/export.jsonl`, {
         headers: { Authorization: `Bearer ${token || ""}` },
       });
+      if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `training_${new Date().toISOString().slice(0, 10)}.jsonl`;
       a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast("Ошибка экспорта", "error");
     } finally {
       setExporting(false);
     }
   };
 
-  const startFineTune = async () => {
-    if (!confirm("Запустить fine-tuning на основе одобренных данных?\nOpenAI возьмёт ~$0.50-5 в зависимости от объёма.")) return;
-    setFineTuning(true);
-    try {
-      const r = await api.post<{ job_id: string; training_examples: number; status: string }>(
-        "/training/fine-tune",
-        {}
-      );
-      toast(`Fine-tuning запущен! ${r.training_examples} примеров`, "success");
-      api.get<FineTuneJob[]>("/training/fine-tune-status").then(setFtJobs).catch(() => {});
-    } catch (e: any) {
-      toast(e?.message || "Ошибка при запуске fine-tuning", "error");
-    } finally {
-      setFineTuning(false);
-    }
+  const startFineTune = () => {
+    setPendingConfirm({
+      title: "Fine-tuning",
+      message: "Запустить fine-tuning на основе одобренных данных?\nOpenAI возьмёт ~$0.50-5 в зависимости от объёма.",
+      variant: "warning",
+      action: async () => {
+        setFineTuning(true);
+        try {
+          const r = await api.post<{ job_id: string; training_examples: number; status: string }>(
+            "/training/fine-tune",
+            {}
+          );
+          toast(`Fine-tuning запущен! ${r.training_examples} примеров`, "success");
+          api.get<FineTuneJob[]>("/training/fine-tune-status").then(setFtJobs).catch(() => {});
+        } catch (e: any) {
+          toast(e?.message || "Ошибка при запуске fine-tuning", "error");
+        } finally {
+          setFineTuning(false);
+        }
+      },
+    });
   };
 
   // Rules actions
-  const generateRules = async () => {
-    if (!confirm("GPT-4o проанализирует отклонённые ответы и создаст правила для промпта.\nСтоимость ~$0.10-0.50.")) return;
-    setGenerating(true);
-    try {
-      const r = await api.post<{ generated: number; total_rules: number; rules: PromptRule[] }>(
-        "/training/generate-rules",
-        {}
-      );
-      toast(`Создано ${r.generated} правил из анализа ошибок`, "success");
-      refreshRules();
-    } catch (e: any) {
-      toast(e?.message || "Ошибка генерации правил", "error");
-    } finally {
-      setGenerating(false);
-    }
+  const generateRules = () => {
+    setPendingConfirm({
+      title: "Генерация правил",
+      message: "GPT-4o проанализирует отклонённые ответы и создаст правила для промпта.\nСтоимость ~$0.10-0.50.",
+      variant: "info",
+      action: async () => {
+        setGenerating(true);
+        try {
+          const r = await api.post<{ generated: number; total_rules: number; rules: PromptRule[] }>(
+            "/training/generate-rules",
+            {}
+          );
+          toast(`Создано ${r.generated} правил из анализа ошибок`, "success");
+          refreshRules();
+        } catch (e: any) {
+          toast(e?.message || "Ошибка генерации правил", "error");
+        } finally {
+          setGenerating(false);
+        }
+      },
+    });
   };
 
   const addManualRule = async () => {
@@ -291,20 +322,26 @@ export default function TrainingPage() {
   const toggleRule = async (id: string, active: boolean) => {
     try {
       await api.patch(`/ai-settings/prompt-rules/${id}`, { active });
-      setRules(rules.map((r) => (r.id === id ? { ...r, active } : r)));
+      setRules((prev) => prev.map((r) => (r.id === id ? { ...r, active } : r)));
     } catch {
       toast("Ошибка", "error");
     }
   };
 
-  const deleteRule = async (id: string) => {
-    if (!confirm("Удалить это правило?")) return;
-    try {
-      await api.delete(`/ai-settings/prompt-rules/${id}`);
-      setRules(rules.filter((r) => r.id !== id));
-    } catch {
-      toast("Ошибка", "error");
-    }
+  const deleteRule = (id: string) => {
+    setPendingConfirm({
+      title: "Удалить правило",
+      message: "Удалить это правило?",
+      variant: "danger",
+      action: async () => {
+        try {
+          await api.delete(`/ai-settings/prompt-rules/${id}`);
+          setRules((prev) => prev.filter((r) => r.id !== id));
+        } catch {
+          toast("Ошибка", "error");
+        }
+      },
+    });
   };
 
   const statusColors: Record<string, string> = {
@@ -900,6 +937,16 @@ export default function TrainingPage() {
           </div>
         </>
       )}
+      <ConfirmDialog
+        open={!!pendingConfirm}
+        title={pendingConfirm?.title || ""}
+        message={pendingConfirm?.message || ""}
+        confirmText="Подтвердить"
+        variant={pendingConfirm?.variant || "warning"}
+        onConfirm={() => { pendingConfirm?.action(); setPendingConfirm(null); }}
+        onCancel={() => setPendingConfirm(null)}
+      />
+
       {/* Rejection reason modal */}
       {rejectingMsgId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setRejectingMsgId(null)}>

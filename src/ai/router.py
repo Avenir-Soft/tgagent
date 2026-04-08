@@ -45,6 +45,9 @@ async def update_ai_settings(
     if settings:
         for field, value in body.model_dump().items():
             setattr(settings, field, value)
+        # JSONB fields need explicit flag_modified for SQLAlchemy change detection
+        if body.prompt_rules is not None:
+            flag_modified(settings, "prompt_rules")
     else:
         settings = AiSettings(tenant_id=user.tenant_id, **body.model_dump())
         db.add(settings)

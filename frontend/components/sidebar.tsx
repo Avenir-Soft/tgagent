@@ -187,7 +187,7 @@ export default function Sidebar({ open, onClose }: { open?: boolean; onClose?: (
                 <p className="text-[10px] text-slate-500 capitalize">{user?.role?.replace("_", " ")}</p>
               </div>
               <button
-                onClick={() => { const next = toggleTheme(); setIsDark(next === "dark"); }}
+                onClick={() => { const next = toggleTheme(); setIsDark(next === "dark" || (next === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)); }}
                 className="text-slate-500 hover:text-amber-400 transition-colors flex-shrink-0"
                 title={isDark ? "Светлая тема" : "Тёмная тема"}
               >

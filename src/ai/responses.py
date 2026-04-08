@@ -5,12 +5,32 @@ and the state_context summary builder used in the system prompt.
 """
 
 
-def _build_order_modification_response(tool_name: str, result: dict, language: str = "ru") -> str | None:
+def _ru_plural(n, one: str, few: str, many: str) -> str:
+    """Russian plural: 1 товар, 2-4 товара, 5+ товаров."""
+    n = abs(int(n)) if n not in (None, "?") else 0
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
+_FORMAL_TONES = {"formal_business", "formal", "business"}
+
+
+def _strip_emoji(text: str) -> str:
+    """Remove common emoji from text for formal tone."""
+    import re
+    return re.sub(r"[\U0001f300-\U0001f9ff\u2600-\u26ff\u2700-\u27bf]", "", text).replace("  ", " ").strip()
+
+
+def _build_order_modification_response(tool_name: str, result: dict, language: str = "ru", tone: str = "friendly_sales") -> str | None:
     """Build a deterministic response for order modification tools.
 
     Returns a ready-made response string, bypassing the LLM entirely.
     This prevents the LLM from asking for address/checkout after modifying an existing order.
     Language-aware: responds in the customer's language.
+    Tone-aware: strips emoji for formal tones.
     """
     title = result.get("item_title", "?")
     order_num = result.get("order_number", "")
@@ -36,7 +56,8 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
                 "uz_latin": f"{title} {order_num} buyurtmaga qo'shildi! Jami: {total_fmt} so'm 👍 Yana nima kerak bo'lsa, yozing!",
                 "en": f"Added {title} to order {order_num}! Total: {total_fmt} UZS 👍 Need anything else?",
             }
-        return templates.get(language, templates["ru"])
+        resp = templates.get(language, templates["ru"])
+        return _strip_emoji(resp) if tone in _FORMAL_TONES else resp
 
     if tool_name == "remove_item_from_order" and result.get("success"):
         removed = result.get("removed_item", result.get("item_title", "?"))
@@ -51,12 +72,13 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
             }
         else:
             templates = {
-                "ru": f"Убрал {removed} из заказа {order_num}. Осталось {remaining} товаров, сумма: {total_fmt} сум. Ещё что-то?",
+                "ru": f"Убрал {removed} из заказа {order_num}. Осталось {remaining} {_ru_plural(remaining, 'товар', 'товара', 'товаров')}, сумма: {total_fmt} сум. Ещё что-то?",
                 "uz_cyrillic": f"{removed} {order_num} буюртмадан олиб ташланди. {remaining} та товар қолди, жами: {total_fmt} сўм. Яна нима керак?",
                 "uz_latin": f"{removed} {order_num} buyurtmadan olib tashlandi. {remaining} ta tovar qoldi, jami: {total_fmt} so'm. Yana nima kerak?",
                 "en": f"Removed {removed} from order {order_num}. {remaining} items left, total: {total_fmt} UZS. Anything else?",
             }
-        return templates.get(language, templates["ru"])
+        resp = templates.get(language, templates["ru"])
+        return _strip_emoji(resp) if tone in _FORMAL_TONES else resp
 
     # Forced response for create_order_draft — ALWAYS show order number + real items
     if tool_name == "create_order_draft" and result.get("order_id"):
@@ -88,7 +110,7 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
         if language == "en":
             delivery_line = f"\n  - Delivery: {delivery}" if delivery else ""
             eta_line = f"\nETA: {eta}" if eta else ""
-            return (
+            resp = (
                 f"Order confirmed! 🎉\n\n"
                 f"Order #{order_num}\n"
                 f"Items:\n{items_text}{delivery_line}\n\n"
@@ -98,7 +120,7 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
         elif language == "uz_cyrillic":
             delivery_line = f"\n  - Етказиб бериш: {delivery}" if delivery else ""
             eta_line = f"\nМуддати: {eta}" if eta else ""
-            return (
+            resp = (
                 f"Буюртмангиз расмийлаштирилди! 🎉\n\n"
                 f"Буюртма рақами: {order_num}\n"
                 f"Товарлар:\n{items_text}{delivery_line}\n\n"
@@ -108,7 +130,7 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
         elif language == "uz_latin":
             delivery_line = f"\n  - Yetkazib berish: {delivery}" if delivery else ""
             eta_line = f"\nMuddati: {eta}" if eta else ""
-            return (
+            resp = (
                 f"Buyurtmangiz rasmiylashtirildi! 🎉\n\n"
                 f"Buyurtma raqami: {order_num}\n"
                 f"Tovarlar:\n{items_text}{delivery_line}\n\n"
@@ -118,13 +140,14 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
         else:  # ru
             delivery_line = f"\n  - Доставка: {delivery}" if delivery else ""
             eta_line = f"\nСрок: {eta}" if eta else ""
-            return (
+            resp = (
                 f"Заказ оформлен! 🎉\n\n"
                 f"Номер заказа: {order_num}\n"
                 f"Товары:\n{items_text}{delivery_line}\n\n"
                 f"Итого: {total_fmt} сум{eta_line}\n\n"
                 f"Спасибо за покупку! Если что еще надо пишите!"
             )
+        return _strip_emoji(resp) if tone in _FORMAL_TONES else resp
 
     # Forced response for request_handoff — always respond in customer's language
     if tool_name == "request_handoff" and result.get("status") == "handoff_created":
@@ -134,7 +157,8 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
             "uz_latin": "Operatorni chaqirdim. Iltimos, biroz kuting — tez orada javob beramiz. 🙏",
             "en": "I've connected you to an operator. Please wait a moment. 🙏",
         }
-        return templates.get(language, templates["ru"])
+        resp = templates.get(language, templates["ru"])
+        return _strip_emoji(resp) if tone in _FORMAL_TONES else resp
 
     return None
 

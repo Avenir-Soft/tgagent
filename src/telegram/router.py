@@ -51,7 +51,11 @@ async def _store_pending_auth(phone: str, data: dict, client: object):
 
 
 async def _get_pending_auth(phone: str) -> tuple[dict | None, object | None]:
-    """Retrieve pending auth from Redis + client from memory."""
+    """Retrieve pending auth from Redis + client from memory.
+
+    If the client is not in memory (e.g. different gunicorn worker),
+    reconstruct it from the session file stored on disk.
+    """
     r = await _get_redis()
     key = f"pending_auth:{phone}"
     raw = await r.get(key)
@@ -62,11 +66,33 @@ async def _get_pending_auth(phone: str) -> tuple[dict | None, object | None]:
     data = json.loads(raw)
     client = _pending_clients.get(phone)
     if not client:
-        # Client lost (process restart) — Redis data is stale
-        r2 = await _get_redis()
-        await r2.delete(key)
-        await r2.aclose()
-        return None, None
+        # Client lost (different worker or process restart) — reconstruct from session file
+        session_path = data.get("session_path")
+        if not session_path:
+            r2 = await _get_redis()
+            await r2.delete(key)
+            await r2.aclose()
+            return None, None
+        try:
+            from telethon import TelegramClient
+            client = TelegramClient(
+                session_path,
+                settings.telegram_api_id,
+                settings.telegram_api_hash,
+                device_model="AI Closer Server",
+                system_version="Linux 5.15",
+                app_version="1.0.0",
+                lang_code="ru",
+                system_lang_code="ru",
+            )
+            await client.connect()
+            _pending_clients[phone] = client
+        except Exception:
+            logger.warning("Failed to reconstruct Telethon client for %s", phone)
+            r2 = await _get_redis()
+            await r2.delete(key)
+            await r2.aclose()
+            return None, None
     return data, client
 
 
@@ -532,29 +558,68 @@ async def get_media(
 ):
     """Download media from Telegram for a message. Returns the file bytes.
 
-    Supports auth via Bearer header OR ?token= query param (needed for <img>/<video>/<audio> tags).
+    Supports auth via:
+    1. Bearer header (standard)
+    2. ?token= query param with signed short-lived HMAC token (for <img>/<video> tags)
+    3. ?token= with JWT (legacy, includes blacklist check)
     """
-    from src.core.security import decode_access_token
+    from src.core.security import decode_access_token, is_token_blacklisted
 
-    # Try Bearer header first, then query param
-    jwt_token = None
+    user = None
+
+    # Try Bearer header first
     auth_header = request.headers.get("authorization", "")
     if auth_header.startswith("Bearer "):
         jwt_token = auth_header[7:]
+        payload = decode_access_token(jwt_token)
+        if not payload or not payload.get("sub"):
+            raise HTTPException(status_code=401, detail="Invalid token")
+        # Blacklist check
+        try:
+            if await is_token_blacklisted(jwt_token):
+                raise HTTPException(status_code=401, detail="Token revoked")
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # Redis unavailable — fail-open
+        user_result = await db.execute(
+            select(User).where(User.id == UUID(payload["sub"]), User.is_active.is_(True))
+        )
+        user = user_result.scalar_one_or_none()
     elif token:
-        jwt_token = token
+        # Try signed media token first (HMAC, short-lived)
+        import hmac, hashlib, time as _time
+        parts = token.split(".", 2)
+        if len(parts) == 3:
+            # Format: user_id.expires.signature
+            try:
+                uid_str, expires_str, sig = parts
+                expected = hmac.new(
+                    settings.secret_key.encode(), f"{uid_str}.{expires_str}".encode(), hashlib.sha256
+                ).hexdigest()[:32]
+                if hmac.compare_digest(sig, expected) and int(expires_str) > int(_time.time()):
+                    user_result = await db.execute(
+                        select(User).where(User.id == UUID(uid_str), User.is_active.is_(True))
+                    )
+                    user = user_result.scalar_one_or_none()
+            except (ValueError, TypeError):
+                pass  # Fall through to JWT
+        # Fallback: treat as JWT (legacy)
+        if not user:
+            payload = decode_access_token(token)
+            if payload and payload.get("sub"):
+                try:
+                    if await is_token_blacklisted(token):
+                        raise HTTPException(status_code=401, detail="Token revoked")
+                except HTTPException:
+                    raise
+                except Exception:
+                    pass
+                user_result = await db.execute(
+                    select(User).where(User.id == UUID(payload["sub"]), User.is_active.is_(True))
+                )
+                user = user_result.scalar_one_or_none()
 
-    if not jwt_token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    payload = decode_access_token(jwt_token)
-    if not payload or not payload.get("sub"):
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user_result = await db.execute(
-        select(User).where(User.id == UUID(payload["sub"]), User.is_active.is_(True))
-    )
-    user = user_result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -618,3 +683,10 @@ async def get_media(
     except Exception as e:
         logger.exception("Failed to download media for message %s: %s", message_id, e)
         raise HTTPException(status_code=500, detail="Failed to download media")
+
+
+@router.get("/media-token")
+async def get_media_token(user: User = Depends(get_current_user)):
+    """Get a short-lived signed token for media access (avoids JWT in URL logs)."""
+    from src.core.security import create_media_token
+    return {"token": create_media_token(str(user.id))}

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import Link from "next/link";
+import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -71,6 +72,7 @@ function timePending(created: string): string {
 }
 
 export default function HandoffsPage() {
+  const { toast } = useToast();
   const [handoffs, setHandoffs] = useState<Handoff[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [operators, setOperators] = useState<Operator[]>([]);
@@ -180,32 +182,40 @@ export default function HandoffsPage() {
   }, [load]);
 
   const resolve = async (id: string, notes: string) => {
-    await api.patch(`/handoffs/${id}`, {
-      status: "resolved",
-      resolution_notes: notes || null,
-    });
-    setHandoffs((prev) =>
-      prev.map((h) =>
-        h.id === id ? { ...h, status: "resolved", resolution_notes: notes || null } : h
-      )
-    );
-    setResolvingId(null);
-    setResolveNotes("");
+    try {
+      await api.patch(`/handoffs/${id}`, {
+        status: "resolved",
+        resolution_notes: notes || null,
+      });
+      setHandoffs((prev) =>
+        prev.map((h) =>
+          h.id === id ? { ...h, status: "resolved", resolution_notes: notes || null } : h
+        )
+      );
+      setResolvingId(null);
+      setResolveNotes("");
+    } catch (e: any) {
+      toast(e?.detail || "Ошибка при закрытии", "error");
+    }
   };
 
   const assignOperator = async (handoffId: string, operatorId: string) => {
     const op = operators.find((o) => o.id === operatorId);
-    await api.patch(`/handoffs/${handoffId}`, {
-      assigned_to_user_id: operatorId,
-      status: "assigned",
-    });
-    setHandoffs((prev) =>
-      prev.map((h) =>
-        h.id === handoffId
-          ? { ...h, assigned_to_user_id: operatorId, assigned_to_user_name: op?.full_name || null, status: "assigned" }
-          : h
-      )
-    );
+    try {
+      await api.patch(`/handoffs/${handoffId}`, {
+        assigned_to_user_id: operatorId,
+        status: "assigned",
+      });
+      setHandoffs((prev) =>
+        prev.map((h) =>
+          h.id === handoffId
+            ? { ...h, assigned_to_user_id: operatorId, assigned_to_user_name: op?.full_name || null, status: "assigned" }
+            : h
+        )
+      );
+    } catch (e: any) {
+      toast(e?.detail || "Ошибка назначения оператора", "error");
+    }
   };
 
   const pendingCount = handoffs.filter((h) => h.status === "pending").length;

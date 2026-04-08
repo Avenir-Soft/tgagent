@@ -8,6 +8,7 @@ engine = create_async_engine(
     echo=settings.database_echo,
     pool_size=20,
     max_overflow=10,
+    pool_pre_ping=True,
     connect_args={"ssl": False},
 )
 
@@ -19,6 +20,13 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncSession:  # type: ignore[misc]
+    """FastAPI dependency: yields a session that auto-commits on success.
+
+    Handlers use ``await db.flush()`` to push changes within the transaction.
+    If the handler completes without exception, this generator commits.
+    If any exception propagates, the entire transaction is rolled back —
+    including all prior flushes — so partial writes cannot occur.
+    """
     async with async_session_factory() as session:
         try:
             yield session

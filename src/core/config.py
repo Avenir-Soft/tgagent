@@ -1,4 +1,14 @@
+import logging
+import warnings
+
 from pydantic_settings import BaseSettings
+
+_logger = logging.getLogger(__name__)
+
+_DEFAULT_SECRETS = {
+    "CHANGE-ME-IN-PRODUCTION",
+    "CHANGE-ME-32-BYTES-KEY-HERE!!!!",
+}
 
 
 class Settings(BaseSettings):
@@ -38,5 +48,18 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    def check_secrets(self) -> None:
+        """Warn or raise if default secrets are still in use."""
+        if self.secret_key in _DEFAULT_SECRETS or self.encryption_key in _DEFAULT_SECRETS:
+            msg = (
+                "SECURITY: secret_key or encryption_key is set to the default value. "
+                "Set SECRET_KEY and ENCRYPTION_KEY in .env before deploying to production."
+            )
+            if not self.debug:
+                raise RuntimeError(msg)
+            _logger.warning(msg)
+            warnings.warn(msg, stacklevel=2)
+
 
 settings = Settings()
+settings.check_secrets()

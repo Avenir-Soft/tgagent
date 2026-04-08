@@ -94,12 +94,13 @@ def _detect_language(text: str, current_language: str = "ru") -> str:
     # Without this, "Привет" in a conversation with current_language=uz_cyrillic
     # falls through to the fallback and stays uz_cyrillic.
     ru_strong_words = {
-        "привет", "здравствуйте", "здрасте", "здарова", "добрый",
+        "привет", "приветик", "прив", "здравствуйте", "здрасте", "здарова", "здаров", "здоров", "здорова", "добрый",
         "хочу", "хотел", "хотела", "можете", "можно", "пожалуйста",
         "спасибо", "подскажите", "покажите", "сколько", "почему",
         "заказать", "говорить", "говорите", "русском", "русски",
         "скажите", "помогите", "нужен", "нужна", "нужно",
         "оформить", "доставка", "доставку",
+        "ку", "хай", "хеллоу",  # informal greetings
     }
     if words & ru_strong_words:
         return "ru"
@@ -116,8 +117,9 @@ def _detect_language(text: str, current_language: str = "ru") -> str:
         if latin_count > len(text_lower) * 0.4:
             return "en"
 
-    # Short messages (1-2 words or < 5 chars) with no strong markers → keep current language
-    if len(stripped) < 5 or len(word_list) <= 1:
+    # Very short messages (< 3 chars) with no strong markers → keep current language
+    # Single-word messages (3+ chars) still continue to extended checks below
+    if len(stripped) < 3:
         return current_language
 
     # --- Uzbek Latin markers (extended) ---
@@ -312,24 +314,28 @@ def _check_greeting(text: str, language: str) -> str | None:
             # Multi-word: check all words present. Single-word: check in word set.
             if len(pattern_words) > 1:
                 if pattern_words <= clean_words_set:
-                    responses = _HOW_ARE_YOU_RESPONSES.get(language, _HOW_ARE_YOU_RESPONSES["ru"])
+                    # Use matched pattern's language — more reliable than detected for short greetings
+                    resp_lang = lang if lang == language else language
+                    responses = _HOW_ARE_YOU_RESPONSES.get(resp_lang, _HOW_ARE_YOU_RESPONSES["ru"])
                     return _random.choice(responses)
             else:
                 if pattern in clean_words_set:
-                    responses = _HOW_ARE_YOU_RESPONSES.get(language, _HOW_ARE_YOU_RESPONSES["ru"])
+                    resp_lang = lang if lang == language else language
+                    responses = _HOW_ARE_YOU_RESPONSES.get(resp_lang, _HOW_ARE_YOU_RESPONSES["ru"])
                     return _random.choice(responses)
 
     # Check pure greetings — match whole words only
+    # Use matched pattern's language for response to prevent wrong-language replies
     for lang, patterns in _GREETING_PATTERNS.items():
         for pattern in patterns:
             pattern_words = set(pattern.split())
             if len(pattern_words) > 1:
                 if pattern_words <= clean_words_set:
-                    responses = _GREETING_RESPONSES.get(language, _GREETING_RESPONSES["ru"])
+                    responses = _GREETING_RESPONSES.get(lang, _GREETING_RESPONSES["ru"])
                     return _random.choice(responses)
             else:
                 if pattern in clean_words_set:
-                    responses = _GREETING_RESPONSES.get(language, _GREETING_RESPONSES["ru"])
+                    responses = _GREETING_RESPONSES.get(lang, _GREETING_RESPONSES["ru"])
                     return _random.choice(responses)
 
     return None

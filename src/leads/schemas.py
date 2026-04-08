@@ -35,6 +35,8 @@ class LeadOut(BaseModel):
     interested_variant_id: UUID | None
     status: str
     source: str
+    avatar_url: str | None = None
+    order_count: int = 0
     created_at: datetime
     updated_at: datetime
 

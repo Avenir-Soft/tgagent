@@ -151,11 +151,16 @@ export default function DeliveryPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const price = parseFloat(form.price);
+    if (isNaN(price) || price < 0) {
+      toast("Цена должна быть числом >= 0", "error");
+      return;
+    }
     const data = {
       ...form,
       city: form.city || null,
       zone: form.zone || null,
-      price: parseFloat(form.price),
+      price,
     };
     try {
       if (editingId) {

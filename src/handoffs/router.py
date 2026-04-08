@@ -59,13 +59,14 @@ async def _build_handoffs_out(handoffs: list[Handoff], db: AsyncSession) -> list
 async def list_handoffs(
     status: str | None = None,
     limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     q = select(Handoff).where(Handoff.tenant_id == user.tenant_id)
     if status:
         q = q.where(Handoff.status == status)
-    q = q.order_by(Handoff.created_at.desc()).limit(limit)
+    q = q.order_by(Handoff.created_at.desc()).offset(offset).limit(limit)
     result = await db.execute(q)
     handoffs = result.scalars().all()
     return await _build_handoffs_out(handoffs, db)
@@ -88,6 +89,15 @@ async def update_handoff(
         handoff.status = body.status
         if body.status == "resolved":
             handoff.resolved_at = datetime.now(timezone.utc)
+            # Restore conversation from handoff status
+            from src.conversations.models import Conversation
+            conv_result = await db.execute(
+                select(Conversation).where(Conversation.id == handoff.conversation_id)
+            )
+            conv = conv_result.scalar_one_or_none()
+            if conv and conv.status == "handoff":
+                conv.status = "active"
+                conv.ai_enabled = True
     if body.assigned_to_user_id:
         handoff.assigned_to_user_id = body.assigned_to_user_id
     if body.resolution_notes is not None:

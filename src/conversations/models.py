@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,7 +18,7 @@ class CommentTemplate(PkMixin, TenantMixin, TimestampMixin, Base):
     trigger_type: Mapped[str] = mapped_column(
         String(30), nullable=False
     )  # keyword, emoji, regex
-    trigger_patterns: Mapped[dict] = mapped_column(
+    trigger_patterns: Mapped[list] = mapped_column(
         JSONB, nullable=False
     )  # ["+" , "цена", "сколько", ...]
     language: Mapped[str] = mapped_column(
@@ -32,6 +32,7 @@ class Conversation(PkMixin, TenantMixin, TimestampMixin, Base):
     __tablename__ = "conversations"
     __table_args__ = (
         Index("ix_conversations_tenant_chat", "tenant_id", "telegram_chat_id"),
+        CheckConstraint("status IN ('active', 'handoff', 'closed')", name="ck_conversations_status"),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -55,7 +56,7 @@ class Conversation(PkMixin, TenantMixin, TimestampMixin, Base):
         JSONB, nullable=True
     )  # product_id, variant_id, city, etc.
     assigned_to_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     ai_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     is_training_candidate: Mapped[bool] = mapped_column(
@@ -65,10 +66,10 @@ class Conversation(PkMixin, TenantMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     current_product_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True
     )
     current_variant_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
     messages = relationship("Message", back_populates="conversation", lazy="noload")

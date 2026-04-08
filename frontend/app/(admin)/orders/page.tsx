@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { timeAgo } from "@/lib/time-ago";
 
 interface OrderItem {
@@ -36,19 +37,22 @@ interface Order {
 
 const statusLabels: Record<string, string> = {
   draft: "Черновик", confirmed: "Подтверждён", processing: "В обработке",
-  shipped: "Отправлен", delivered: "Доставлен", cancelled: "Отменён",
+  shipped: "Отправлен", delivered: "Доставлен", cancelled: "Отменён", returned: "Возврат",
 };
 
 const statusColors: Record<string, string> = {
   draft: "bg-slate-100 text-slate-700", confirmed: "bg-blue-50 text-blue-700",
   processing: "bg-amber-50 text-amber-700", shipped: "bg-violet-50 text-violet-700",
   delivered: "bg-emerald-50 text-emerald-700", cancelled: "bg-rose-50 text-rose-700",
+  returned: "bg-orange-50 text-orange-700",
 };
 
 const validTransitions: Record<string, string[]> = {
-  draft: ["confirmed", "cancelled"], confirmed: ["processing", "cancelled"],
-  processing: ["shipped", "cancelled"], shipped: ["delivered"],
-  delivered: [], cancelled: [],
+  draft: ["confirmed", "processing", "cancelled"],
+  confirmed: ["processing", "shipped", "cancelled"],
+  processing: ["shipped", "delivered", "cancelled"],
+  shipped: ["delivered"],
+  delivered: ["returned"], cancelled: [],
 };
 
 const orderFilters = [
@@ -103,6 +107,7 @@ export default function OrdersPage() {
   const [sortBy, setSortBy] = useState<SortKey>("date");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const { toast } = useToast();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const fetchOrders = useCallback(() => {
     const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
@@ -117,12 +122,14 @@ export default function OrdersPage() {
     return () => clearInterval(timer);
   }, [fetchOrders]);
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, newStatus: string) => {
+    const prev = orders.find((o) => o.id === id)?.status;
+    setOrders((list) => list.map((o) => (o.id === id ? { ...o, status: newStatus } : o)));
     try {
-      await api.patch(`/orders/${id}`, { status });
-      setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
-      toast(`Статус: ${statusLabels[status]}`, "success");
+      await api.patch(`/orders/${id}`, { status: newStatus });
+      toast(`Статус: ${statusLabels[newStatus]}`, "success");
     } catch {
+      if (prev) setOrders((list) => list.map((o) => (o.id === id ? { ...o, status: prev } : o)));
       toast("Ошибка при обновлении статуса", "error");
     }
   };
@@ -185,6 +192,18 @@ export default function OrdersPage() {
 
   const toggle = (id: string) => setExpandedId(expandedId === id ? null : id);
 
+  const cancelledCount = orders.filter((o) => o.status === "cancelled" || o.status === "returned").length;
+
+  const deleteCancelled = async () => {
+    try {
+      const res = await api.delete<{ deleted: number }>("/orders");
+      toast(`Удалено ${res.deleted} заказов`, "success");
+      setOrders((prev) => prev.filter((o) => o.status !== "cancelled" && o.status !== "returned"));
+    } catch {
+      toast("Ошибка при удалении", "error");
+    }
+  };
+
   return (
     <div>
       <PageHeader title={`Заказы (${orders.length})`} action={{ label: "Экспорт CSV", onClick: exportCSV }} />
@@ -239,7 +258,7 @@ export default function OrdersPage() {
           ))}
         </div>
       </div>
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {orderFilters.map((f) => (
           <button
             key={f.value}
@@ -254,6 +273,15 @@ export default function OrdersPage() {
             {f.label}
           </button>
         ))}
+        {cancelledCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="ml-auto px-4 py-2 rounded-full text-xs font-medium text-rose-600 border border-rose-200 hover:bg-rose-50 transition-colors"
+          >
+            Очистить отменённые ({cancelledCount})
+          </button>
+        )}
       </div>
 
       {/* Orders list */}
@@ -355,6 +383,15 @@ export default function OrdersPage() {
                           Открыть диалог →
                         </Link>
                       )}
+                      {o.lead_id && (
+                        <Link
+                          href="/leads"
+                          className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Лид →
+                        </Link>
+                      )}
                     </div>
                     <div className="font-bold text-lg text-slate-900">{fmt(o.total_amount)} сум</div>
                   </div>
@@ -382,6 +419,16 @@ export default function OrdersPage() {
           Показано {Math.min(visibleCount, sorted.length)} из {filtered.length}{filtered.length !== orders.length ? ` (всего ${orders.length})` : ""}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Удалить отменённые заказы"
+        message={`Удалить ${cancelledCount} отменённых/возвращённых заказов? Это действие нельзя отменить.`}
+        confirmText="Удалить"
+        variant="danger"
+        onConfirm={() => { setConfirmDelete(false); deleteCancelled(); }}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }

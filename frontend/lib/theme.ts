@@ -23,9 +23,9 @@ export function applyTheme(theme?: Theme) {
   document.documentElement.classList.toggle("dark", isDark);
 }
 
-export function toggleTheme() {
+export function toggleTheme(): Theme {
   const current = getTheme();
-  const next = current === "dark" ? "light" : "dark";
+  const next: Theme = current === "light" ? "dark" : current === "dark" ? "system" : "light";
   setTheme(next);
   return next;
 }

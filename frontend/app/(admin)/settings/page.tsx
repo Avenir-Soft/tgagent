@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { getUser } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const SECTIONS = [
   { id: "profile", label: "Профиль" },
@@ -103,6 +104,9 @@ export default function SettingsPage() {
   // Test notification
   const [testingNotif, setTestingNotif] = useState(false);
 
+  // Confirm reset dialog
+  const [confirmReset, setConfirmReset] = useState(false);
+
   // Track which section is in view
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
@@ -174,7 +178,7 @@ export default function SettingsPage() {
 
   const handlePasswordChange = async () => {
     if (newPw !== confirmPw) { toast("Пароли не совпадают", "error"); return; }
-    if (newPw.length < 4) { toast("Пароль минимум 4 символа", "error"); return; }
+    if (newPw.length < 8 || !/[a-zA-Zа-яА-Я]/.test(newPw) || !/\d/.test(newPw)) { toast("Пароль минимум 8 символов, обязательно буквы и цифры", "error"); return; }
     setChangingPw(true);
     try {
       await api.post("/auth/change-password", { current_password: currentPw, new_password: newPw });
@@ -197,8 +201,7 @@ export default function SettingsPage() {
     setTestingNotif(false);
   };
 
-  const handleReset = async () => {
-    if (!confirm("Сбросить все настройки AI к значениям по умолчанию? Правила промптов сохранятся.")) return;
+  const resetSettings = async () => {
     try {
       const result = await api.post<AiSettings>("/ai-settings/reset");
       setSettings(result);
@@ -483,12 +486,22 @@ export default function SettingsPage() {
           <div className="max-w-2xl mt-6 flex justify-end">
             <button
               type="button"
-              onClick={handleReset}
+              onClick={() => setConfirmReset(true)}
               className="px-4 py-2 bg-white border border-rose-200 text-rose-600 rounded-lg text-sm font-medium hover:bg-rose-50 transition-colors"
             >
               Сбросить к настройкам по умолчанию
             </button>
           </div>
+
+          <ConfirmDialog
+            open={confirmReset}
+            title="Сбросить настройки"
+            message="Сбросить все настройки AI к значениям по умолчанию? Правила промптов сохранятся."
+            confirmText="Сбросить"
+            variant="warning"
+            onConfirm={() => { setConfirmReset(false); resetSettings(); }}
+            onCancel={() => setConfirmReset(false)}
+          />
         </>
       )}
     </div>

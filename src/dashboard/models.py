@@ -19,8 +19,8 @@ class BroadcastHistory(PkMixin, TenantMixin, TimestampMixin, Base):
     failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_targets: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="sending"
-    )  # sending | sent | scheduled | cancelled | failed
+        String(30), nullable=False, default="pending"
+    )  # pending | sending | sent | scheduled | cancelled | failed
     scheduled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -1,5 +1,6 @@
 """Authentication and authorization dependencies."""
 
+import logging
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
@@ -12,6 +13,7 @@ from src.core.database import get_db
 from src.core.security import decode_access_token, is_token_blacklisted
 from src.core.tenant_context import set_current_tenant_id
 
+logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer()
 
 
@@ -26,12 +28,12 @@ async def get_current_user(
 
     # Check if token was revoked (logout)
     try:
-        if is_token_blacklisted(token):
+        if await is_token_blacklisted(token):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
     except HTTPException:
         raise  # Re-raise auth errors
     except Exception:
-        pass  # Redis unavailable — allow request (fail-open)
+        logger.warning("Redis unavailable for token blacklist check — fail-open")
 
     user_id = payload.get("sub")
     if not user_id:

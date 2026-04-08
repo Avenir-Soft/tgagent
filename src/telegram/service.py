@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.config import settings
 from src.core.database import async_session_factory
 from src.conversations.models import CommentTemplate, Conversation, Message
+from src.leads.models import Lead
 from src.telegram.models import TelegramAccount, TelegramDiscussionGroup
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,11 @@ async def _telegram_send_with_retry(coro_factory, max_attempts=3):
 
 
 async def _download_photos(urls: list[str]) -> list[str]:
-    """Download photo URLs to temp files. Returns list of file paths (skips failures)."""
+    """Download photo URLs to temp files. Returns list of file paths (skips failures).
+
+    WebP images are converted to JPEG because Telegram's SendMultiMediaRequest
+    (album upload) does not accept WebP — it raises MediaEmptyError.
+    """
     import tempfile
     import httpx
 
@@ -55,17 +60,34 @@ async def _download_photos(urls: list[str]) -> list[str]:
                 resp = await http.get(url)
                 if resp.status_code != 200:
                     continue
-                # Determine extension from content-type or URL
                 ct = resp.headers.get("content-type", "")
-                ext = ".jpg"
-                if "png" in ct:
-                    ext = ".png"
-                elif "webp" in ct:
-                    ext = ".webp"
-                tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
-                tmp.write(resp.content)
-                tmp.close()
-                paths.append(tmp.name)
+                is_webp = "webp" in ct or url.lower().endswith(".webp")
+
+                if is_webp:
+                    # Convert WebP → PNG for Telegram compatibility
+                    # (Telegram SendMultiMediaRequest rejects WebP; PNG preserves transparency)
+                    try:
+                        from PIL import Image
+                        import io
+                        img = Image.open(io.BytesIO(resp.content))
+                        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                        img.save(tmp, format="PNG")
+                        tmp.close()
+                        paths.append(tmp.name)
+                    except Exception:
+                        logger.debug("WebP conversion failed for %s, saving as-is", url[:80])
+                        tmp = tempfile.NamedTemporaryFile(suffix=".webp", delete=False)
+                        tmp.write(resp.content)
+                        tmp.close()
+                        paths.append(tmp.name)
+                else:
+                    ext = ".jpg"
+                    if "png" in ct:
+                        ext = ".png"
+                    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+                    tmp.write(resp.content)
+                    tmp.close()
+                    paths.append(tmp.name)
             except Exception:
                 logger.debug("Failed to download photo %s", url[:80], exc_info=True)
     return paths
@@ -360,11 +382,71 @@ class TelegramClientManager:
                     )
                     db.add(conversation)
                     await db.flush()
+
+                    # Auto-create lead for new DM conversation
+                    existing_lead_result = await db.execute(
+                        select(Lead).where(
+                            Lead.tenant_id == tenant_id,
+                            Lead.telegram_user_id == telegram_user_id,
+                        ).limit(1)
+                    )
+                    existing_lead = existing_lead_result.scalar_one_or_none()
+                    if existing_lead:
+                        existing_lead.conversation_id = conversation.id
+                        if tg_username:
+                            existing_lead.telegram_username = tg_username
+                        if full_name:
+                            existing_lead.customer_name = full_name
+                        lead_for_avatar = existing_lead
+                    else:
+                        new_lead = Lead(
+                            tenant_id=tenant_id,
+                            conversation_id=conversation.id,
+                            telegram_user_id=telegram_user_id,
+                            telegram_username=tg_username,
+                            customer_name=full_name or tg_username,
+                            source="dm",
+                        )
+                        db.add(new_lead)
+                        lead_for_avatar = new_lead
+                    await db.flush()
+
+                    # Download Telegram profile photo for lead avatar
+                    if client and not lead_for_avatar.avatar_url:
+                        try:
+                            import os
+                            avatars_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static", "avatars")
+                            os.makedirs(avatars_dir, exist_ok=True)
+                            avatar_path = os.path.join(avatars_dir, f"{lead_for_avatar.id}.jpg")
+                            downloaded = await client.download_profile_photo(
+                                telegram_user_id, file=avatar_path, download_big=False
+                            )
+                            if downloaded:
+                                lead_for_avatar.avatar_url = f"/static/avatars/{lead_for_avatar.id}.jpg"
+                                await db.flush()
+                            elif os.path.exists(avatar_path):
+                                os.remove(avatar_path)
+                        except Exception:
+                            logger.debug("Could not download avatar for user %s", telegram_user_id)
                 else:
                     if tg_username and conversation.telegram_username != tg_username:
                         conversation.telegram_username = tg_username
                     if full_name and conversation.telegram_first_name != full_name:
                         conversation.telegram_first_name = full_name
+                    # Also update lead data if username/name changed
+                    if tg_username or full_name:
+                        lead_result = await db.execute(
+                            select(Lead).where(
+                                Lead.tenant_id == tenant_id,
+                                Lead.telegram_user_id == telegram_user_id,
+                            ).limit(1)
+                        )
+                        lead = lead_result.scalar_one_or_none()
+                        if lead:
+                            if tg_username and lead.telegram_username != tg_username:
+                                lead.telegram_username = tg_username
+                            if full_name and lead.customer_name != full_name:
+                                lead.customer_name = full_name
 
                 # Save ALL individual inbound messages to DB (for chat history)
                 for ev, text in events_and_texts:
@@ -416,8 +498,24 @@ class TelegramClientManager:
 
                 # Update conversation timestamp
                 from datetime import datetime, timezone
+                is_new_conversation = conversation.state == "NEW_CHAT"
                 conversation.last_message_at = datetime.now(timezone.utc)
                 await db.commit()
+
+                # --- SSE: notify frontend about new inbound messages ---
+                try:
+                    from src.sse.event_bus import publish_event
+                    await publish_event(
+                        f"sse:{tenant_id}:conversation:{conversation.id}",
+                        {"event": "new_message", "conversation_id": str(conversation.id), "direction": "inbound"},
+                    )
+                    event_type = "new_conversation" if is_new_conversation else "conversation_updated"
+                    await publish_event(
+                        f"sse:{tenant_id}:tenant",
+                        {"event": event_type, "conversation_id": str(conversation.id)},
+                    )
+                except Exception:
+                    pass  # SSE is non-critical
 
                 # Combine all texts into one message for AI
                 combined_text = " ".join(text for _, text in events_and_texts)
@@ -439,8 +537,7 @@ class TelegramClientManager:
                     )
 
                 # Dedup: skip exact duplicate messages within 60s window
-                import time as _time_dedup
-                _now = _time_dedup.time()
+                _now = _time.time()
                 _last = self._last_processed.get(chat_id)
                 if _last and _last[0] == combined_text.strip().lower() and (_now - _last[1]) < 60:
                     logger.info(
@@ -508,7 +605,7 @@ class TelegramClientManager:
                         sent = None
                         # Send product photos if available
                         if image_urls and client:
-                            photo_files = await _download_photos(image_urls)
+                            photo_files = await _download_photos(image_urls[:5])
                             if photo_files:
                                 try:
                                     if len(photo_files) == 1:
@@ -553,6 +650,32 @@ class TelegramClientManager:
                         )
                         db.add(out_msg)
                         await db.commit()
+
+                        # --- SSE: notify frontend about AI response ---
+                        try:
+                            from src.sse.event_bus import publish_event
+                            await publish_event(
+                                f"sse:{tenant_id}:conversation:{conversation.id}",
+                                {
+                                    "event": "new_message",
+                                    "conversation_id": str(conversation.id),
+                                    "direction": "outbound",
+                                    "data": {
+                                        "id": str(out_msg.id),
+                                        "direction": "outbound",
+                                        "sender_type": "ai",
+                                        "raw_text": response_text,
+                                        "ai_generated": True,
+                                        "created_at": out_msg.created_at.isoformat() if out_msg.created_at else None,
+                                    },
+                                },
+                            )
+                            await publish_event(
+                                f"sse:{tenant_id}:tenant",
+                                {"event": "conversation_updated", "conversation_id": str(conversation.id)},
+                            )
+                        except Exception:
+                            pass
 
             except Exception:
                 logger.exception("Error handling DM for tenant %s", tenant_id)

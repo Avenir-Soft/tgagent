@@ -3,12 +3,14 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     ForeignKey,
     Index,
     Integer,
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -20,6 +22,9 @@ from src.core.models import PkMixin, TenantMixin, TimestampMixin, UpdatableMixin
 
 class Category(PkMixin, TenantMixin, TimestampMixin, Base):
     __tablename__ = "categories"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "slug", name="uq_categories_tenant_slug"),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
@@ -32,7 +37,7 @@ class Category(PkMixin, TenantMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
     parent = relationship("Category", remote_side="Category.id", lazy="selectin")
-    products = relationship("Product", back_populates="category", lazy="selectin")
+    products = relationship("Product", back_populates="category", lazy="noload")
 
 
 class Product(PkMixin, TenantMixin, UpdatableMixin, Base):
@@ -113,6 +118,8 @@ class Inventory(PkMixin, TenantMixin, UpdatableMixin, Base):
     __tablename__ = "inventory"
     __table_args__ = (
         Index("ix_inventory_tenant_variant", "tenant_id", "variant_id"),
+        CheckConstraint("reserved_quantity >= 0", name="ck_inventory_reserved_non_negative"),
+        CheckConstraint("reserved_quantity <= quantity", name="ck_inventory_reserved_lte_quantity"),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(

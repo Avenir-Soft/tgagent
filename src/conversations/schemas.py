@@ -90,6 +90,10 @@ class TrainingLabelUpdate(BaseModel):
     selected_text: str | None = None
 
 
+class BulkDeleteRequest(BaseModel):
+    conversation_ids: list[UUID]
+
+
 class BroadcastRequest(BaseModel):
     text: str
     filter: str = "all"  # "all" | "ordered"

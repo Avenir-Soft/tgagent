@@ -24,9 +24,16 @@ export default function AdminError({
         <h2 className="text-lg font-semibold text-slate-900 mb-2">
           Что-то пошло не так
         </h2>
-        <p className="text-sm text-slate-500 mb-6">
+        <p className="text-sm text-slate-500 mb-4">
           Произошла ошибка при загрузке страницы. Попробуйте обновить.
         </p>
+        <details className="text-left mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <summary className="text-xs text-slate-500 cursor-pointer">Подробности ошибки</summary>
+          <pre className="mt-2 text-xs text-rose-600 whitespace-pre-wrap break-all max-h-40 overflow-auto">
+            {error.message}
+            {error.stack && `\n\n${error.stack}`}
+          </pre>
+        </details>
         <div className="flex gap-3 justify-center">
           <button
             onClick={reset}

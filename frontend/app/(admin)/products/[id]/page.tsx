@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Variant {
   id: string;
@@ -112,6 +113,8 @@ export default function ProductDetailPage() {
   // Sales
   const [sales, setSales] = useState<SalesData | null>(null);
   const [showSales, setShowSales] = useState(false);
+  // Delete variant confirmation
+  const [deleteVariantId, setDeleteVariantId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -221,7 +224,6 @@ export default function ProductDetailPage() {
 
   // Delete variant
   const deleteVariant = async (vid: string) => {
-    if (!confirm("Удалить вариант?")) return;
     try {
       await api.delete(`/variants/${vid}`);
       toast("Вариант удалён", "success");
@@ -486,7 +488,7 @@ export default function ProductDetailPage() {
                               </button>
                               <button type="button" onClick={() => startEdit(v)}
                                 className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-indigo-600 hover:bg-indigo-50 transition-colors">Склад</button>
-                              <button type="button" onClick={() => deleteVariant(v.id)}
+                              <button type="button" onClick={() => setDeleteVariantId(v.id)}
                                 className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-rose-500 hover:bg-rose-50 transition-colors" title="Удалить вариант">&times;</button>
                             </>
                           )}
@@ -600,6 +602,15 @@ export default function ProductDetailPage() {
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={!!deleteVariantId}
+        title="Удалить вариант"
+        message="Удалить этот вариант? Это действие нельзя отменить."
+        confirmText="Удалить"
+        variant="danger"
+        onConfirm={() => { if (deleteVariantId) { deleteVariant(deleteVariantId); } setDeleteVariantId(null); }}
+        onCancel={() => setDeleteVariantId(null)}
+      />
     </div>
   );
 }

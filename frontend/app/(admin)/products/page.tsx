@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
@@ -74,15 +74,15 @@ export default function ProductsPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const { toast } = useToast();
 
-  const load = () => {
+  const load = useCallback(() => {
     api.get<Product[]>("/products").then(setProducts).catch(console.error);
     api.get<Category[]>("/categories").then(setCategories).catch(console.error);
-  };
+  }, []);
   useEffect(() => {
     load();
     const id = setInterval(load, 30_000);
     return () => clearInterval(id);
-  }, []);
+  }, [load]);
 
   const categoryNames = [...new Set(products.map((p) => p.category_name).filter(Boolean))] as string[];
 

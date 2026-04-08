@@ -206,14 +206,14 @@ export default function TelegramPage() {
   useEffect(() => {
     let stopped = false;
     let interval: ReturnType<typeof setInterval>;
-    const fetch = () => {
+    const fetchLogs = () => {
       if (stopped) return;
       api.get<ActivityLog[]>("/telegram/activity-logs").then(setLogs).catch((e) => {
         if (e?.status === 401) { stopped = true; clearInterval(interval); }
       });
     };
-    fetch();
-    interval = setInterval(fetch, 10000);
+    fetchLogs();
+    interval = setInterval(fetchLogs, 10000);
     return () => { stopped = true; clearInterval(interval); };
   }, []);
 

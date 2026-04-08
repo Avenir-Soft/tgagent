@@ -32,7 +32,7 @@ async def logout(
     user: User = Depends(get_current_user),
 ):
     """Blacklist the current JWT token."""
-    blacklist_token(credentials.credentials)
+    await blacklist_token(credentials.credentials)
     return {"status": "logged_out"}
 
 

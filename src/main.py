@@ -20,6 +20,7 @@ from src.orders.router import router as orders_router
 from src.telegram.router import router as telegram_router
 from src.tenants.router import router as tenants_router
 from src.analytics.router import router as analytics_router
+from src.sse.router import router as sse_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -50,9 +51,9 @@ async def _run_startup_migrations():
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type VARCHAR(20)",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_file_id VARCHAR(255)",
             "CREATE INDEX IF NOT EXISTS ix_messages_conv_created ON messages (conversation_id, created_at DESC)",
-            # Fix legacy role values
-            "UPDATE users SET role = 'super_admin' WHERE role = 'admin'",
-            "UPDATE users SET role = 'store_owner' WHERE role = 'owner'",
+            # Fix legacy role values (one-time, idempotent — only runs if legacy roles still exist)
+            "UPDATE users SET role = 'super_admin' WHERE role = 'admin' AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'super_admin')",
+            "UPDATE users SET role = 'store_owner' WHERE role = 'owner' AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'store_owner')",
             # Analytics tables (Phase 5)
             """CREATE TABLE IF NOT EXISTS customer_segments (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -108,6 +109,17 @@ async def _run_startup_migrations():
             "CREATE INDEX IF NOT EXISTS ix_broadcast_history_tenant ON broadcast_history (tenant_id)",
             "ALTER TABLE broadcast_history ADD COLUMN IF NOT EXISTS recipients_json JSONB",
             "ALTER TABLE broadcast_history ADD COLUMN IF NOT EXISTS target_conversation_ids JSONB",
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500)",
+            # MED-15: unique constraint on telegram_accounts (tenant_id, phone_number)
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_telegram_accounts_tenant_phone ON telegram_accounts (tenant_id, phone_number)",
+            # LOW-10: per-tenant unique order_number (drop global unique first, idempotent)
+            "DROP INDEX IF EXISTS orders_order_number_key",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_tenant_order_number ON orders (tenant_id, order_number)",
+            # LOW-11: per-tenant unique email (drop global unique first)
+            "DROP INDEX IF EXISTS users_email_key",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_tenant_email ON users (tenant_id, email)",
+            # LOW-12: per-tenant unique category slug
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_tenant_slug ON categories (tenant_id, slug)",
         ]
         for stmt in stmts:
             try:
@@ -122,12 +134,21 @@ async def _execute_due_broadcasts():
     from src.core.database import async_session_factory
 
     async with async_session_factory() as db:
+        # Atomically claim due broadcasts to prevent double-send on multiple instances
         result = await db.execute(
-            _sql("SELECT id, tenant_id, message_text, image_url, filter_type, created_by_user_id, target_conversation_ids FROM broadcast_history WHERE status = 'scheduled' AND scheduled_at <= now()")
+            _sql(
+                "UPDATE broadcast_history SET status = 'sending'"
+                " WHERE id IN ("
+                "   SELECT id FROM broadcast_history"
+                "   WHERE status = 'scheduled' AND scheduled_at <= now()"
+                "   FOR UPDATE SKIP LOCKED"
+                " ) RETURNING id, tenant_id, message_text, image_url, filter_type, created_by_user_id, target_conversation_ids"
+            )
         )
         due = result.fetchall()
         if not due:
             return
+        await db.commit()
 
         for row in due:
             bid, tenant_id, msg_text, image_url, filter_type, user_id, target_conv_ids = row
@@ -254,7 +275,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup expired draft orders (>2h old) and unreserve inventory
     try:
-        from src.dashboard.router import cleanup_expired_drafts
+        from src.dashboard.service import cleanup_expired_drafts
 
         cancelled = await cleanup_expired_drafts(max_age_hours=2)
         if cancelled:
@@ -288,6 +309,11 @@ async def lifespan(app: FastAPI):
         pass
     logger.info("Shutting down AI Closer...")
     try:
+        from src.sse.event_bus import close_event_bus
+        await close_event_bus()
+    except Exception:
+        logger.exception("Error closing SSE event bus")
+    try:
         from src.telegram.service import telegram_manager
 
         await telegram_manager.stop_all()
@@ -320,6 +346,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Static files (avatars etc.)
+import os as _os
+from fastapi.staticfiles import StaticFiles
+_static_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "static")
+_os.makedirs(_static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
 # Register routers
 app.include_router(auth_router)
 app.include_router(tenants_router)
@@ -334,6 +367,7 @@ app.include_router(import_router)
 app.include_router(ai_router)
 app.include_router(training_router)
 app.include_router(analytics_router)
+app.include_router(sse_router)
 
 
 @app.get("/health")

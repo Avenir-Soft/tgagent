@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, text
+from sqlalchemy import DateTime, ForeignKey, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,10 +37,20 @@ class PkMixin:
 
 
 class TenantMixin:
-    """All tenant-scoped tables must include this."""
+    """All tenant-scoped tables must include this.
+
+    IMPORTANT: Every model using this mixin MUST override tenant_id with a ForeignKey:
+        tenant_id: Mapped[uuid.UUID] = mapped_column(
+            UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False, index=True,
+        )
+    The mixin provides a base column; the FK is required for referential integrity.
+    All existing models already do this — do NOT remove the override.
+    """
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

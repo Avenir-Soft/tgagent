@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, String, Text, text
+from sqlalchemy import BigInteger, Boolean, ForeignKey, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +12,9 @@ class TelegramAccount(PkMixin, TenantMixin, UpdatableMixin, Base):
     """AI admin's Telegram account connected per tenant."""
 
     __tablename__ = "telegram_accounts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "phone_number", name="uq_telegram_accounts_tenant_phone"),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
@@ -43,6 +46,7 @@ class TelegramChannel(PkMixin, TenantMixin, TimestampMixin, Base):
         UUID(as_uuid=True),
         ForeignKey("telegram_discussion_groups.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 

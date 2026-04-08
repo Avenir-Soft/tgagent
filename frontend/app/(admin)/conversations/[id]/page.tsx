@@ -3,10 +3,11 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { api, API_BASE } from "@/lib/api";
+import { useEventSource, SSEEvent } from "@/lib/use-event-source";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
-import { getInitial } from "@/lib/utils";
 
 interface Message {
   id: string;
@@ -42,6 +43,7 @@ interface CustomerHistory {
   phone: string | null;
   city: string | null;
   lead_status: string | null;
+  avatar_url: string | null;
   total_messages: number;
   total_orders: number;
   orders: Array<{
@@ -105,6 +107,10 @@ export default function ConversationDetailPage() {
   // Delete conversation
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  // Reset AI confirmation
+  const [confirmReset, setConfirmReset] = useState(false);
+  // Signed media token (avoids JWT in URL logs)
+  const [mediaToken, setMediaToken] = useState<string | null>(null);
   const { toast } = useToast();
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -127,6 +133,13 @@ export default function ConversationDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Fetch signed media token (short-lived, avoids JWT in URL)
+  useEffect(() => {
+    api.get<{ token: string }>("/telegram/media-token")
+      .then((r) => setMediaToken(r.token))
+      .catch(() => {});
+  }, []);
+
   // Mark as read in localStorage when messages load
   useEffect(() => {
     if (messages.length > 0 && id) {
@@ -138,22 +151,14 @@ export default function ConversationDetailPage() {
     }
   }, [messages.length, id]);
 
-  // Adaptive polling: 2s when focused, 15s when tab is blurred
-  useEffect(() => {
-    if (!id) return;
-    let delay = 2000;
-    let timer: ReturnType<typeof setTimeout>;
-
-    const poll = () => {
-      api.get<Message[]>(`/conversations/${id}/messages?limit=${msgLimit}`).then((newMsgs) => {
-        setMessages((prev) => {
-          if (newMsgs.length !== prev.length) return newMsgs;
-          const a = newMsgs[newMsgs.length - 1];
-          const b = prev[prev.length - 1];
-          if (a && b && a.id !== b.id) return newMsgs;
-          return prev;
-        });
-      }).catch(console.error);
+  // SSE: real-time updates for this conversation
+  const handleSSE = useCallback((event: SSEEvent) => {
+    if (event.event === "new_message" && event.conversation_id === id) {
+      // Re-fetch messages to get the latest (ensures consistent ordering and fields)
+      api.get<Message[]>(`/conversations/${id}/messages?limit=${msgLimit}`)
+        .then(setMessages).catch(console.error);
+    }
+    if (event.event === "conversation_updated" && event.conversation_id === id) {
       api.get<Conversation>(`/conversations/${id}`).then((c) => {
         setConv((prev) => {
           if (!prev) return c;
@@ -161,15 +166,26 @@ export default function ConversationDetailPage() {
           return prev;
         });
       }).catch(console.error);
-      timer = setTimeout(poll, delay);
-    };
-    timer = setTimeout(poll, delay);
+    }
+  }, [id, msgLimit]);
+  useEventSource(id as string, handleSSE);
 
-    const onVisChange = () => {
-      delay = document.hidden ? 15000 : 2000;
-    };
-    document.addEventListener("visibilitychange", onVisChange);
-    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", onVisChange); };
+  // Slow fallback poll (30s) in case SSE misses an event
+  useEffect(() => {
+    if (!id) return;
+    const timer = setInterval(() => {
+      api.get<Message[]>(`/conversations/${id}/messages?limit=${msgLimit}`)
+        .then((newMsgs) => {
+          setMessages((prev) => {
+            if (newMsgs.length !== prev.length) return newMsgs;
+            const a = newMsgs[newMsgs.length - 1];
+            const b = prev[prev.length - 1];
+            if (a && b && a.id !== b.id) return newMsgs;
+            return prev;
+          });
+        }).catch(console.error);
+    }, 30_000);
+    return () => clearInterval(timer);
   }, [id, msgLimit]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
@@ -249,6 +265,13 @@ export default function ConversationDetailPage() {
       setReplyText("");
       load();
     } finally { setSending(false); }
+  };
+
+  const resetConversation = async () => {
+    try {
+      await api.post(`/conversations/${id}/reset`, {});
+      load();
+    } catch {}
   };
 
   const deleteConversation = async () => {
@@ -348,14 +371,34 @@ export default function ConversationDetailPage() {
     }
   };
 
+  // CRIT-05 fix: precompute date separators instead of mutable var in render
+  const dateSepSet = useMemo(() => {
+    const set = new Set<number>();
+    let prev = "";
+    for (let i = 0; i < messages.length; i++) {
+      const d = formatDate(messages[i].created_at);
+      if (d !== prev) { set.add(i); prev = d; }
+    }
+    return set;
+  }, [messages]);
+
+  // CRIT-06 fix: precompute "has inbound reply after" for read receipts — O(n) instead of O(n^2)
+  const hasReplyAfterSet = useMemo(() => {
+    const set = new Set<number>();
+    let seenInbound = false;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].direction === "inbound") seenInbound = true;
+      else if (seenInbound) set.add(i);
+    }
+    return set;
+  }, [messages]);
+
   if (!conv) return <LoadingSpinner />;
 
   const ctx = conv.state_context || {};
   const cart = (ctx.cart_items as Array<{ name: string; variant_title: string; qty: number }>) || [];
   const orders = (ctx.orders as Array<{ order_number: string; status: string }>) || [];
   const lang = ctx.language as string | undefined;
-
-  let lastDate = "";
 
   return (
     <div className="flex gap-4 h-[calc(100vh-120px)]">
@@ -394,7 +437,7 @@ export default function ConversationDetailPage() {
             <button type="button" onClick={() => setShowSidebar(!showSidebar)} className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
               {showSidebar ? "Скрыть" : "Клиент"}
             </button>
-            <button type="button" title="Сбросить AI" onClick={async () => { if (!confirm("Сбросить?")) return; await api.post(`/conversations/${id}/reset`, {}); load(); }} className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors">
+            <button type="button" title="Сбросить AI" onClick={() => setConfirmReset(true)} className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors">
               Сброс
             </button>
             <button type="button" title="Удалить диалог" onClick={() => setShowDeleteDialog(true)} className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors">
@@ -469,7 +512,6 @@ export default function ConversationDetailPage() {
         )}
 
         {/* Message search bar */}
-        {msgSearch !== "" || searchMatches.length > 0 ? null : null}
         <div className="flex items-center gap-2 mb-1 shrink-0">
           <div className="relative flex-1">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -507,10 +549,8 @@ export default function ConversationDetailPage() {
           {messages.length === 0 ? (
             <p className="text-slate-400 text-center py-8">Нет сообщений</p>
           ) : (
-            messages.map((msg) => {
-              const msgDate = formatDate(msg.created_at);
-              let showDateSep = false;
-              if (msgDate !== lastDate) { lastDate = msgDate; showDateSep = true; }
+            messages.map((msg, msgIdx) => {
+              const showDateSep = dateSepSet.has(msgIdx);
               const isOut = msg.direction === "outbound";
               const isHighlighted = msg.id === highlightedMsgId;
 
@@ -518,7 +558,7 @@ export default function ConversationDetailPage() {
                 <div key={msg.id} ref={(el) => { msgRefs.current[msg.id] = el; }}>
                   {showDateSep && (
                     <div className="text-center my-3">
-                      <span className="bg-white px-3 py-1 rounded-full text-xs text-slate-400 shadow-sm">{msgDate}</span>
+                      <span className="bg-white px-3 py-1 rounded-full text-xs text-slate-400 shadow-sm">{formatDate(msg.created_at)}</span>
                     </div>
                   )}
                   <div className={`flex ${isOut ? "justify-end" : "justify-start"} group mb-1`}>
@@ -539,8 +579,7 @@ export default function ConversationDetailPage() {
                         }`}>
                           {/* Media content */}
                           {msg.media_type && msg.media_file_id && (() => {
-                            const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-                            const mediaUrl = `${API_BASE}/telegram/media/${msg.id}?token=${token || ""}`;
+                            const mediaUrl = `${API_BASE}/telegram/media/${msg.id}?token=${mediaToken || ""}`;
                             const t = msg.media_type;
                             if (t === "photo") return (
                               <img src={mediaUrl} alt="Фото" className="max-w-[280px] max-h-[320px] rounded-xl mb-1 cursor-pointer" loading="lazy" onClick={() => window.open(mediaUrl, "_blank")} />
@@ -571,24 +610,23 @@ export default function ConversationDetailPage() {
                             );
                             return null;
                           })()}
-                          {/* Text content */}
-                          {msg.raw_text && !msg.raw_text.startsWith("[Клиент отправил") && (
+                          {/* Text content — single render path to avoid duplication */}
+                          {msg.raw_text && !msg.raw_text.startsWith("[Клиент отправил") ? (
                             <p className="text-sm whitespace-pre-wrap">{msg.raw_text}</p>
-                          )}
-                          {!msg.media_type && <p className="text-sm whitespace-pre-wrap">{msg.raw_text || "(пусто)"}</p>}
+                          ) : !msg.media_type && !msg.raw_text ? (
+                            <p className="text-sm whitespace-pre-wrap text-slate-400">(пусто)</p>
+                          ) : null}
                           <div className="flex items-center gap-2 mt-1">
                             <span className={`text-[10px] ${isOut ? "opacity-60" : "text-slate-400"}`}>
                               {formatTime(msg.created_at)}
                               {msg.ai_generated && " · AI"}
                               {isOut && !msg.ai_generated && " · Оператор"}
                             </span>
-                            {isOut && (() => {
-                              const msgIdx = messages.indexOf(msg);
-                              const hasReplyAfter = messages.slice(msgIdx + 1).some((m) => m.direction === "inbound");
-                              return hasReplyAfter
+                            {isOut && (
+                              hasReplyAfterSet.has(msgIdx)
                                 ? <span className="text-[10px] text-sky-300 ml-0.5" title="Прочитано">✓✓</span>
-                                : <span className="text-[10px] opacity-40 ml-0.5" title="Отправлено">✓</span>;
-                            })()}
+                                : <span className="text-[10px] opacity-40 ml-0.5" title="Отправлено">✓</span>
+                            )}
                             {msg.training_label === "approved" && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1 rounded">✓</span>}
                             {msg.training_label === "rejected" && (
                               <span className="text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded cursor-help" title={msg.rejection_reason || "Причина не указана"}>
@@ -658,9 +696,7 @@ export default function ConversationDetailPage() {
             <div className="p-4 space-y-4">
               {/* Customer card */}
               <div>
-                <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg font-bold mb-2">
-                  {getInitial(history.customer_name)}
-                </div>
+                <Avatar src={history.avatar_url} name={history.customer_name} size="lg" className="mb-2" />
                 <h3 className="font-semibold text-sm text-slate-900">{history.customer_name || conv.telegram_first_name}</h3>
                 {history.telegram_username && <p className="text-xs text-indigo-500">@{history.telegram_username}</p>}
                 {history.lead_status && (
@@ -765,6 +801,16 @@ export default function ConversationDetailPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmReset}
+        title="Сбросить AI"
+        message="Сбросить контекст AI для этого диалога? История сообщений сохранится."
+        confirmText="Сбросить"
+        variant="warning"
+        onConfirm={() => { setConfirmReset(false); resetConversation(); }}
+        onCancel={() => setConfirmReset(false)}
+      />
 
       <ConfirmDialog
         open={showDeleteDialog}

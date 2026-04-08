@@ -6,8 +6,8 @@ import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Avatar } from "@/components/ui/avatar";
 import { timeAgo } from "@/lib/time-ago";
-import { getInitial } from "@/lib/utils";
 
 interface Lead {
   id: string;
@@ -18,9 +18,11 @@ interface Lead {
   city: string | null;
   status: string;
   source: string;
+  order_count: number;
   notes: string | null;
   conversation_id: string | null;
   interested_product_id: string | null;
+  avatar_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -47,7 +49,7 @@ const sourceLabels: Record<string, string> = { dm: "DM", comment: "Коммен�
 
 const orderStatusLabels: Record<string, string> = {
   draft: "Черновик", confirmed: "Подтверждён", processing: "В обработке",
-  shipped: "Отправлен", delivered: "Доставлен", cancelled: "Отменён",
+  shipped: "Отправлен", delivered: "Доставлен", cancelled: "Отменён", returned: "Возврат",
 };
 
 export default function LeadsPage() {
@@ -62,6 +64,7 @@ export default function LeadsPage() {
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [notesText, setNotesText] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [refreshingAvatars, setRefreshingAvatars] = useState(false);
   const { toast } = useToast();
 
   const load = useCallback(() => {
@@ -86,14 +89,8 @@ export default function LeadsPage() {
     if (!ordersMap[lead.id]) {
       setLoadingOrders(lead.id);
       try {
-        const orders = await api.get<Order[]>("/orders");
-        // Filter orders by matching customer name or phone
-        const leadOrders = orders.filter(
-          (o: Order & { customer_name?: string; phone?: string }) =>
-            (lead.customer_name && (o as any).customer_name === lead.customer_name) ||
-            (lead.phone && (o as any).phone === lead.phone)
-        );
-        setOrdersMap((prev) => ({ ...prev, [lead.id]: leadOrders }));
+        const orders = await api.get<Order[]>(`/orders?lead_id=${lead.id}`);
+        setOrdersMap((prev) => ({ ...prev, [lead.id]: orders }));
       } catch {
         setOrdersMap((prev) => ({ ...prev, [lead.id]: [] }));
       }
@@ -150,6 +147,18 @@ export default function LeadsPage() {
     setSavingNotes(false);
   };
 
+  const refreshAvatars = async () => {
+    setRefreshingAvatars(true);
+    try {
+      const res = await api.post<{ total: number; updated: number }>("/leads/refresh-avatars", {});
+      toast(`Обновлено ${res.updated} из ${res.total} аватарок`, "success");
+      load();
+    } catch {
+      toast("Ошибка обновления аватарок", "error");
+    }
+    setRefreshingAvatars(false);
+  };
+
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -193,7 +202,17 @@ export default function LeadsPage() {
 
   return (
     <div>
-      <PageHeader title={`Лиды (${leads.length})`} action={{ label: "Экспорт CSV", onClick: exportCSV }} />
+      <PageHeader title={`Лиды (${leads.length})`} action={{ label: "Экспорт CSV", onClick: exportCSV }}>
+        <button
+          type="button"
+          onClick={refreshAvatars}
+          disabled={refreshingAvatars}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-50"
+          title="Загрузить аватарки из Telegram"
+        >
+          {refreshingAvatars ? "Загрузка..." : "Обновить аватарки"}
+        </button>
+      </PageHeader>
 
       {/* Pipeline cards */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4">
@@ -281,6 +300,7 @@ export default function LeadsPage() {
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Клиент</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Контакты</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Источник</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Заказы</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Заметки</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Дата</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider w-36">Статус</th>
@@ -304,9 +324,7 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full ${cfg.bg} ${cfg.color} flex items-center justify-center text-sm font-bold shrink-0`}>
-                            {getInitial(l.customer_name)}
-                          </div>
+                          <Avatar src={l.avatar_url} name={l.customer_name} size="sm" colors={{ bg: cfg.bg, text: cfg.color }} />
                           <div className="min-w-0">
                             <p className="font-medium text-sm text-slate-900 truncate">{l.customer_name || "Без имени"}</p>
                             {l.telegram_username && (
@@ -347,6 +365,15 @@ export default function LeadsPage() {
                             </Link>
                           )}
                         </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        {l.order_count > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700">
+                            {l.order_count} зак.
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-300">&mdash;</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 max-w-[200px]">
                         {editingNotes === l.id ? (
@@ -435,34 +462,37 @@ export default function LeadsPage() {
                     {/* Expanded row: contact history + orders */}
                     {isExpanded && (
                       <tr>
-                        <td colSpan={8} className="bg-slate-50/80 px-4 py-4">
+                        <td colSpan={9} className="bg-slate-50/80 px-4 py-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl ml-12">
                             {/* Lead details */}
                             <div>
+                              <div className="flex items-center gap-3 mb-3">
+                                <Avatar src={l.avatar_url} name={l.customer_name} size="lg" colors={{ bg: cfg.bg, text: cfg.color }} className="ring-2 ring-white shadow-sm" />
+                                <div>
+                                  <p className="font-semibold text-sm text-slate-900">{l.customer_name || "Без имени"}</p>
+                                  {l.telegram_username && (
+                                    <a href={`https://t.me/${l.telegram_username.replace(/^@/, "")}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:underline">@{l.telegram_username}</a>
+                                  )}
+                                </div>
+                              </div>
                               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Информация</h4>
                               <div className="space-y-1.5 text-xs">
                                 <div className="flex justify-between">
                                   <span className="text-slate-400">Telegram ID</span>
                                   <span className="text-slate-700 font-mono">{l.telegram_user_id}</span>
                                 </div>
-                                {l.telegram_username && (
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Username</span>
-                                    <a href={`https://t.me/${l.telegram_username.replace(/^@/, "")}`} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">@{l.telegram_username}</a>
-                                  </div>
-                                )}
-                                {l.phone && (
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Телефон</span>
-                                    <span className="text-slate-700">{l.phone}</span>
-                                  </div>
-                                )}
-                                {l.city && (
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Город</span>
-                                    <span className="text-slate-700">{l.city}</span>
-                                  </div>
-                                )}
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Телефон</span>
+                                  <span className={l.phone ? "text-slate-700" : "text-slate-300 italic"}>{l.phone || "не указан"}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Город</span>
+                                  <span className={l.city ? "text-slate-700" : "text-slate-300 italic"}>{l.city || "не указан"}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Источник</span>
+                                  <span className="text-slate-700">{sourceLabels[l.source] || l.source}</span>
+                                </div>
                                 <div className="flex justify-between">
                                   <span className="text-slate-400">Создан</span>
                                   <span className="text-slate-700">{new Date(l.created_at).toLocaleString("ru")}</span>

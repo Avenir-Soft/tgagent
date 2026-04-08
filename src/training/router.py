@@ -22,6 +22,17 @@ from src.core.config import settings
 router = APIRouter(prefix="/training", tags=["training"])
 logger = logging.getLogger(__name__)
 
+# Singleton OpenAI client
+import openai as _openai_mod
+_openai_client: _openai_mod.AsyncOpenAI | None = None
+
+
+def _get_openai_client() -> _openai_mod.AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = _openai_mod.AsyncOpenAI(api_key=settings.openai_api_key)
+    return _openai_client
+
 SYSTEM_PROMPT_PREVIEW = (
     "You are a multilingual AI sales assistant for a Telegram store. "
     "Answer only in the customer's language. Never fabricate product specs or prices."
@@ -261,7 +272,7 @@ async def _smart_label_batch(
 ) -> list[dict]:
     """Send a batch of turns to GPT for evaluation."""
     import openai
-    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+    client = _get_openai_client()
 
     turns_text = ""
     for i, t in enumerate(turns):
@@ -372,12 +383,15 @@ async def smart_label_conversation(
 
 # ── Smart Label ALL candidates at once ────────────────────────────────────────
 
+MAX_SMART_LABEL_MESSAGES = 200  # Cap to avoid unbounded GPT-4o calls
+
+
 @router.post("/smart-label-all")
 async def smart_label_all(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
-    """Smart-label all unlabeled AI messages across all candidate conversations."""
+    """Smart-label all unlabeled AI messages across all candidate conversations (capped)."""
     result = await db.execute(
         select(Conversation.id)
         .where(
@@ -388,8 +402,12 @@ async def smart_label_all(
     conv_ids = [row[0] for row in result.fetchall()]
 
     total_approved = total_rejected = total_reviewed = 0
+    global_budget = MAX_SMART_LABEL_MESSAGES
 
     for cid in conv_ids:
+        if global_budget <= 0:
+            break
+
         msgs_result = await db.execute(
             select(Message)
             .where(Message.conversation_id == cid)
@@ -411,6 +429,8 @@ async def smart_label_all(
                 "user": user_text[:500],
                 "ai": (msg.raw_text or "")[:500],
             })
+            if len(turns_to_review) >= global_budget:
+                break
 
         if not turns_to_review:
             continue
@@ -442,6 +462,7 @@ async def smart_label_all(
                             total_rejected += 1
 
         total_reviewed += len(turns_to_review)
+        global_budget -= len(turns_to_review)
 
     await db.flush()
     return {
@@ -450,6 +471,7 @@ async def smart_label_all(
         "total_reviewed": total_reviewed,
         "conversations_processed": len(conv_ids),
         "model_used": settings.openai_model_fallback,
+        "capped": total_reviewed >= MAX_SMART_LABEL_MESSAGES,
     }
 
 
@@ -502,7 +524,7 @@ async def start_fine_tuning(
     jsonl_content = "\n".join(lines)
 
     # Upload file to OpenAI (async to avoid blocking event loop)
-    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+    client = _get_openai_client()
 
     file_obj = await client.files.create(
         file=("training_data.jsonl", jsonl_content.encode("utf-8")),
@@ -533,7 +555,7 @@ async def fine_tune_status(
 ):
     """List recent fine-tuning jobs."""
     import openai
-    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+    client = _get_openai_client()
 
     jobs = await client.fine_tuning.jobs.list(limit=5)
     return [
@@ -662,6 +684,41 @@ async def rejection_analysis(
     if not rejected_msgs:
         return {"total_rejected": 0, "patterns": [], "top_errors": []}
 
+    # Batch-load preceding user messages to avoid N+1
+    from sqlalchemy import and_, literal_column
+    from sqlalchemy.orm import aliased
+
+    # Build a map: rejected_msg_id → preceding inbound message
+    preceding_map: dict = {}
+    if rejected_msgs:
+        # Use a lateral / correlated subquery approach: for each rejected msg,
+        # find the latest inbound message in the same conversation before it.
+        # Batch by conversation_id to reduce queries.
+        conv_msg_map: dict = {}
+        for msg in rejected_msgs:
+            conv_msg_map.setdefault(msg.conversation_id, []).append(msg)
+
+        for conv_id, msgs_in_conv in conv_msg_map.items():
+            # Get all inbound messages for this conversation (ordered)
+            inbound_result = await db.execute(
+                select(Message.id, Message.raw_text, Message.created_at)
+                .where(
+                    Message.conversation_id == conv_id,
+                    Message.direction == "inbound",
+                )
+                .order_by(Message.created_at.asc())
+            )
+            inbound_msgs = inbound_result.all()
+
+            for msg in msgs_in_conv:
+                # Find the last inbound message before this rejected message
+                prev_text = ""
+                for ib_id, ib_text, ib_created in reversed(inbound_msgs):
+                    if ib_created < msg.created_at:
+                        prev_text = (ib_text or "")[:200]
+                        break
+                preceding_map[msg.id] = prev_text
+
     # Group by rejection_reason
     reason_groups: dict[str, list[dict]] = {}
     for msg in rejected_msgs:
@@ -669,23 +726,10 @@ async def rejection_analysis(
         if reason not in reason_groups:
             reason_groups[reason] = []
 
-        # Get preceding user message for context
-        user_msg_result = await db.execute(
-            select(Message)
-            .where(
-                Message.conversation_id == msg.conversation_id,
-                Message.direction == "inbound",
-                Message.created_at < msg.created_at,
-            )
-            .order_by(Message.created_at.desc())
-            .limit(1)
-        )
-        user_msg = user_msg_result.scalar_one_or_none()
-
         reason_groups[reason].append({
             "id": str(msg.id),
             "ai_text": (msg.raw_text or "")[:300],
-            "user_text": (user_msg.raw_text or "")[:200] if user_msg else "",
+            "user_text": preceding_map.get(msg.id, ""),
             "selected_text": msg.rejection_selected_text,
             "created_at": msg.created_at.isoformat() if msg.created_at else None,
         })
@@ -776,7 +820,7 @@ async def generate_rules(
         for ex in examples[:3]:
             analysis_text += f"  AI: {ex}\n"
 
-    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+    client = _get_openai_client()
 
     try:
         resp = await client.chat.completions.create(

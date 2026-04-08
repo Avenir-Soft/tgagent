@@ -68,6 +68,7 @@ class FunnelResponse(BaseModel):
 
 class StockForecastItem(BaseModel):
     variant_id: UUID
+    product_id: UUID | None = None
     variant_title: str
     product_name: str
     available_stock: int

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import BigInteger, ForeignKey, Index, String, text
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +12,8 @@ class Lead(PkMixin, TenantMixin, UpdatableMixin, Base):
     __tablename__ = "leads"
     __table_args__ = (
         Index("ix_leads_tenant_status", "tenant_id", "status"),
+        CheckConstraint("status IN ('new', 'contacted', 'qualified', 'converted', 'lost')", name="ck_leads_status"),
+        CheckConstraint("source IN ('dm', 'comment', 'manual')", name="ck_leads_source"),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -40,3 +42,4 @@ class Lead(PkMixin, TenantMixin, UpdatableMixin, Base):
     source: Mapped[str] = mapped_column(
         String(30), nullable=False, server_default=text("'dm'")
     )  # dm, comment, manual
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -17,6 +17,11 @@ from src.leads.models import Lead
 from src.orders.models import Order, OrderItem
 
 
+def _escape_like(s: str) -> str:
+    """Escape SQL LIKE/ILIKE wildcard characters in user input."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 CATEGORY_NAME_ALIASES: dict[str, list[str]] = {
     # Keys MUST match actual DB category names (Russian)
     "Аксессуары": [
@@ -78,26 +83,20 @@ def _classify_product_type(name: str, model: str, category: str) -> str:
 
 
 async def list_categories(tenant_id: UUID, db: AsyncSession) -> dict:
-    """List all active product categories with product counts."""
+    """List all active product categories with product counts (single query)."""
     result = await db.execute(
-        select(Category).where(
+        select(Category, func.count(Product.id).label("product_count"))
+        .outerjoin(Product, (Product.category_id == Category.id) & Product.is_active.is_(True) & (Product.tenant_id == tenant_id))
+        .where(
             Category.tenant_id == tenant_id,
             Category.is_active.is_(True),
-        ).order_by(Category.name)
+        )
+        .group_by(Category.id)
+        .order_by(Category.name)
     )
-    categories = result.scalars().all()
 
     cat_list = []
-    for cat in categories:
-        # Count products in this category
-        count_result = await db.execute(
-            select(func.count(Product.id)).where(
-                Product.tenant_id == tenant_id,
-                Product.category_id == cat.id,
-                Product.is_active.is_(True),
-            )
-        )
-        count = count_result.scalar() or 0
+    for cat, count in result.all():
         if count > 0:
             aliases = CATEGORY_NAME_ALIASES.get(cat.name, [])
             display_name = aliases[0].capitalize() if aliases else cat.name
@@ -135,7 +134,7 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
     all_product_ids = set()
 
     for term in search_terms:
-        like_pattern = f"%{term}%"
+        like_pattern = f"%{_escape_like(term)}%"
 
         # Sub-query: product IDs matching by name
         by_name = (
@@ -303,18 +302,28 @@ async def get_variant_candidates(tenant_id: UUID, product_id: UUID, db: AsyncSes
     product = prod_result.scalar_one_or_none()
     product_media = sorted((product.media or []) if product else [], key=lambda m: m.sort_order)
 
-    variant_list = []
-    all_image_urls = []
-    for v in variants:
-        # Get inventory for this variant
-        inv_result = await db.execute(
-            select(Inventory).where(
-                Inventory.tenant_id == tenant_id,
-                Inventory.variant_id == v.id,
-            )
+    # Batch-load all inventories in one query (fixes N+1)
+    variant_ids = [v.id for v in variants]
+    inv_result = await db.execute(
+        select(Inventory).where(
+            Inventory.tenant_id == tenant_id,
+            Inventory.variant_id.in_(variant_ids),
         )
-        inv = inv_result.scalar_one_or_none()
+    )
+    inv_map = {inv.variant_id: inv for inv in inv_result.scalars().all()}
+
+    variant_list = []
+    product_image_urls = [m.url for m in product_media if m.url]
+    for v in variants:
+        inv = inv_map.get(v.id)
         available_qty = inv.available_quantity if inv else 0
+
+        # Collect variant-level images
+        variant_media = sorted((v.media or []), key=lambda m: m.sort_order)
+        variant_image_urls = [m.url for m in variant_media if m.url]
+        # Fallback to product-level images if variant has none
+        if not variant_image_urls:
+            variant_image_urls = product_image_urls
 
         entry = {
             "variant_id": str(v.id),
@@ -326,23 +335,15 @@ async def get_variant_candidates(tenant_id: UUID, product_id: UUID, db: AsyncSes
             "price": str(v.price),
             "currency": v.currency,
             "in_stock": available_qty > 0,
+            "image_urls": variant_image_urls,
+            "photo_count": len(variant_image_urls),
         }
         # Include extra specs (processor, screen, battery, etc.) if present
         if v.attributes_json:
             entry["specs"] = v.attributes_json
         variant_list.append(entry)
 
-        # Collect variant-level images (all angles)
-        variant_media = sorted((v.media or []), key=lambda m: m.sort_order)
-        for m in variant_media:
-            if m.url and m.url not in all_image_urls:
-                all_image_urls.append(m.url)
-
-    # If no variant-level images, use product-level images
-    if not all_image_urls:
-        all_image_urls = [m.url for m in product_media if m.url]
-
-    return {"found": True, "variants": variant_list, "image_urls": all_image_urls}
+    return {"found": True, "variants": variant_list}
 
 
 async def get_variant_price(tenant_id: UUID, variant_id: UUID, db: AsyncSession) -> dict:
@@ -496,7 +497,7 @@ async def get_delivery_options(tenant_id: UUID, city: str, db: AsyncSession) -> 
             q = select(DeliveryRule).where(
                 DeliveryRule.tenant_id == tenant_id,
                 DeliveryRule.is_active.is_(True),
-                DeliveryRule.city.ilike(f"%{city_name}%"),
+                DeliveryRule.city.ilike(f"%{_escape_like(city_name)}%"),
             )
             result = await db.execute(q)
             rules.extend(result.scalars().all())
@@ -506,7 +507,7 @@ async def get_delivery_options(tenant_id: UUID, city: str, db: AsyncSession) -> 
         q = select(DeliveryRule).where(
             DeliveryRule.tenant_id == tenant_id,
             DeliveryRule.is_active.is_(True),
-            DeliveryRule.city.ilike(f"%{city}%"),
+            DeliveryRule.city.ilike(f"%{_escape_like(city)}%"),
         )
         result = await db.execute(q)
         rules = result.scalars().all()
@@ -605,12 +606,12 @@ async def create_lead(
 
 
 async def _reserve_inventory(tenant_id: UUID, variant_id: UUID, qty: int, db: AsyncSession) -> bool:
-    """Reserve inventory for a variant. Returns True if successful."""
+    """Reserve inventory for a variant. Uses FOR UPDATE to prevent oversell."""
     inv_result = await db.execute(
         select(Inventory).where(
             Inventory.tenant_id == tenant_id,
             Inventory.variant_id == variant_id,
-        )
+        ).with_for_update()
     )
     inv = inv_result.scalar_one_or_none()
     if not inv or inv.available_quantity < qty:
@@ -625,7 +626,7 @@ async def _unreserve_inventory(tenant_id: UUID, variant_id: UUID, qty: int, db: 
         select(Inventory).where(
             Inventory.tenant_id == tenant_id,
             Inventory.variant_id == variant_id,
-        )
+        ).with_for_update()
     )
     inv = inv_result.scalar_one_or_none()
     if inv:
@@ -704,7 +705,7 @@ async def create_order_draft(
         _del_query = select(DeliveryRule).where(
             DeliveryRule.tenant_id == tenant_id,
             DeliveryRule.is_active.is_(True),
-            DeliveryRule.city.ilike(f"%{search_city}%"),
+            DeliveryRule.city.ilike(f"%{_escape_like(search_city)}%"),
         )
         if delivery_type:
             _del_query = _del_query.where(DeliveryRule.delivery_type == delivery_type)
@@ -759,6 +760,16 @@ async def create_order_draft(
             "total_price": str(info["total_price"]),
         })
     await db.flush()
+
+    # Auto-update lead status to "converted"
+    if lead_id:
+        lead_result = await db.execute(
+            select(Lead).where(Lead.id == lead_id)
+        )
+        lead_obj = lead_result.scalar_one_or_none()
+        if lead_obj and lead_obj.status in ("new", "contacted", "qualified"):
+            lead_obj.status = "converted"
+            await db.flush()
 
     result = {
         "order_id": str(order.id),
@@ -1103,20 +1114,20 @@ async def check_order_status(
             if lead and lead.telegram_user_id != conv.telegram_user_id:
                 return {"found": False, "message": "Заказ с таким номером не найден. Проверьте номер."}
 
-        # Build items list with variant info
+        # Build items list with variant info (batch-load variants)
+        item_variant_ids = [item.product_variant_id for item in order.items if item.product_variant_id]
+        variant_titles = {}
+        if item_variant_ids:
+            vr = await db.execute(
+                select(ProductVariant.id, ProductVariant.title).where(ProductVariant.id.in_(item_variant_ids))
+            )
+            variant_titles = {vid: title for vid, title in vr.all()}
+
         items_info = []
         for item in order.items:
-            variant_title = None
-            if item.product_variant_id:
-                v_result = await db.execute(
-                    select(ProductVariant).where(ProductVariant.id == item.product_variant_id)
-                )
-                v = v_result.scalar_one_or_none()
-                if v:
-                    variant_title = v.title
             items_info.append({
                 "variant_id": str(item.product_variant_id) if item.product_variant_id else None,
-                "title": variant_title or "?",
+                "title": variant_titles.get(item.product_variant_id, "?") if item.product_variant_id else "?",
                 "qty": item.qty,
                 "unit_price": str(item.unit_price),
                 "total_price": str(item.total_price),
@@ -1249,8 +1260,8 @@ async def request_return(
         if lead and lead.telegram_user_id != conv.telegram_user_id:
             return {"success": False, "error": "Этот заказ не принадлежит вам"}
 
-    # Check return policy
-    policy = can_return_order(order.status, ai_settings)
+    # Check return policy (pass updated_at as delivery date proxy)
+    policy = can_return_order(order.status, ai_settings, delivered_at=order.updated_at)
     if not policy["allowed"]:
         return {"success": False, "error": policy["message"], "status": order.status}
 

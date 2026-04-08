@@ -2,15 +2,16 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
+import { useEventSource, SSEEvent } from "@/lib/use-event-source";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
 import { timeAgo } from "@/lib/time-ago";
-import { getInitial } from "@/lib/utils";
 
 interface Conversation {
   id: string;
@@ -28,6 +29,7 @@ interface Conversation {
   last_message_text: string | null;
   last_message_sender_type: string | null;
   unread_count: number;
+  avatar_url: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -111,10 +113,6 @@ function SkeletonCard() {
   );
 }
 
-function getReadCounts(): Record<string, number> {
-  try { return JSON.parse(localStorage.getItem("conv_read_counts") || "{}"); } catch { return {}; }
-}
-
 export default function ConversationsPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,8 +123,6 @@ export default function ConversationsPage() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const PAGE_SIZE = 50;
-  const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const focusedRef = useRef(true);
 
   // Delete state
   const [deletingConv, setDeletingConv] = useState<Conversation | null>(null);
@@ -144,10 +140,6 @@ export default function ConversationsPage() {
       return next;
     });
   };
-  const toggleSelectAll = () => {
-    if (selected.size === filtered.length) setSelected(new Set());
-    else setSelected(new Set(filtered.map((c) => c.id)));
-  };
   const bulkDelete = async () => {
     if (selected.size === 0) return;
     setBulkDeleteLoading(true);
@@ -163,11 +155,13 @@ export default function ConversationsPage() {
     }
   };
 
+  const pageRef = useRef(0);
+
   const fetchConversations = useCallback(
     async (reset = true) => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
-      if (!reset) params.set("offset", String((page + 1) * PAGE_SIZE));
+      if (!reset) params.set("offset", String((pageRef.current + 1) * PAGE_SIZE));
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (sourceFilter !== "all") params.set("source_type", sourceFilter);
 
@@ -175,49 +169,46 @@ export default function ConversationsPage() {
         const data = await api.get<Conversation[]>(`/conversations?${params}`);
         if (reset) {
           setConversations(data);
+          pageRef.current = 0;
           setPage(0);
         } else {
           setConversations((prev) => [...prev, ...data]);
+          pageRef.current += 1;
           setPage((p) => p + 1);
         }
         setHasMore(data.length >= PAGE_SIZE);
       } catch {
-        // handled by api interceptor
+        // silently handle — page stays with current data
       } finally {
         setLoading(false);
       }
     },
-    [statusFilter, sourceFilter, page],
+    [statusFilter, sourceFilter],
   );
 
   // Initial load + filter change
   useEffect(() => {
     setLoading(true);
-    setPage(0);
     fetchConversations(true);
-  }, [statusFilter, sourceFilter]);
+  }, [fetchConversations]);
 
-  // Auto-refresh: 5s focused, 20s blurred
+  // SSE: real-time updates for conversation list (debounced to avoid rapid re-fetches)
+  const sseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSSE = useCallback((event: SSEEvent) => {
+    if (event.event === "new_conversation" || event.event === "conversation_updated" || event.event === "new_message") {
+      if (sseTimerRef.current) clearTimeout(sseTimerRef.current);
+      sseTimerRef.current = setTimeout(() => fetchConversations(true), 500);
+    }
+  }, [fetchConversations]);
+  useEventSource(undefined, handleSSE);
+
+  // Slow fallback poll (30s) in case SSE is disconnected
   useEffect(() => {
-    const tick = () => {
-      if (document.hidden) return;
-      fetchConversations(true);
-    };
-    const startInterval = () => {
-      if (refreshRef.current) clearInterval(refreshRef.current);
-      refreshRef.current = setInterval(tick, focusedRef.current ? 5000 : 20000);
-    };
-    const onVisibility = () => {
-      focusedRef.current = !document.hidden;
-      startInterval();
-    };
-    startInterval();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      if (refreshRef.current) clearInterval(refreshRef.current);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [statusFilter, sourceFilter]);
+    const timer = setInterval(() => {
+      if (!document.hidden) fetchConversations(true);
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [fetchConversations]);
 
   const toggleAi = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -267,6 +258,11 @@ export default function ConversationsPage() {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [conversations, search, sortBy]);
+
+  const toggleSelectAll = () => {
+    if (selected.size === filtered.length) setSelected(new Set());
+    else setSelected(new Set(filtered.map((c) => c.id)));
+  };
 
   const totalUnread = useMemo(
     () => conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0),
@@ -388,15 +384,15 @@ export default function ConversationsPage() {
                   </div>
                   {/* Avatar */}
                   <div className="relative shrink-0">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
-                      c.source_type === "dm"
-                        ? "bg-indigo-50 text-indigo-600"
-                        : "bg-violet-50 text-violet-600"
-                    }`}>
-                      {c.telegram_first_name
-                        ? getInitial(c.telegram_first_name, c.source_type === "dm" ? "D" : "C")
-                        : c.source_type === "dm" ? "D" : "C"}
-                    </div>
+                    <Avatar
+                      src={c.avatar_url}
+                      name={c.telegram_first_name}
+                      fallback={c.source_type === "dm" ? "D" : "C"}
+                      colors={c.source_type === "dm"
+                        ? { bg: "bg-indigo-50", text: "text-indigo-600" }
+                        : { bg: "bg-violet-50", text: "text-violet-600" }
+                      }
+                    />
                     {unread > 0 && (
                       <span className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                         {unread > 9 ? "9+" : unread}

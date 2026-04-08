@@ -19,5 +19,5 @@ class Tenant(PkMixin, UpdatableMixin, Base):
     )  # active, suspended, onboarding
 
     # relationships
-    users = relationship("User", back_populates="tenant", lazy="selectin")
-    telegram_accounts = relationship("TelegramAccount", back_populates="tenant", lazy="selectin")
+    users = relationship("User", back_populates="tenant", lazy="noload")
+    telegram_accounts = relationship("TelegramAccount", back_populates="tenant", lazy="noload")

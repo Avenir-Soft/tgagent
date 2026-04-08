@@ -119,7 +119,7 @@ def _update_context_from_tool(state_context: dict, tool_name: str, tool_args: di
                 title = v.get("title", "?")
                 price = v.get("price", "?")
                 if vid and not any(s.get("variant_id") == vid for s in shown):
-                    shown.append({"variant_id": vid, "title": title, "price": price})
+                    shown.append({"variant_id": vid, "product_id": called_pid, "title": title, "price": price})
             # Keep only last 10 shown
             if len(shown) > 10:
                 state_context["shown_products"] = shown[-10:]
@@ -144,6 +144,8 @@ def _update_context_from_tool(state_context: dict, tool_name: str, tool_args: di
         order_num = tool_result.get("order_number")
         orders = state_context.get("orders", [])
         state_context["orders"] = [o for o in orders if o.get("order_number") != order_num]
+        # Clear cart — items belonged to this order, no longer relevant
+        state_context["cart"] = []
 
     elif tool_name in ("add_item_to_order", "remove_item_from_order") and tool_result.get("success"):
         # Update order total and items in context
@@ -195,5 +197,46 @@ def _update_context_from_tool(state_context: dict, tool_name: str, tool_args: di
         # Keep only last 5 modifications
         if len(mods) > 5:
             state_context["last_order_modifications"] = mods[-5:]
+
+    return state_context
+
+
+def cleanup_state_context(state_context: dict) -> dict:
+    """Cleanup state_context to prevent JSONB bloat.
+
+    Caps: products<=5, shown_products<=10, orders<=5, variants<=8/product.
+    Removes empty collections and per-request temporary keys.
+    """
+    # Keep only last 5 products
+    products = state_context.get("products", {})
+    if len(products) > 5:
+        keys = list(products.keys())
+        for k in keys[:-5]:
+            del products[k]
+
+    # Keep only last 10 shown_products
+    shown = state_context.get("shown_products", [])
+    if len(shown) > 10:
+        state_context["shown_products"] = shown[-10:]
+
+    # Keep only last 5 orders
+    orders = state_context.get("orders", [])
+    if len(orders) > 5:
+        state_context["orders"] = orders[-5:]
+
+    # Remove per-request temporary keys
+    state_context.pop("_current_order_info", None)
+
+    # Trim variant lists inside products to max 8 per product
+    for prod_info in state_context.get("products", {}).values():
+        variants = prod_info.get("variants", [])
+        if len(variants) > 8:
+            prod_info["variants"] = variants[:8]
+
+    # Remove empty collections to keep JSONB compact
+    for key in ("cart", "products", "shown_products", "orders"):
+        val = state_context.get(key)
+        if val is not None and not val:
+            del state_context[key]
 
     return state_context
