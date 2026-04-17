@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from src.catalog.models import Inventory, ProductVariant
 from src.conversations.models import Conversation, Message
 from src.core.database import async_session_factory
+from src.dashboard.models import BroadcastHistory
 from src.handoffs.models import Handoff
 from src.leads.models import Lead
 from src.orders.models import Order
@@ -27,17 +28,22 @@ logger = logging.getLogger(__name__)
 # ── Draft cleanup ────────────────────────────────────────────────────────────
 
 
-async def cleanup_expired_drafts(max_age_hours: int = 2) -> int:
-    """Auto-cancel draft orders older than max_age_hours and unreserve inventory."""
+async def cleanup_expired_drafts(max_age_hours: int = 2, tenant_id: UUID | None = None) -> int:
+    """Auto-cancel draft orders older than max_age_hours and unreserve inventory.
+
+    If tenant_id is provided, only clean up drafts for that tenant.
+    If None (startup/scheduled), clean up across all tenants.
+    """
     cancelled = 0
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
 
     async with async_session_factory() as db:
         from src.orders.models import OrderItem
+        q = select(Order).where(Order.status == "draft", Order.created_at <= cutoff)
+        if tenant_id:
+            q = q.where(Order.tenant_id == tenant_id)
         result = await db.execute(
-            select(Order)
-            .where(Order.status == "draft", Order.created_at <= cutoff)
-            .options(selectinload(Order.items))
+            q.options(selectinload(Order.items))
         )
         stale_drafts = result.scalars().all()
 
@@ -364,18 +370,71 @@ async def send_broadcast_background(
     conv_data: list[dict],
 ):
     """Background task: send broadcast messages via Telegram."""
+    bid = _uuid_mod.UUID(broadcast_id) if isinstance(broadcast_id, str) else broadcast_id
+    logger.info("Broadcast BG started: %s, targets=%d", bid, len(conv_data))
+
     sent_count = 0
     failed_count = 0
     recipients_log: list[dict] = []
+
+    async def _set_status(status: str, recipients: list | None = None):
+        """Update broadcast status using ORM — handles all type coercion."""
+        try:
+            async with async_session_factory() as s:
+                entry = await s.get(BroadcastHistory, bid)
+                if entry:
+                    entry.status = status
+                    entry.sent_count = sent_count
+                    entry.failed_count = failed_count
+                    if status == "sent":
+                        entry.sent_at = datetime.now(timezone.utc)
+                    if recipients is not None:
+                        entry.recipients_json = recipients
+                    await s.commit()
+                    logger.info("Broadcast %s: status → %s (%d/%d)", bid, status, sent_count, failed_count)
+                else:
+                    logger.error("Broadcast %s: not found in DB", bid)
+        except Exception:
+            logger.exception("Broadcast %s: failed to update status to %s", bid, status)
 
     try:
         from src.telegram.service import telegram_manager
         client = telegram_manager.get_client(tenant_id)
         if not client:
-            async with async_session_factory() as db:
-                await db.execute(_sql("UPDATE broadcast_history SET status = 'failed' WHERE id = :id"), {"id": broadcast_id})
-                await db.commit()
+            try:
+                from src.telegram.models import TelegramAccount
+                async with async_session_factory() as acct_db:
+                    acct = (await acct_db.execute(
+                        select(TelegramAccount).where(
+                            TelegramAccount.tenant_id == tenant_id,
+                            TelegramAccount.status == "connected",
+                        )
+                    )).scalar_one_or_none()
+                    if acct:
+                        await telegram_manager.start_client(acct)
+                        client = telegram_manager.get_client(tenant_id)
+            except Exception as e:
+                logger.warning("Broadcast: failed to auto-start client: %s", e)
+        if not client:
+            await _set_status("failed")
             return
+
+        # Auto-reconnect if disconnected
+        try:
+            if not client.is_connected():
+                raise ConnectionError("not connected")
+            await client.get_me()
+        except Exception:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            try:
+                await client.connect()
+                await client.get_me()
+            except Exception:
+                await _set_status("failed")
+                return
 
         for conv in conv_data:
             r_info = {"name": conv["first_name"] or "—", "username": conv["username"], "conversation_id": conv["id"]}
@@ -395,48 +454,35 @@ async def send_broadcast_background(
                 sent_count += 1
                 r_info["sent"] = True
 
-                async with async_session_factory() as msg_db:
-                    await msg_db.execute(
-                        _sql(
-                            "INSERT INTO messages (id, tenant_id, conversation_id, direction, sender_type, raw_text, ai_generated, created_at)"
-                            " VALUES (:id, :tid, :cid, 'outbound', 'human_admin', :text, false, now())"
-                        ),
-                        {"id": _uuid_mod.uuid4(), "tid": tenant_id, "cid": conv["id"], "text": text},
-                    )
-                    await msg_db.execute(
-                        _sql("UPDATE conversations SET last_message_at = now() WHERE id = :cid"),
-                        {"cid": conv["id"]},
-                    )
-                    await msg_db.commit()
+                # Save message record via ORM
+                try:
+                    async with async_session_factory() as msg_db:
+                        conv_uuid = _uuid_mod.UUID(conv["id"]) if isinstance(conv["id"], str) else conv["id"]
+                        msg = Message(
+                            tenant_id=tenant_id,
+                            conversation_id=conv_uuid,
+                            direction="outbound",
+                            sender_type="human_admin",
+                            raw_text=text,
+                            ai_generated=False,
+                        )
+                        msg_db.add(msg)
+                        c = await msg_db.get(Conversation, conv_uuid)
+                        if c:
+                            c.last_message_at = datetime.now(timezone.utc)
+                        await msg_db.commit()
+                except Exception as e:
+                    logger.warning("Broadcast: message record save failed: %s", e)
 
                 await asyncio.sleep(0.3)
             except Exception as e:
-                logger.warning("Broadcast failed for chat %s: %s", conv["chat_id"], e)
+                logger.warning("Broadcast send failed for %s: %s", conv["chat_id"], e)
                 failed_count += 1
                 r_info["sent"] = False
             recipients_log.append(r_info)
 
-            if (sent_count + failed_count) % 50 == 0:
-                async with async_session_factory() as progress_db:
-                    await progress_db.execute(
-                        _sql("UPDATE broadcast_history SET sent_count = :sent, failed_count = :failed WHERE id = :id"),
-                        {"id": broadcast_id, "sent": sent_count, "failed": failed_count},
-                    )
-                    await progress_db.commit()
-
-        async with async_session_factory() as db:
-            await db.execute(
-                _sql(
-                    "UPDATE broadcast_history SET status = 'sent', sent_count = :sent, failed_count = :failed,"
-                    " sent_at = now(), recipients_json = :rj WHERE id = :id"
-                ),
-                {"id": broadcast_id, "sent": sent_count, "failed": failed_count, "rj": json.dumps(recipients_log, ensure_ascii=False)},
-            )
-            await db.commit()
-        logger.info("Broadcast %s complete: %d sent, %d failed", broadcast_id, sent_count, failed_count)
+        await _set_status("sent", recipients_log)
 
     except Exception:
-        logger.exception("Broadcast %s failed", broadcast_id)
-        async with async_session_factory() as db:
-            await db.execute(_sql("UPDATE broadcast_history SET status = 'failed' WHERE id = :id"), {"id": broadcast_id})
-            await db.commit()
+        logger.exception("Broadcast %s crashed", bid)
+        await _set_status("failed")

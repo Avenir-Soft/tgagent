@@ -19,7 +19,7 @@ class HandoffUpdate(BaseModel):
 class HandoffOut(BaseModel):
     id: UUID
     tenant_id: UUID
-    conversation_id: UUID
+    conversation_id: UUID | None = None
     reason: str
     summary: str | None = None
     priority: str

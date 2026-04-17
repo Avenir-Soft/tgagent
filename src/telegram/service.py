@@ -9,7 +9,7 @@ import logging
 import re
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
@@ -66,16 +66,25 @@ async def _download_photos(urls: list[str]) -> list[str]:
                 if is_webp:
                     # Convert WebP → PNG for Telegram compatibility
                     # (Telegram SendMultiMediaRequest rejects WebP; PNG preserves transparency)
+                    tmp_path = None
                     try:
                         from PIL import Image
                         import io
                         img = Image.open(io.BytesIO(resp.content))
                         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                        tmp_path = tmp.name
                         img.save(tmp, format="PNG")
                         tmp.close()
                         paths.append(tmp.name)
                     except Exception:
                         logger.debug("WebP conversion failed for %s, saving as-is", url[:80])
+                        # Clean up partially-created PNG before falling back
+                        if tmp_path:
+                            try:
+                                import os
+                                os.unlink(tmp_path)
+                            except OSError:
+                                pass
                         tmp = tempfile.NamedTemporaryFile(suffix=".webp", delete=False)
                         tmp.write(resp.content)
                         tmp.close()
@@ -206,8 +215,27 @@ class TelegramClientManager:
                 account.tenant_id,
                 account.phone_number,
             )
+
+            # Notify frontend via SSE
+            try:
+                from src.sse.event_bus import publish_event
+                await publish_event(
+                    f"sse:{account.tenant_id}:tenant",
+                    {"event": "telegram_status_changed", "status": "connected", "phone": account.phone_number},
+                )
+            except Exception:
+                pass
         except Exception:
             logger.exception("Failed to start Telegram client for tenant %s", account.tenant_id)
+            # Notify frontend about failure
+            try:
+                from src.sse.event_bus import publish_event
+                await publish_event(
+                    f"sse:{account.tenant_id}:tenant",
+                    {"event": "telegram_status_changed", "status": "error", "phone": account.phone_number},
+                )
+            except Exception:
+                pass
             raise
 
     def _register_handlers(self, client, tenant_id: UUID) -> None:
@@ -433,20 +461,35 @@ class TelegramClientManager:
                         conversation.telegram_username = tg_username
                     if full_name and conversation.telegram_first_name != full_name:
                         conversation.telegram_first_name = full_name
-                    # Also update lead data if username/name changed
-                    if tg_username or full_name:
-                        lead_result = await db.execute(
-                            select(Lead).where(
-                                Lead.tenant_id == tenant_id,
-                                Lead.telegram_user_id == telegram_user_id,
-                            ).limit(1)
-                        )
-                        lead = lead_result.scalar_one_or_none()
-                        if lead:
-                            if tg_username and lead.telegram_username != tg_username:
-                                lead.telegram_username = tg_username
-                            if full_name and lead.customer_name != full_name:
-                                lead.customer_name = full_name
+                    # Also update lead data if username/name changed + download avatar if missing
+                    lead_result = await db.execute(
+                        select(Lead).where(
+                            Lead.tenant_id == tenant_id,
+                            Lead.telegram_user_id == telegram_user_id,
+                        ).limit(1)
+                    )
+                    lead = lead_result.scalar_one_or_none()
+                    if lead:
+                        if tg_username and lead.telegram_username != tg_username:
+                            lead.telegram_username = tg_username
+                        if full_name and lead.customer_name != full_name:
+                            lead.customer_name = full_name
+                        # Download avatar if lead doesn't have one yet
+                        if client and not lead.avatar_url:
+                            try:
+                                import os
+                                avatars_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static", "avatars")
+                                os.makedirs(avatars_dir, exist_ok=True)
+                                avatar_path = os.path.join(avatars_dir, f"{lead.id}.jpg")
+                                downloaded = await client.download_profile_photo(
+                                    telegram_user_id, file=avatar_path, download_big=False
+                                )
+                                if downloaded:
+                                    lead.avatar_url = f"/static/avatars/{lead.id}.jpg"
+                                elif os.path.exists(avatar_path):
+                                    os.remove(avatar_path)
+                            except Exception:
+                                logger.debug("Could not download avatar for user %s", telegram_user_id)
 
                 # Save ALL individual inbound messages to DB (for chat history)
                 for ev, text in events_and_texts:
@@ -514,8 +557,8 @@ class TelegramClientManager:
                         f"sse:{tenant_id}:tenant",
                         {"event": event_type, "conversation_id": str(conversation.id)},
                     )
-                except Exception:
-                    pass  # SSE is non-critical
+                except Exception as e:
+                    logger.debug("SSE publish failed for inbound message in conversation %s: %s", conversation.id, e)
 
                 # Combine all texts into one message for AI
                 combined_text = " ".join(text for _, text in events_and_texts)
@@ -568,8 +611,8 @@ class TelegramClientManager:
                                     await asyncio.sleep(4)
                             except asyncio.CancelledError:
                                 pass
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("Typing indicator error for chat %s: %s", chat_id, e)
                         typing_task = asyncio.create_task(_keep_typing())
 
                     ai_result = await process_dm_message(
@@ -603,25 +646,27 @@ class TelegramClientManager:
 
                     if response_text:
                         sent = None
+                        photo_tg_msgs = []  # Track photo messages sent separately from text
                         # Send product photos if available
                         if image_urls and client:
                             photo_files = await _download_photos(image_urls[:5])
                             if photo_files:
                                 try:
                                     if len(photo_files) == 1:
-                                        # Single photo: caption on the photo itself
                                         if len(response_text) <= 1024:
                                             sent = await last_event.respond(
                                                 response_text, file=photo_files[0]
                                             )
                                         else:
                                             photo_msg = await last_event.respond(file=photo_files[0])
-                                            # Reply to photo with text
+                                            photo_tg_msgs.append(photo_msg)
                                             sent = await photo_msg.reply(response_text)
                                     else:
-                                        # Multiple photos: album, then reply to album with text
                                         album_msgs = await last_event.respond(file=photo_files)
-                                        # album_msgs is a list; reply to the first photo
+                                        if isinstance(album_msgs, list):
+                                            photo_tg_msgs.extend(album_msgs)
+                                        else:
+                                            photo_tg_msgs.append(album_msgs)
                                         first_album = album_msgs[0] if isinstance(album_msgs, list) else album_msgs
                                         sent = await first_album.reply(response_text)
                                 except Exception:
@@ -639,6 +684,33 @@ class TelegramClientManager:
                         else:
                             sent = await _telegram_send_with_retry(lambda: last_event.respond(response_text))
 
+                        def _extract_media(tg_msg):
+                            if tg_msg and hasattr(tg_msg, "media") and tg_msg.media:
+                                m = tg_msg.media
+                                if hasattr(m, "photo") and m.photo:
+                                    return "photo", str(m.photo.id)
+                                if hasattr(m, "document") and m.document:
+                                    return "document", str(m.document.id)
+                            return None, None
+
+                        # Save photo-only messages (album or long-caption split)
+                        for pm in photo_tg_msgs:
+                            pm_type, pm_fid = _extract_media(pm)
+                            if pm_type:
+                                db.add(Message(
+                                    tenant_id=tenant_id,
+                                    conversation_id=conversation.id,
+                                    telegram_message_id=pm.id if pm else None,
+                                    direction="outbound",
+                                    sender_type="ai",
+                                    raw_text="",
+                                    ai_generated=True,
+                                    media_type=pm_type,
+                                    media_file_id=pm_fid,
+                                ))
+
+                        # Save main text message (may also have media if single short caption)
+                        s_media_type, s_media_fid = _extract_media(sent)
                         out_msg = Message(
                             tenant_id=tenant_id,
                             conversation_id=conversation.id,
@@ -647,6 +719,8 @@ class TelegramClientManager:
                             sender_type="ai",
                             raw_text=response_text,
                             ai_generated=True,
+                            media_type=s_media_type,
+                            media_file_id=s_media_fid,
                         )
                         db.add(out_msg)
                         await db.commit()
@@ -674,8 +748,8 @@ class TelegramClientManager:
                                 f"sse:{tenant_id}:tenant",
                                 {"event": "conversation_updated", "conversation_id": str(conversation.id)},
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("SSE publish failed for AI response in conversation %s: %s", conversation.id, e)
 
             except Exception:
                 logger.exception("Error handling DM for tenant %s", tenant_id)
@@ -721,37 +795,45 @@ class TelegramClientManager:
 
                 # --- Smart AI reply: search products in DB ---
                 if ai_replies_enabled and auto_comment_reply:
-                    smart_reply = await self._smart_comment_reply(
-                        tenant_id, text, cta_handle, db, show_price=show_price
-                    )
+                    try:
+                        smart_reply = await self._smart_comment_reply(
+                            tenant_id, text, cta_handle, db, show_price=show_price
+                        )
+                    except Exception:
+                        logger.exception("COMMENT: smart reply search failed for %r", text[:60])
+                        smart_reply = None
+
                     if smart_reply:
                         reply_text = smart_reply["text"]
                         image_url = smart_reply.get("image_url")
                         logger.info("COMMENT: smart reply for %r → %r (image=%s)", text[:40], reply_text[:60], bool(image_url))
 
-                        if image_url:
-                            photo_files = await _download_photos([image_url])
-                            if photo_files:
-                                try:
-                                    if len(reply_text) <= 1024:
-                                        await event.reply(reply_text, file=photo_files[0])
-                                    else:
-                                        photo_msg = await event.reply(file=photo_files[0])
-                                        await photo_msg.reply(reply_text)
-                                except Exception:
-                                    logger.warning("Failed to send photo in comment, falling back to text", exc_info=True)
+                        try:
+                            if image_url:
+                                photo_files = await _download_photos([image_url])
+                                if photo_files:
+                                    try:
+                                        if len(reply_text) <= 1024:
+                                            await event.reply(reply_text, file=photo_files[0])
+                                        else:
+                                            photo_msg = await event.reply(file=photo_files[0])
+                                            await photo_msg.reply(reply_text)
+                                    except Exception:
+                                        logger.warning("Failed to send photo in comment, falling back to text", exc_info=True)
+                                        await event.reply(reply_text)
+                                    finally:
+                                        import os
+                                        for f in photo_files:
+                                            try:
+                                                os.unlink(f)
+                                            except OSError:
+                                                pass
+                                else:
                                     await event.reply(reply_text)
-                                finally:
-                                    import os
-                                    for f in photo_files:
-                                        try:
-                                            os.unlink(f)
-                                        except OSError:
-                                            pass
                             else:
                                 await event.reply(reply_text)
-                        else:
-                            await event.reply(reply_text)
+                        except Exception:
+                            logger.exception("COMMENT: failed to send smart reply for %r", text[:60])
 
                         # Save comment hint for DM context
                         try:
@@ -769,6 +851,17 @@ class TelegramClientManager:
                                     "COMMENT HINT saved: user=%s → %s",
                                     sender.id, smart_reply.get("product_name"),
                                 )
+                        except Exception as e:
+                            logger.debug("Failed to save comment hint: %s", e)
+
+                        # Get sender info for audit log
+                        sender_name = None
+                        sender_username = None
+                        try:
+                            sender_for_log = await event.get_sender()
+                            if sender_for_log:
+                                sender_name = getattr(sender_for_log, "first_name", None)
+                                sender_username = getattr(sender_for_log, "username", None)
                         except Exception:
                             pass
 
@@ -779,9 +872,14 @@ class TelegramClientManager:
                             action="comment_smart_reply",
                             entity_type="comment",
                             meta_json={
-                                "trigger_text": text[:200],
+                                "trigger_text": raw_text[:300],
+                                "reply_text": reply_text[:500],
                                 "chat_id": chat.id,
+                                "chat_title": getattr(chat, "title", None),
+                                "sender_name": sender_name,
+                                "sender_username": sender_username,
                                 "products_found": smart_reply.get("products_count", 0),
+                                "product_name": smart_reply.get("product_name"),
                             },
                         )
                         db.add(log)
@@ -801,6 +899,17 @@ class TelegramClientManager:
                     if self._matches_trigger(text, tpl.trigger_type, tpl.trigger_patterns):
                         await event.reply(tpl.template_text)
 
+                        # Get sender info
+                        tpl_sender_name = None
+                        tpl_sender_username = None
+                        try:
+                            tpl_sender = await event.get_sender()
+                            if tpl_sender:
+                                tpl_sender_name = getattr(tpl_sender, "first_name", None)
+                                tpl_sender_username = getattr(tpl_sender, "username", None)
+                        except Exception:
+                            pass
+
                         from src.core.audit import AuditLog
                         log = AuditLog(
                             tenant_id=tenant_id,
@@ -809,8 +918,12 @@ class TelegramClientManager:
                             entity_type="comment",
                             meta_json={
                                 "template_id": str(tpl.id),
-                                "trigger_text": text[:200],
+                                "trigger_text": raw_text[:300],
+                                "reply_text": tpl.template_text[:500],
                                 "chat_id": chat.id,
+                                "chat_title": getattr(chat, "title", None),
+                                "sender_name": tpl_sender_name,
+                                "sender_username": tpl_sender_username,
                             },
                         )
                         db.add(log)
@@ -824,91 +937,197 @@ class TelegramClientManager:
     async def _smart_comment_reply(
         self, tenant_id: UUID, text: str, cta_handle: str, db, *, show_price: bool = True,
     ) -> dict | None:
-        """Generate a teaser reply for channel comments — drives users to DM.
+        """GPT-powered smart reply for channel comments.
 
-        When show_price=False: NO prices, NO storage/specs. Just confirm product exists + colors.
-        When show_price=True: include price range from variants.
-        Returns None if no products found (falls through to template matching).
+        Understands context: product questions, delivery, pricing, greetings, offensive messages.
+        Always ends with CTA to DM. Returns None only if the comment should be ignored.
         """
         from src.ai.truth_tools import get_product_candidates, get_variant_candidates
+        from src.catalog.models import DeliveryRule
         from uuid import UUID as UUIDType
+        import openai
+
+        # --- Gather context ---
+        # 1. Product search
+        product_context = ""
+        product_name = None
+        product_id_str = None
+        image_url = None
+        variants_summary = ""
 
         search_result = await get_product_candidates(tenant_id, text, db)
+        products = search_result.get("products", []) if search_result.get("found") else []
 
-        if not search_result.get("found"):
-            return None
+        if products:
+            first = products[0]
+            product_id_str = first["product_id"]
+            product_name = first["name"]
+            image_url = first.get("image_url")
 
-        products = search_result.get("products", [])
-        if not products:
-            return None
+            # Get variants for first product
+            variants_result = await get_variant_candidates(tenant_id, UUIDType(product_id_str), db)
+            variants = variants_result.get("variants", []) if variants_result.get("found") else []
 
-        first = products[0]
-        product_id = UUIDType(first["product_id"])
-        product_name = first["name"]
-        image_url = first.get("image_url")
-        in_stock = first.get("in_stock", False)
+            if not image_url and variants_result.get("image_urls"):
+                image_url = variants_result["image_urls"][0]
 
-        # Get variants for colors
-        variants_result = await get_variant_candidates(tenant_id, product_id, db)
-        variants = variants_result.get("variants", []) if variants_result.get("found") else []
+            variants_summary = ", ".join(
+                v.get("title", "") for v in variants[:5] if v.get("in_stock")
+            )
 
-        if not image_url and variants_result.get("image_urls"):
-            image_url = variants_result["image_urls"][0]
+            lines = []
+            for p in products[:5]:
+                price_str = ""
+                if show_price and p.get("price_range"):
+                    pr = p["price_range"]  # e.g. "12490000–12490000"
+                    try:
+                        parts = pr.replace("–", "-").split("-")
+                        min_p, max_p = int(float(parts[0])), int(float(parts[-1]))
+                        if min_p == max_p:
+                            price_str = f" — {min_p:,} сум".replace(",", " ")
+                        else:
+                            price_str = f" — от {min_p:,} до {max_p:,} сум".replace(",", " ")
+                    except (ValueError, IndexError):
+                        pass
+                stock_str = "✅" if p.get("in_stock") else "❌ нет в наличии"
+                lines.append(f"- {p['name']}{price_str} {stock_str}")
+            product_context = "Найденные товары:\n" + "\n".join(lines)
 
-        # Collect unique colors from in-stock variants
-        colors = []
-        for v in variants:
-            if v.get("in_stock") and v.get("color") and v["color"] not in colors:
-                colors.append(v["color"])
-
-        # Build variants summary for DM hint (not shown to user)
-        variants_summary = ", ".join(
-            v.get("title", "") for v in variants[:5] if v.get("in_stock")
+        # 2. Delivery info
+        delivery_context = ""
+        delivery_keywords = (
+            "доставк", "доставл", "привез", "привоз", "курьер", "delivery", "отправ", "shipping",
+            "yetkazib", "yetkazish", "доставка", "olib kel", "olib bor",
+            "етказиб", "етказиш", "олиб кел", "олиб бор",
         )
+        if any(kw in text for kw in delivery_keywords):
+            result = await db.execute(
+                select(DeliveryRule).where(DeliveryRule.tenant_id == tenant_id)
+            )
+            rules = result.scalars().all()
+            if rules:
+                type_labels = {"courier": "курьер", "pickup": "самовывоз", "post": "почта"}
+                cities = []
+                for r in rules:
+                    p = int(float(r.price)) if r.price else 0
+                    price_s = f"{p:,} сум".replace(",", " ") if p > 0 else "бесплатно"
+                    dtype = type_labels.get(r.delivery_type, r.delivery_type or "курьер")
+                    eta = ""
+                    if r.eta_min_days is not None and r.eta_max_days is not None:
+                        if r.eta_min_days == r.eta_max_days:
+                            eta = f", {r.eta_min_days} дн."
+                        else:
+                            eta = f", {r.eta_min_days}-{r.eta_max_days} дн."
+                    cities.append(f"- {r.city} ({dtype}): {price_s}{eta}")
+                delivery_context = "Доставка:\n" + "\n".join(cities)
 
-        # --- Build teaser reply ---
-        lines = []
+        # 3. Call GPT
+        from src.core.config import settings
+        client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
 
-        if not in_stock:
-            lines.append(f"К сожалению, {product_name} сейчас нет в наличии.")
-            lines.append(f"\nНапишите в ЛС {cta_handle} — подберём альтернативу!")
-            return {
-                "text": "\n".join(lines), "image_url": None,
-                "products_count": len(products),
-                "product_id": first["product_id"], "product_name": product_name,
-                "variants_summary": variants_summary,
-            }
+        system_prompt = f"""Ты — ассистент магазина в Telegram канале. Отвечаешь на комментарии коротко и по делу.
+Ты говоришь на русском, узбекском (кириллица и латиница) и английском — отвечай на языке пользователя.
 
-        lines.append(f"Здравствуйте! {product_name} есть в наличии ✅")
+ПРАВИЛА:
+- Максимум 3-4 предложения
+- ВСЕГДА заканчивай призывом написать в ЛС: {cta_handle}
+- Если спрашивают о товаре — используй данные из контекста, НЕ выдумывай
+- Если товар не найден — скажи "напишите в ЛС, подберём"
+- Если спрашивают о доставке — ответь из данных о доставке
+- Если сообщение оскорбительное/агрессивное/угрозы — ответь ТОЛЬКО: HANDOFF
+- Если спам/бессмысленный набор — ответь ТОЛЬКО: SKIP
+- Если просто приветствие без вопроса — приветствуй и предложи помощь
+- {"Показывай цены из данных" if show_price else "НЕ показывай цены, скажи 'уточним в ЛС'"}
+- Не используй markdown, только обычный текст и эмодзи
 
-        # Show price range if enabled
-        if show_price and variants:
-            in_stock_prices = [v.get("price", 0) for v in variants if v.get("in_stock") and v.get("price")]
-            if in_stock_prices:
-                min_p, max_p = min(in_stock_prices), max(in_stock_prices)
-                if min_p == max_p:
-                    lines.append(f"Цена: {int(min_p):,} сум".replace(",", " "))
-                else:
-                    lines.append(f"Цена: от {int(min_p):,} до {int(max_p):,} сум".replace(",", " "))
+ПРИМЕРЫ:
+Комментарий (uz latin): "bu telefonni narxi qancha?" → ответь на узбекском латиницей
+Комментарий (uz cyrillic): "бу телефон борми?" → ответь на узбекском кириллицей
+Комментарий (ru): "есть ли айфон?" → ответь на русском
+Комментарий: "ты дурак" → HANDOFF"""
 
-        if colors:
-            lines.append(f"Доступные цвета: {', '.join(colors)}")
+        context_parts = []
+        if product_context:
+            context_parts.append(product_context)
+        if delivery_context:
+            context_parts.append(delivery_context)
+        context_str = "\n\n".join(context_parts) if context_parts else "Нет релевантных данных."
 
-        if len(products) > 1:
-            others = [p["name"] for p in products[1:3] if p.get("in_stock")]
-            if others:
-                lines.append(f"Также в наличии: {', '.join(others)}")
+        user_msg = f"Комментарий: {text}\n\nКонтекст магазина:\n{context_str}"
 
-        cta_suffix = " — оформим доставку!" if show_price else " — подскажем цену, наличие и оформим доставку!"
-        lines.append(f"\nНапишите в ЛС {cta_handle}{cta_suffix}")
+        try:
+            response = await client.chat.completions.create(
+                model=settings.openai_model_main,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_msg},
+                ],
+                max_tokens=200,
+                temperature=0.7,
+            )
+            reply_text = (response.choices[0].message.content or "").strip()
+        except Exception:
+            logger.exception("GPT call failed for comment reply")
+            return None
+
+        # GPT decided to skip (spam/irrelevant)
+        if not reply_text or reply_text.upper() == "SKIP":
+            return None
+
+        # GPT flagged offensive — create handoff for operator
+        if reply_text.upper() == "HANDOFF":
+            try:
+                import uuid as _uuid
+                handoff_id = str(_uuid.uuid4())
+                await db.execute(
+                    text(
+                        "INSERT INTO handoffs (id, tenant_id, reason, status, priority, summary, created_at) "
+                        "VALUES (:id, :tid, :reason, 'pending', 'high', :summary, NOW())"
+                    ),
+                    {
+                        "id": handoff_id,
+                        "tid": str(tenant_id),
+                        "reason": "offensive_comment",
+                        "summary": f"Оскорбительный комментарий в канале: \"{text[:200]}\"",
+                    },
+                )
+                await db.commit()
+                logger.info("COMMENT: handoff created for offensive comment: %r", text[:60])
+
+                # SSE notification
+                try:
+                    from src.sse.event_bus import publish_event
+                    await publish_event(
+                        f"sse:{tenant_id}:tenant",
+                        {"event": "new_handoff", "handoff_id": handoff_id},
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                logger.exception("Failed to create handoff for offensive comment")
+                await db.rollback()
+            return None
+
+        # Only attach image if GPT reply actually mentions a product from search results
+        attach_image = False
+        if image_url and products:
+            reply_lower = reply_text.lower()
+            for p in products[:5]:
+                pname = (p.get("name") or "").lower()
+                # Check if any significant part of product name is in the reply
+                if pname and (pname in reply_lower or any(
+                    w in reply_lower for w in pname.split() if len(w) >= 4
+                )):
+                    attach_image = True
+                    break
 
         return {
-            "text": "\n".join(lines),
-            "image_url": image_url,
+            "text": reply_text,
+            "image_url": image_url if attach_image else None,
             "products_count": len(products),
-            "product_id": first["product_id"],
-            "product_name": product_name,
-            "variants_summary": variants_summary,
+            "product_id": product_id_str if attach_image else None,
+            "product_name": product_name if attach_image else None,
+            "variants_summary": variants_summary if attach_image else "",
         }
 
     @staticmethod

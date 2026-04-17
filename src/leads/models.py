@@ -19,7 +19,7 @@ class Lead(PkMixin, TenantMixin, UpdatableMixin, Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("conversations.id", ondelete="SET NULL"),
         nullable=True,

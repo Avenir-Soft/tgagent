@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from src.conversations.models import Conversation, Message
 from src.conversations.schemas import TrainingLabelUpdate
 from src.core.database import get_db
 from src.core.config import settings
+from src.core.rate_limit import limiter
 
 router = APIRouter(prefix="/training", tags=["training"])
 logger = logging.getLogger(__name__)
@@ -145,7 +146,9 @@ async def list_training_conversations(
 # ── Label a message ────────────────────────────────────────────────────────────
 
 @router.patch("/messages/{message_id}/label")
+@limiter.limit("60/minute")
 async def label_message(
+    request: Request,
     message_id: UUID,
     body: TrainingLabelUpdate,
     db: AsyncSession = Depends(get_db),
@@ -185,7 +188,9 @@ async def label_message(
 # All other AI turns in the conversation are marked approved.
 
 @router.post("/conversations/{conversation_id}/auto-label")
+@limiter.limit("30/minute")
 async def auto_label_conversation(
+    request: Request,
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -298,7 +303,9 @@ async def _smart_label_batch(
 
 
 @router.post("/conversations/{conversation_id}/smart-label")
+@limiter.limit("10/minute")
 async def smart_label_conversation(
+    request: Request,
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -322,6 +329,7 @@ async def smart_label_conversation(
     messages = msgs_result.scalars().all()
 
     # Build turns: unlabeled AI messages + their preceding user message
+    MAX_PER_CONV = 50  # Cap to avoid unbounded GPT-4o calls per conversation
     turns_to_review: list[dict] = []
     for i, msg in enumerate(messages):
         if not msg.ai_generated or msg.training_label is not None:
@@ -336,6 +344,8 @@ async def smart_label_conversation(
             "user": user_text[:500],
             "ai": (msg.raw_text or "")[:500],
         })
+        if len(turns_to_review) >= MAX_PER_CONV:
+            break
 
     if not turns_to_review:
         return {"approved": 0, "rejected": 0, "message": "No unlabeled messages"}
@@ -387,7 +397,9 @@ MAX_SMART_LABEL_MESSAGES = 200  # Cap to avoid unbounded GPT-4o calls
 
 
 @router.post("/smart-label-all")
+@limiter.limit("10/minute")
 async def smart_label_all(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
@@ -478,7 +490,9 @@ async def smart_label_all(
 # ── Fine-tuning ──────────────────────────────────────────────────────────────
 
 @router.post("/fine-tune")
+@limiter.limit("10/minute")
 async def start_fine_tuning(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
@@ -576,7 +590,9 @@ async def fine_tune_status(
 # ── Reset labels ─────────────────────────────────────────────────────────────
 
 @router.post("/conversations/{conversation_id}/reset-labels")
+@limiter.limit("60/minute")
 async def reset_labels(
+    request: Request,
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -684,40 +700,30 @@ async def rejection_analysis(
     if not rejected_msgs:
         return {"total_rejected": 0, "patterns": [], "top_errors": []}
 
-    # Batch-load preceding user messages to avoid N+1
-    from sqlalchemy import and_, literal_column
-    from sqlalchemy.orm import aliased
-
-    # Build a map: rejected_msg_id → preceding inbound message
+    # Batch-load preceding user messages — single query for ALL conversations
     preceding_map: dict = {}
     if rejected_msgs:
-        # Use a lateral / correlated subquery approach: for each rejected msg,
-        # find the latest inbound message in the same conversation before it.
-        # Batch by conversation_id to reduce queries.
-        conv_msg_map: dict = {}
-        for msg in rejected_msgs:
-            conv_msg_map.setdefault(msg.conversation_id, []).append(msg)
-
-        for conv_id, msgs_in_conv in conv_msg_map.items():
-            # Get all inbound messages for this conversation (ordered)
-            inbound_result = await db.execute(
-                select(Message.id, Message.raw_text, Message.created_at)
-                .where(
-                    Message.conversation_id == conv_id,
-                    Message.direction == "inbound",
-                )
-                .order_by(Message.created_at.asc())
+        conv_ids = list({msg.conversation_id for msg in rejected_msgs})
+        inbound_result = await db.execute(
+            select(Message.conversation_id, Message.raw_text, Message.created_at)
+            .where(
+                Message.conversation_id.in_(conv_ids),
+                Message.direction == "inbound",
             )
-            inbound_msgs = inbound_result.all()
+            .order_by(Message.conversation_id, Message.created_at.asc())
+        )
+        # Group inbound messages by conversation_id
+        conv_inbound: dict = {}
+        for conv_id, ib_text, ib_created in inbound_result.all():
+            conv_inbound.setdefault(conv_id, []).append((ib_text, ib_created))
 
-            for msg in msgs_in_conv:
-                # Find the last inbound message before this rejected message
-                prev_text = ""
-                for ib_id, ib_text, ib_created in reversed(inbound_msgs):
-                    if ib_created < msg.created_at:
-                        prev_text = (ib_text or "")[:200]
-                        break
-                preceding_map[msg.id] = prev_text
+        for msg in rejected_msgs:
+            prev_text = ""
+            for ib_text, ib_created in reversed(conv_inbound.get(msg.conversation_id, [])):
+                if ib_created < msg.created_at:
+                    prev_text = (ib_text or "")[:200]
+                    break
+            preceding_map[msg.id] = prev_text
 
     # Group by rejection_reason
     reason_groups: dict[str, list[dict]] = {}
@@ -778,7 +784,9 @@ If there are language-related issues (mixing Russian into Uzbek, wrong script), 
 
 
 @router.post("/generate-rules")
+@limiter.limit("10/minute")
 async def generate_rules(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):

@@ -12,4 +12,6 @@ dist/
 node_modules/
 frontend/.next/
 frontend/node_modules/
+media_cache/
 .DS_Store
+uploads/

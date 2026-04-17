@@ -6,6 +6,8 @@ import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Breadcrumb } from "@/components/ui/breadcrumb";
+import { formatPrice } from "@/lib/utils";
 
 interface Variant {
   id: string;
@@ -71,7 +73,7 @@ interface SalesData {
 }
 
 function fmt(val: string | number): string {
-  return Number(val).toLocaleString("ru-RU");
+  return formatPrice(val);
 }
 
 const statusLabels: Record<string, string> = {
@@ -118,7 +120,7 @@ export default function ProductDetailPage() {
 
   const load = useCallback(() => {
     if (!id) return;
-    api.get<Product>(`/products/${id}`).then(setProduct).catch(console.error).finally(() => setLoading(false));
+    api.get<Product>(`/products/${id}`).then(setProduct).catch(() => toast("Не удалось загрузить товар", "error")).finally(() => setLoading(false));
     api.get<Media[]>(`/products/${id}/media`).then(setMediaList).catch(() => {});
   }, [id]);
 
@@ -271,15 +273,104 @@ export default function ProductDetailPage() {
   const getVariantMedia = (vid: string) => mediaList.filter((m) => m.variant_id === vid);
   const productLevelMedia = mediaList.filter((m) => !m.variant_id);
 
-  if (loading) return <LoadingSpinner />;
-  if (!product) return <div className="p-8 text-center text-rose-500">Товар не найден</div>;
+  if (loading) return (
+    <div className="space-y-6 animate-pulse">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2">
+        <div className="h-4 w-16 bg-slate-200 rounded" />
+        <div className="h-4 w-3 bg-slate-200 rounded" />
+        <div className="h-4 w-32 bg-slate-200 rounded" />
+      </div>
+      {/* Title + badges */}
+      <div className="flex items-center gap-3">
+        <div className="h-8 w-56 bg-slate-200 rounded-lg" />
+        <div className="h-6 w-20 bg-indigo-100 rounded-full" />
+        <div className="h-6 w-16 bg-slate-200 rounded-full" />
+      </div>
+      {/* Stock summary */}
+      <div className="flex gap-4">
+        <div className="h-5 w-28 bg-slate-200 rounded" />
+        <div className="h-5 w-24 bg-slate-200 rounded" />
+      </div>
+      {/* Photos section */}
+      <div className="card p-6 space-y-4">
+        <div className="h-5 w-28 bg-slate-200 rounded" />
+        <div className="flex gap-3">
+          {[1,2,3].map(i => <div key={i} className="w-24 h-24 bg-slate-100 rounded-xl" />)}
+        </div>
+      </div>
+      {/* Variants section */}
+      <div className="card p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="h-5 w-40 bg-slate-200 rounded" />
+          <div className="h-8 w-32 bg-indigo-100 rounded-lg" />
+        </div>
+        {/* Mobile variant skeletons */}
+        <div className="md:hidden space-y-3">
+          {[1,2,3].map(i => (
+            <div key={i} className="rounded-xl border border-slate-200 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1.5">
+                  <div className="h-5 w-36 bg-slate-200 rounded" />
+                  <div className="h-3 w-20 bg-slate-100 rounded" />
+                </div>
+                <div className="h-6 w-14 bg-emerald-100 rounded-full" />
+              </div>
+              <div className="flex gap-2">
+                <div className="h-6 w-16 bg-slate-100 rounded" />
+                <div className="h-6 w-14 bg-slate-100 rounded" />
+                <div className="h-6 w-12 bg-slate-100 rounded" />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="h-6 w-32 bg-slate-200 rounded" />
+                <div className="h-5 w-20 bg-emerald-50 rounded" />
+              </div>
+              <div className="flex gap-2">
+                <div className="h-8 w-16 bg-slate-100 rounded-lg" />
+                <div className="h-8 w-14 bg-slate-100 rounded-lg" />
+                <div className="h-8 w-8 bg-slate-100 rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Desktop variant skeletons */}
+        <div className="hidden md:block space-y-2">
+          {[1,2,3,4].map(i => <div key={i} className="h-14 bg-slate-50 rounded-lg" />)}
+        </div>
+      </div>
+      {/* Aliases */}
+      <div className="card p-6 space-y-3">
+        <div className="h-5 w-24 bg-slate-200 rounded" />
+        <div className="flex gap-2 flex-wrap">
+          {[1,2,3,4,5].map(i => <div key={i} className="h-7 w-20 bg-slate-100 rounded-full" />)}
+        </div>
+      </div>
+    </div>
+  );
+  if (!product) return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-rose-50 flex items-center justify-center mb-4">
+        <svg className="w-8 h-8 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+        </svg>
+      </div>
+      <h2 className="text-lg font-semibold text-slate-900 mb-1">Товар не найден</h2>
+      <p className="text-sm text-slate-400 mb-4">Возможно, он был удалён или ссылка неверна</p>
+      <button type="button" onClick={() => router.push("/products")} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
+        Назад к товарам
+      </button>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <button onClick={() => router.push("/products")} className="text-sm text-indigo-600 hover:text-indigo-700 hover:underline mb-2 block transition-colors">&larr; Назад к товарам</button>
+          <Breadcrumb items={[
+            { label: "Товары", href: "/products" },
+            { label: product?.name || "..." },
+          ]} />
           {editProduct ? (
             <div className="space-y-3 max-w-lg">
               <input type="text" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
@@ -302,7 +393,7 @@ export default function ProductDetailPage() {
             <>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold text-slate-900">{product.name}</h1>
-                <button type="button" onClick={startProductEdit} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Редактировать">
+                <button type="button" onClick={startProductEdit} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Редактировать" aria-label="Редактировать товар">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                 </button>
               </div>
@@ -394,7 +485,121 @@ export default function ProductDetailPage() {
         {product.variants.length === 0 ? (
           <div className="px-4 py-8 text-center text-slate-400">Нет вариантов</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Mobile variant cards */}
+            <div className="md:hidden space-y-3 px-1">
+              {product.variants.map((v) => {
+                const isEditing = !!editing[v.id];
+                const edit = editing[v.id];
+                const isSaving = saving.has(v.id);
+                const isPriceEditing = editingVariant === v.id;
+                const vMedia = getVariantMedia(v.id);
+                const isMediaExpanded = expandedVariantMedia.has(v.id);
+                return (
+                  <div key={v.id} className={`rounded-xl border transition-all ${isEditing ? "border-indigo-300 bg-indigo-50/30 shadow-sm" : "border-slate-200 bg-white"} p-4`}>
+                    {/* Header: title + status */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-semibold text-slate-900 text-[15px]">{v.title}</p>
+                        {v.sku && <p className="text-[11px] text-slate-400 mt-0.5">SKU: {v.sku}</p>}
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium shrink-0 ${v.is_active ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"}`}>
+                        {v.is_active ? "Актив" : "Скрыт"}
+                      </span>
+                    </div>
+                    {/* Specs tags */}
+                    {(v.color || v.storage || v.ram || v.size) && (
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {v.color && <span className="px-2.5 py-1 rounded-lg bg-slate-50 text-slate-700 text-xs font-medium border border-slate-100">{v.color}</span>}
+                        {v.storage && <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-medium border border-indigo-100">{v.storage}</span>}
+                        {v.ram && <span className="px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 text-xs font-medium border border-violet-100">{v.ram}</span>}
+                        {v.size && <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 text-xs font-medium border border-amber-100">{v.size}</span>}
+                      </div>
+                    )}
+                    {/* Price + stock row */}
+                    <div className="flex items-center justify-between mb-3 py-2 px-3 rounded-lg bg-slate-50/80">
+                      <div className="font-semibold text-slate-900">
+                        {isPriceEditing ? (
+                          <div className="flex items-center gap-1">
+                            <input type="number" value={variantPrice} onChange={(e) => setVariantPrice(e.target.value)}
+                              className="w-28 bg-white border border-indigo-300 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" min={1}
+                              onKeyDown={(e) => { if (e.key === "Enter") saveVariantPrice(v.id); if (e.key === "Escape") setEditingVariant(null); }} autoFocus />
+                            <button type="button" onClick={() => saveVariantPrice(v.id)} className="text-indigo-600 text-sm px-1.5 font-bold">✓</button>
+                            <button type="button" onClick={() => setEditingVariant(null)} className="text-slate-400 text-sm px-1.5">✗</button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => startVariantPriceEdit(v)} className="text-left inline-flex items-center gap-1.5 group">
+                            <span>{fmt(v.price)} сум</span>
+                            <svg className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className={`font-semibold text-sm ${v.stock > 0 ? "text-emerald-600" : "text-rose-600"}`}>{v.stock} своб</span>
+                        {v.reserved > 0 && <span className="text-xs text-amber-600 ml-1.5 font-medium">+{v.reserved} рез</span>}
+                      </div>
+                    </div>
+                    {isEditing && (
+                      <div className="flex items-center gap-3 mb-3 bg-white rounded-lg p-3 border border-slate-200">
+                        <div className="flex-1">
+                          <label className="text-[10px] text-slate-400 block mb-1">Всего</label>
+                          <input type="number" min={0} value={edit.quantity} onChange={(e) => updateEditField(v.id, "quantity", parseInt(e.target.value) || 0)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-center focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-[10px] text-slate-400 block mb-1">Резерв</label>
+                          <input type="number" min={0} max={edit.quantity} value={edit.reserved} onChange={(e) => updateEditField(v.id, "reserved", parseInt(e.target.value) || 0)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-center focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                        </div>
+                        <div className="text-xs text-slate-400 pt-4">= {Math.max(0, edit.quantity - edit.reserved)}</div>
+                      </div>
+                    )}
+                    <div className="flex gap-1.5 flex-wrap">
+                      {isEditing ? (
+                        <>
+                          <button type="button" disabled={isSaving} onClick={() => saveInventory(v.id)}
+                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">{isSaving ? "..." : "Сохранить"}</button>
+                          <button type="button" onClick={() => cancelEdit(v.id)}
+                            className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition-colors">Отмена</button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => toggleVariantMedia(v.id)}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${vMedia.length > 0 ? "bg-violet-50 text-violet-600 border border-violet-200" : "bg-white border border-slate-200 text-slate-400"}`}>
+                            {vMedia.length > 0 ? `${vMedia.length} фото` : "Фото"}
+                          </button>
+                          <button type="button" onClick={() => startEdit(v)}
+                            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-indigo-600">Склад</button>
+                          <button type="button" onClick={() => setDeleteVariantId(v.id)}
+                            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-rose-500">&times;</button>
+                        </>
+                      )}
+                    </div>
+                    {isMediaExpanded && (
+                      <div className="mt-3 flex items-center gap-2 flex-wrap">
+                        {vMedia.map((m) => (
+                          <div key={m.id} className="relative group w-16 h-16 rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+                            <img src={m.url} alt="" className="w-full h-full object-cover" />
+                            <button type="button" onClick={() => deleteMedia(m.id)}
+                              className="absolute top-0.5 right-0.5 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
+                          </div>
+                        ))}
+                        <div className="flex gap-1.5 flex-1 min-w-[160px]">
+                          <input type="url" value={variantMediaInput[v.id] || ""} onChange={(e) => setVariantMediaInput((prev) => ({ ...prev, [v.id]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addVariantMedia(v.id); } }}
+                            placeholder="URL фото..." className="flex-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-violet-500 outline-none" />
+                          <button type="button" onClick={() => addVariantMedia(v.id)} disabled={!(variantMediaInput[v.id] || "").trim()}
+                            className="px-2.5 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">+</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop variant table */}
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50/50 text-left">
                 <tr>
@@ -438,8 +643,9 @@ export default function ProductDetailPage() {
                             <button type="button" onClick={() => setEditingVariant(null)} className="text-slate-400 hover:text-slate-600 text-xs">✗</button>
                           </div>
                         ) : (
-                          <button type="button" onClick={() => startVariantPriceEdit(v)} className="hover:text-indigo-600 transition-colors" title="Нажмите, чтобы изменить цену">
+                          <button type="button" onClick={() => startVariantPriceEdit(v)} className="group hover:text-indigo-600 transition-colors inline-flex items-center gap-1" title="Нажмите, чтобы изменить цену">
                             {fmt(v.price)} сум
+                            <svg className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                           </button>
                         )}
                       </td>
@@ -449,12 +655,12 @@ export default function ProductDetailPage() {
                             <div>
                               <label className="text-[10px] text-slate-400 block">Всего</label>
                               <input type="number" min={0} value={edit.quantity} onChange={(e) => updateEditField(v.id, "quantity", parseInt(e.target.value) || 0)}
-                                className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                                className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
                             </div>
                             <div>
                               <label className="text-[10px] text-slate-400 block">Резерв</label>
                               <input type="number" min={0} max={edit.quantity} value={edit.reserved} onChange={(e) => updateEditField(v.id, "reserved", parseInt(e.target.value) || 0)}
-                                className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                                className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
                             </div>
                             <div className="text-[10px] text-slate-400">= {Math.max(0, edit.quantity - edit.reserved)} своб</div>
                           </div>
@@ -523,7 +729,8 @@ export default function ProductDetailPage() {
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
 

@@ -1,15 +1,19 @@
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import get_current_user, require_store_owner
 from src.auth.models import User
 from src.core.database import get_db
+from src.core.rate_limit import limiter
 from src.leads.models import Lead
 from src.leads.schemas import LeadCreate, LeadOut, LeadUpdate
 from src.orders.models import Order
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
@@ -69,7 +73,9 @@ async def get_lead(
 
 
 @router.patch("/{lead_id}", response_model=LeadOut)
+@limiter.limit("30/minute")
 async def update_lead(
+    request: Request,
     lead_id: UUID,
     body: LeadUpdate,
     db: AsyncSession = Depends(get_db),
@@ -88,7 +94,9 @@ async def update_lead(
 
 
 @router.post("/refresh-avatars", status_code=200)
+@limiter.limit("10/minute")
 async def refresh_avatars(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
@@ -131,7 +139,8 @@ async def refresh_avatars(
                 updated += 1
             elif os.path.exists(avatar_path):
                 os.remove(avatar_path)
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to download avatar for lead %s: %s", lead.id, e)
             continue
     await db.flush()
     return {"total": len(leads), "updated": updated}

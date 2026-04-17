@@ -7,6 +7,8 @@ import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Avatar } from "@/components/ui/avatar";
+import { CardSkeleton } from "@/components/ui/page-skeleton";
+import { formatPrice } from "@/lib/utils";
 import { timeAgo } from "@/lib/time-ago";
 
 interface Lead {
@@ -45,6 +47,15 @@ const statusConfig: Record<string, { label: string; color: string; bg: string; d
 
 const statusOrder = ["new", "contacted", "qualified", "converted", "lost"];
 
+// Allowed transitions: terminal states (converted, lost) can only go to each other or stay
+const allowedTransitions: Record<string, string[]> = {
+  new: ["contacted", "qualified", "converted", "lost"],
+  contacted: ["qualified", "converted", "lost"],
+  qualified: ["contacted", "converted", "lost"],
+  converted: ["lost"],
+  lost: ["converted"],
+};
+
 const sourceLabels: Record<string, string> = { dm: "DM", comment: "Коммент", manual: "Вручную" };
 
 const orderStatusLabels: Record<string, string> = {
@@ -65,11 +76,13 @@ export default function LeadsPage() {
   const [notesText, setNotesText] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [refreshingAvatars, setRefreshingAvatars] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   const load = useCallback(() => {
-    const params = filter !== "all" ? `?status=${filter}` : "";
-    api.get<Lead[]>(`/leads${params}`).then(setLeads).catch(console.error);
+    const params = new URLSearchParams({ limit: "200" });
+    if (filter !== "all") params.set("status", filter);
+    api.get<Lead[]>(`/leads?${params}`).then((data) => { setLeads(data); setLoading(false); }).catch(() => { toast("Не удалось загрузить лидов", "error"); setLoading(false); });
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
@@ -112,22 +125,35 @@ export default function LeadsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, newStatus: string) => {
+    const lead = leads.find((l) => l.id === id);
+    if (lead) {
+      const allowed = allowedTransitions[lead.status];
+      if (allowed && !allowed.includes(newStatus)) {
+        toast(`Нельзя изменить "${statusConfig[lead.status]?.label}" → "${statusConfig[newStatus]?.label}"`, "error");
+        return;
+      }
+    }
     try {
-      await api.patch(`/leads/${id}`, { status });
-      setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status } : l)));
-      toast(`Статус изменён: ${statusConfig[status]?.label || status}`, "success");
+      await api.patch(`/leads/${id}`, { status: newStatus });
+      setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l)));
+      toast(`Статус изменён: ${statusConfig[newStatus]?.label || newStatus}`, "success");
     } catch {
       toast("Ошибка обновления статуса", "error");
     }
   };
 
-  const bulkUpdateStatus = async (status: string) => {
+  const bulkUpdateStatus = async (newStatus: string) => {
     if (selected.size === 0) return;
+    const blocked = leads.filter((l) => selected.has(l.id) && !(allowedTransitions[l.status] || []).includes(newStatus));
+    if (blocked.length > 0) {
+      toast(`${blocked.length} лидов нельзя перевести в "${statusConfig[newStatus]?.label}"`, "error");
+      return;
+    }
     try {
-      await Promise.all([...selected].map((id) => api.patch(`/leads/${id}`, { status })));
-      setLeads((prev) => prev.map((l) => selected.has(l.id) ? { ...l, status } : l));
-      toast(`${selected.size} лидов -> ${statusConfig[status]?.label}`, "success");
+      await Promise.all([...selected].map((id) => api.patch(`/leads/${id}`, { status: newStatus })));
+      setLeads((prev) => prev.map((l) => selected.has(l.id) ? { ...l, status: newStatus } : l));
+      toast(`${selected.size} лидов -> ${statusConfig[newStatus]?.label}`, "success");
       setSelected(new Set());
     } catch {
       toast("Ошибка массового обновления", "error");
@@ -281,12 +307,73 @@ export default function LeadsPage() {
         )}
       </div>
 
-      {/* Table */}
-      <div className="card overflow-x-auto">
-        {filtered.length === 0 ? (
-          <EmptyState message={search ? "Ничего не найдено" : "Нет лидов"} />
+      {/* Table (desktop) + Cards (mobile) */}
+      {loading ? (
+        <CardSkeleton count={6} />
+      ) : filtered.length === 0 ? (
+        search || filter !== "all" ? (
+          <div className="text-center py-12">
+            <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-slate-700">Фильтр активен — ничего не найдено</p>
+            <p className="text-xs text-slate-400 mt-1">Попробуйте изменить параметры поиска или сбросить фильтр</p>
+            <button type="button" onClick={() => { setSearch(""); setFilter("all"); }} className="mt-3 text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+              Сбросить фильтры
+            </button>
+          </div>
         ) : (
-          <table className="w-full text-sm min-w-[760px]">
+          <EmptyState
+            message="Нет лидов"
+            description="Лиды создаются автоматически из входящих Telegram диалогов"
+            action={{ label: "Перейти к диалогам", href: "/conversations" }}
+          />
+        )
+      ) : (
+      <>
+        {/* Mobile cards */}
+        <div className="md:hidden space-y-3">
+          {filtered.map((l) => {
+            const cfg = statusConfig[l.status] || statusConfig.new;
+            return (
+              <div key={l.id} className="card p-4">
+                <div className="flex items-start gap-3">
+                  <Avatar src={l.avatar_url} name={l.customer_name} size="sm" colors={{ bg: cfg.bg, text: cfg.color }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-sm text-slate-900 truncate">{l.customer_name || "Без имени"}</p>
+                      <select title="Статус" value={l.status} onChange={(e) => updateStatus(l.id, e.target.value)} className={`px-2 py-0.5 rounded-lg text-[10px] font-medium border-none cursor-pointer ${cfg.bg} ${cfg.color}`}>
+                        <option value={l.status}>{statusConfig[l.status]?.label}</option>
+                        {(allowedTransitions[l.status] || []).map((s) => <option key={s} value={s}>{statusConfig[s].label}</option>)}
+                      </select>
+                    </div>
+                    {l.telegram_username && (
+                      <a href={`https://t.me/${l.telegram_username.replace(/^@/, "")}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500">@{l.telegram_username}</a>
+                    )}
+                    <div className="flex items-center gap-2 mt-2 flex-wrap text-xs text-slate-500">
+                      {l.phone && <span>{l.phone}</span>}
+                      {l.city && <span>{l.city}</span>}
+                      {l.order_count > 0 && <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-medium">{l.order_count} зак.</span>}
+                      <span className="text-slate-400">{timeAgo(l.created_at)}</span>
+                    </div>
+                    {l.conversation_id && (
+                      <Link href={`/conversations/${l.conversation_id}`} className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                        Диалог
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block card overflow-x-auto">
+          <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
                 <th className="pl-4 py-3 w-8">
@@ -396,7 +483,7 @@ export default function LeadsPage() {
                               onClick={() => saveNotes(l.id)}
                               disabled={savingNotes}
                               className="text-emerald-600 hover:text-emerald-800 p-0.5"
-                              title="Сохранить"
+                              title="Сохранить" aria-label="Сохранить заметку"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -406,7 +493,7 @@ export default function LeadsPage() {
                               type="button"
                               onClick={() => setEditingNotes(null)}
                               className="text-slate-400 hover:text-slate-600 p-0.5"
-                              title="Отмена"
+                              title="Отмена" aria-label="Отменить редактирование"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -440,7 +527,8 @@ export default function LeadsPage() {
                           onChange={(e) => updateStatus(l.id, e.target.value)}
                           className={`px-2.5 py-1 rounded-lg text-xs font-medium border-none cursor-pointer transition-colors ${cfg.bg} ${cfg.color}`}
                         >
-                          {statusOrder.map((s) => (
+                          <option value={l.status}>{statusConfig[l.status]?.label}</option>
+                          {(allowedTransitions[l.status] || []).map((s) => (
                             <option key={s} value={s}>{statusConfig[s].label}</option>
                           ))}
                         </select>
@@ -450,7 +538,7 @@ export default function LeadsPage() {
                           type="button"
                           onClick={() => toggleExpand(l)}
                           className={`p-1 rounded-md transition-colors ${isExpanded ? "bg-indigo-100 text-indigo-600" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"}`}
-                          title="История"
+                          title="История" aria-label="Показать историю"
                         >
                           <svg className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -539,7 +627,7 @@ export default function LeadsPage() {
                                         </span>
                                       </div>
                                       <div className="text-right">
-                                        <p className="text-xs font-medium text-slate-700">{Number(o.total_amount).toLocaleString("ru")} сум</p>
+                                        <p className="text-xs font-medium text-slate-700">{formatPrice(o.total_amount)} сум</p>
                                         <p className="text-[10px] text-slate-400">{new Date(o.created_at).toLocaleDateString("ru")}</p>
                                       </div>
                                     </div>
@@ -556,8 +644,9 @@ export default function LeadsPage() {
               })}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      </>
+      )}
 
       {filtered.length > 0 && (
         <div className="text-xs text-slate-400 mt-2 text-right">

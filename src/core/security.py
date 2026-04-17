@@ -6,7 +6,14 @@ from jose import JWTError, jwt
 
 from src.core.config import settings
 
-_redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+_redis = aioredis.from_url(
+    settings.redis_url,
+    decode_responses=True,
+    retry_on_timeout=True,
+    socket_connect_timeout=5,
+    socket_timeout=5,
+    health_check_interval=30,
+)
 
 
 async def blacklist_token(token: str) -> None:
@@ -46,6 +53,34 @@ def decode_access_token(token: str) -> dict | None:
         return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
     except JWTError:
         return None
+
+
+async def create_refresh_token(user_id: str, tenant_id: str) -> str:
+    """Create an opaque refresh token stored in Redis."""
+    import secrets
+    token = secrets.token_urlsafe(48)
+    ttl = settings.refresh_token_expire_days * 86400
+    data = f"{user_id}:{tenant_id}"
+    await _redis.setex(f"rt:{token}", ttl, data)
+    return token
+
+
+async def validate_refresh_token(token: str) -> tuple[str, str] | None:
+    """Validate and consume a refresh token (one-time use). Returns (user_id, tenant_id) or None."""
+    data = await _redis.get(f"rt:{token}")
+    if not data:
+        return None
+    # Delete immediately — one-time use (rotation)
+    await _redis.delete(f"rt:{token}")
+    parts = data.split(":", 1)
+    if len(parts) != 2:
+        return None
+    return parts[0], parts[1]
+
+
+async def revoke_refresh_token(token: str) -> None:
+    """Explicitly revoke a refresh token."""
+    await _redis.delete(f"rt:{token}")
 
 
 def create_media_token(user_id: str, ttl_seconds: int = 300) -> str:

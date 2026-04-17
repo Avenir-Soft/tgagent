@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.config import settings
+from src.core.logging_config import setup_logging
 from src.ai.router import router as ai_router
 from src.training.router import router as training_router
 from src.auth.router import router as auth_router
@@ -22,7 +23,7 @@ from src.tenants.router import router as tenants_router
 from src.analytics.router import router as analytics_router
 from src.sse.router import router as sse_router
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -51,9 +52,6 @@ async def _run_startup_migrations():
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type VARCHAR(20)",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_file_id VARCHAR(255)",
             "CREATE INDEX IF NOT EXISTS ix_messages_conv_created ON messages (conversation_id, created_at DESC)",
-            # Fix legacy role values (one-time, idempotent — only runs if legacy roles still exist)
-            "UPDATE users SET role = 'super_admin' WHERE role = 'admin' AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'super_admin')",
-            "UPDATE users SET role = 'store_owner' WHERE role = 'owner' AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'store_owner')",
             # Analytics tables (Phase 5)
             """CREATE TABLE IF NOT EXISTS customer_segments (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -120,12 +118,77 @@ async def _run_startup_migrations():
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_tenant_email ON users (tenant_id, email)",
             # LOW-12: per-tenant unique category slug
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_tenant_slug ON categories (tenant_id, slug)",
+            # AI Trace Logs (persistent AI monitor)
+            """CREATE TABLE IF NOT EXISTS ai_trace_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                conversation_id UUID,
+                trace_id VARCHAR(8) NOT NULL,
+                user_message TEXT NOT NULL DEFAULT '',
+                detected_language VARCHAR(20) NOT NULL DEFAULT '',
+                model VARCHAR(50) NOT NULL DEFAULT '',
+                state_before VARCHAR(30) NOT NULL DEFAULT '',
+                state_after VARCHAR(30) NOT NULL DEFAULT '',
+                tools_called JSONB NOT NULL DEFAULT '[]'::jsonb,
+                steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+                final_response TEXT NOT NULL DEFAULT '',
+                image_urls JSONB NOT NULL DEFAULT '[]'::jsonb,
+                total_duration_ms INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_ai_trace_logs_tenant ON ai_trace_logs (tenant_id, created_at DESC)",
+            "ALTER TABLE ai_trace_logs ADD COLUMN IF NOT EXISTS prompt_tokens INT NOT NULL DEFAULT 0",
+            "ALTER TABLE ai_trace_logs ADD COLUMN IF NOT EXISTS completion_tokens INT NOT NULL DEFAULT 0",
         ]
         for stmt in stmts:
             try:
                 await conn.execute(_sql(stmt))
             except Exception as e:
                 logger.warning("Migration skipped (%s): %s", stmt[:50], e)
+
+        # ── Row-Level Security (defense-in-depth tenant isolation) ────────
+        # Policies are created on all tenant-scoped tables.
+        # RLS is enforced only for non-owner roles. In production, create
+        # a dedicated app role (not the table owner) and grant it access —
+        # then RLS automatically kicks in.
+        _rls_tables = [
+            "users", "telegram_accounts", "telegram_channels",
+            "telegram_discussion_groups", "categories", "products",
+            "product_aliases", "product_variants", "inventory",
+            "product_media", "delivery_rules", "customer_segments",
+            "competitor_prices", "leads", "handoffs", "audit_logs",
+            "ai_settings", "ai_trace_logs", "orders",
+            "comment_templates", "conversations", "messages",
+            "broadcast_history",
+        ]
+        for tbl in _rls_tables:
+            for rls_stmt in [
+                f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY",
+                f"""DO $$ BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_policies WHERE tablename = '{tbl}' AND policyname = 'tenant_isolation'
+                    ) THEN
+                        EXECUTE 'CREATE POLICY tenant_isolation ON {tbl} USING (tenant_id = current_setting(''app.current_tenant_id'', true)::uuid)';
+                    END IF;
+                END $$""",
+            ]:
+                try:
+                    await conn.execute(_sql(rls_stmt))
+                except Exception as e:
+                    logger.warning("RLS migration skipped (%s): %s", tbl, e)
+
+        # Fix legacy role values — only when legacy values actually exist
+        # Guarded to prevent silent overwrites if 'admin'/'owner' are ever reused
+        try:
+            legacy = (await conn.execute(
+                _sql("SELECT COUNT(*) FROM users WHERE role IN ('admin', 'owner')")
+            )).scalar()
+            if legacy:
+                await conn.execute(_sql("UPDATE users SET role = 'super_admin' WHERE role = 'admin'"))
+                await conn.execute(_sql("UPDATE users SET role = 'store_owner' WHERE role = 'owner'"))
+                logger.info("Migrated %d legacy role value(s)", legacy)
+        except Exception as e:
+            logger.warning("Role migration skipped: %s", e)
 
 
 async def _execute_due_broadcasts():
@@ -216,7 +279,8 @@ async def _execute_due_broadcasts():
                         )
 
                         await _aio.sleep(0.3)
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("Broadcast send failed for conversation %s: %s", conv_id, e)
                         failed += 1
                         r_info["sent"] = False
                     recipients_log.append(r_info)
@@ -336,6 +400,29 @@ from src.core.rate_limit import limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Security headers + request context
+from starlette.middleware.base import BaseHTTPMiddleware
+from src.core.logging_config import generate_request_id, set_log_context
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # Inject request_id for structured logging
+        rid = request.headers.get("X-Request-ID") or generate_request_id()
+        set_log_context(request_id=rid)
+
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = rid
+        # Clear log context after request
+        set_log_context(request_id=None, tenant_id=None, conversation_id=None)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'"
+        return response
+
+app.add_middleware(_SecurityHeadersMiddleware)
+
 # CORS
 _cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
@@ -352,6 +439,10 @@ from fastapi.staticfiles import StaticFiles
 _static_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "static")
 _os.makedirs(_static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+_uploads_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "uploads")
+_os.makedirs(_uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_uploads_dir), name="uploads")
 
 # Register routers
 app.include_router(auth_router)
@@ -372,4 +463,52 @@ app.include_router(sse_router)
 
 @app.get("/health")
 async def health():
+    """Liveness probe — always returns 200 if the process is alive."""
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness probe — checks DB, Redis, and Telegram connectivity."""
+    from src.core.database import engine
+    from src.core.security import _redis
+    from src.telegram.service import telegram_manager
+
+    checks: dict[str, str] = {}
+
+    # Database
+    try:
+        async with engine.connect() as conn:
+            from sqlalchemy import text
+            await conn.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {e}"
+
+    # Redis
+    try:
+        await _redis.ping()
+        checks["redis"] = "ok"
+    except Exception as e:
+        checks["redis"] = f"error: {e}"
+
+    # Telegram clients
+    try:
+        clients = telegram_manager._clients
+        connected = sum(1 for c in clients.values() if c.is_connected())
+        checks["telegram"] = f"ok: {connected}/{len(clients)} connected"
+    except Exception as e:
+        checks["telegram"] = f"error: {e}"
+
+    # Circuit breakers
+    from src.core.circuit_breaker import openai_breaker
+    checks["openai_circuit_breaker"] = openai_breaker.state.value
+
+    all_ok = all(v.startswith("ok") or v == "closed" for v in checks.values())
+    status_code = 200 if all_ok else 503
+
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "ready" if all_ok else "degraded", "checks": checks},
+    )

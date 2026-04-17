@@ -43,22 +43,35 @@ function Toggle({
   description,
   checked,
   onChange,
+  tooltip,
 }: {
   label: string;
   description: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  tooltip?: string;
 }) {
   return (
     <div className="flex items-center justify-between py-3">
       <div>
-        <p className="text-sm font-medium text-slate-900">{label}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium text-slate-900">{label}</p>
+          {tooltip && (
+            <span className="group relative">
+              <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-400 text-[10px] font-bold flex items-center justify-center cursor-help hover:bg-indigo-50 hover:text-indigo-500 transition-colors">?</span>
+              <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg shadow-lg w-56 text-left opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20 pointer-events-none">
+                {tooltip}
+                <span className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-900" />
+              </span>
+            </span>
+          )}
+        </div>
         <p className="text-xs text-slate-500">{description}</p>
       </div>
       <button
         type="button"
         onClick={() => onChange(!checked)}
-        className={`w-11 h-6 rounded-full transition-colors ${
+        className={`w-11 h-6 rounded-full transition-colors shrink-0 ${
           checked ? "bg-indigo-600" : "bg-slate-300"
         }`}
       >
@@ -107,6 +120,9 @@ export default function SettingsPage() {
   // Confirm reset dialog
   const [confirmReset, setConfirmReset] = useState(false);
 
+  // Preset confirm dialog
+  const [pendingPreset, setPendingPreset] = useState<{ name: string; values: Partial<AiSettings> } | null>(null);
+
   // Track which section is in view
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
@@ -139,7 +155,7 @@ export default function SettingsPage() {
   }, [settings]);
 
   useEffect(() => {
-    api.get<AiSettings>("/ai-settings").then(setSettings).catch(console.error);
+    api.get<AiSettings>("/ai-settings").then(setSettings).catch(() => toast("Не удалось загрузить настройки", "error"));
   }, []);
 
   const flushSave = useCallback(async (merged: AiSettings) => {
@@ -325,6 +341,82 @@ export default function SettingsPage() {
       {/* AI Settings */}
       {settings && (
         <>
+          {/* Presets */}
+          <div className="card p-5 max-w-2xl mt-6">
+            <h2 className="text-sm font-bold text-slate-900 mb-3">Быстрые пресеты</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {([
+                {
+                  name: "Агрессивный продавец",
+                  desc: "Максимум автономии: AI сам отменяет, не ждёт оператора",
+                  icon: "🔥",
+                  color: "border-rose-200 hover:bg-rose-50",
+                  values: {
+                    tone: "aggressive_sales",
+                    allow_auto_dm_reply: true,
+                    allow_auto_comment_reply: true,
+                    allow_ai_cancel_draft: true,
+                    require_operator_for_edit: false,
+                    require_operator_for_returns: false,
+                    require_handoff_for_unknown_product: false,
+                    confirm_before_order: false,
+                    auto_handoff_on_profanity: false,
+                    max_variants_in_reply: 8,
+                  },
+                },
+                {
+                  name: "Сбалансированный",
+                  desc: "Золотая середина: AI помогает, оператор контролирует",
+                  icon: "⚖️",
+                  color: "border-indigo-200 hover:bg-indigo-50",
+                  values: {
+                    tone: "friendly_sales",
+                    allow_auto_dm_reply: true,
+                    allow_auto_comment_reply: true,
+                    allow_ai_cancel_draft: true,
+                    require_operator_for_edit: true,
+                    require_operator_for_returns: true,
+                    require_handoff_for_unknown_product: true,
+                    confirm_before_order: true,
+                    auto_handoff_on_profanity: true,
+                    max_variants_in_reply: 5,
+                  },
+                },
+                {
+                  name: "Осторожный помощник",
+                  desc: "Минимум риска: всё через оператора, AI только консультирует",
+                  icon: "🛡️",
+                  color: "border-emerald-200 hover:bg-emerald-50",
+                  values: {
+                    tone: "support_only",
+                    allow_auto_dm_reply: true,
+                    allow_auto_comment_reply: false,
+                    allow_ai_cancel_draft: false,
+                    require_operator_for_edit: true,
+                    require_operator_for_returns: true,
+                    require_handoff_for_unknown_product: true,
+                    confirm_before_order: true,
+                    auto_handoff_on_profanity: true,
+                    max_variants_in_reply: 3,
+                  },
+                },
+              ] as const).map((preset) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => setPendingPreset({ name: preset.name, values: preset.values as Partial<AiSettings> })}
+                  className={`text-left p-3 rounded-xl border transition-all ${preset.color}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-base">{preset.icon}</span>
+                    <span className="text-sm font-semibold text-slate-900">{preset.name}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-snug">{preset.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* General AI */}
           <div id="ai-agent" className="card p-6 max-w-2xl mt-6 scroll-mt-24">
             <div className="flex items-center justify-between mb-4">
@@ -340,18 +432,21 @@ export default function SettingsPage() {
                 description="AI отвечает на входящие DM автоматически"
                 checked={settings.allow_auto_dm_reply}
                 onChange={(v) => save({ allow_auto_dm_reply: v })}
+                tooltip="Главный выключатель AI. Если выкл — бот молчит, но продолжает получать сообщения. Включите когда каталог и настройки готовы."
               />
               <Toggle
                 label="Авто-ответ в комментариях"
                 description="AI отвечает на триггеры в комментариях канала"
                 checked={settings.allow_auto_comment_reply}
                 onChange={(v) => save({ allow_auto_comment_reply: v })}
+                tooltip="AI отвечает на вопросы о цене и наличии под постами канала, направляя покупателей в ЛС для заказа."
               />
               <Toggle
                 label="Handoff при неизвестном товаре"
                 description="Передать оператору если товар не найден в каталоге"
                 checked={settings.require_handoff_for_unknown_product}
                 onChange={(v) => save({ require_handoff_for_unknown_product: v })}
+                tooltip="Если клиент спрашивает товар, которого нет в каталоге — AI сразу подключит оператора вместо ответа 'товар не найден'."
               />
               <div className="py-3">
                 <div className="flex items-center justify-between">
@@ -394,10 +489,14 @@ export default function SettingsPage() {
           <div id="order-policies" className="card p-6 max-w-2xl mt-6 scroll-mt-24">
             <h2 className="text-lg font-bold text-slate-900 mb-4">Политики заказов</h2>
             <div className="divide-y divide-slate-100">
-              <Toggle label="AI может отменять черновые заказы" description="Без участия оператора — только заказы в статусе 'Ожидает подтверждения'" checked={settings.allow_ai_cancel_draft} onChange={(v) => save({ allow_ai_cancel_draft: v })} />
-              <Toggle label="Оператор для изменений" description="Всегда подключать оператора для редактирования заказа" checked={settings.require_operator_for_edit} onChange={(v) => save({ require_operator_for_edit: v })} />
-              <Toggle label="Оператор для возвратов" description="Всегда подключать оператора для возвратов и обменов" checked={settings.require_operator_for_returns} onChange={(v) => save({ require_operator_for_returns: v })} />
-              <Toggle label="Подтверждение перед заказом" description="AI запрашивает подтверждение перед созданием заказа" checked={settings.confirm_before_order} onChange={(v) => save({ confirm_before_order: v })} />
+              <Toggle label="AI может отменять черновые заказы" description="Без участия оператора — только заказы в статусе 'Ожидает подтверждения'" checked={settings.allow_ai_cancel_draft} onChange={(v) => save({ allow_ai_cancel_draft: v })}
+                tooltip="Если клиент передумал — AI сам отменит заказ-черновик. Подтверждённые и обработанные заказы AI отменить не может." />
+              <Toggle label="Оператор для изменений" description="Всегда подключать оператора для редактирования заказа" checked={settings.require_operator_for_edit} onChange={(v) => save({ require_operator_for_edit: v })}
+                tooltip="Когда вкл — любая просьба изменить заказ создаёт handoff. Когда выкл — AI сам меняет черновые и подтверждённые заказы." />
+              <Toggle label="Оператор для возвратов" description="Всегда подключать оператора для возвратов и обменов" checked={settings.require_operator_for_returns} onChange={(v) => save({ require_operator_for_returns: v })}
+                tooltip="Возвраты — чувствительная тема. Рекомендуем оставить включённым, пока не наладите автоматический процесс." />
+              <Toggle label="Подтверждение перед заказом" description="AI запрашивает подтверждение перед созданием заказа" checked={settings.confirm_before_order} onChange={(v) => save({ confirm_before_order: v })}
+                tooltip="AI перечислит товары, цены и сумму, и спросит 'Всё верно?' перед созданием заказа. Снижает ошибки." />
             </div>
           </div>
 
@@ -405,7 +504,8 @@ export default function SettingsPage() {
           <div id="conflicts" className="card p-6 max-w-2xl mt-6 scroll-mt-24">
             <h2 className="text-lg font-bold text-slate-900 mb-4">Обработка конфликтов</h2>
             <div className="divide-y divide-slate-100">
-              <Toggle label="Мгновенный handoff при мате" description="Сразу передавать оператору при нецензурной лексике (иначе — 1 попытка разрешить)" checked={settings.auto_handoff_on_profanity} onChange={(v) => save({ auto_handoff_on_profanity: v })} />
+              <Toggle label="Мгновенный handoff при мате" description="Сразу передавать оператору при нецензурной лексике (иначе — 1 попытка разрешить)" checked={settings.auto_handoff_on_profanity} onChange={(v) => save({ auto_handoff_on_profanity: v })}
+                tooltip="Если выкл — AI попробует разрядить ситуацию 1 раз. Если вкл — сразу передаёт оператору без попытки." />
               <div className="py-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -462,8 +562,10 @@ export default function SettingsPage() {
             <h2 className="text-lg font-bold text-slate-900 mb-1">Ответы в комментариях канала</h2>
             <p className="text-xs text-slate-500 mb-4">AI автоматически отвечает на вопросы о цене, доставке и наличии в комментариях Telegram-канала.</p>
             <div className="divide-y divide-slate-100">
-              <Toggle label="Умные ответы на вопросы" description="AI распознаёт вопросы о цене/доставке/наличии и отвечает с призывом написать в ЛС" checked={settings.channel_ai_replies_enabled} onChange={(v) => save({ channel_ai_replies_enabled: v })} />
-              <Toggle label="Показывать цену в ответе" description="Если пост о конкретном товаре — AI укажет цену из каталога" checked={settings.channel_show_price} onChange={(v) => save({ channel_show_price: v })} />
+              <Toggle label="Умные ответы на вопросы" description="AI распознаёт вопросы о цене/доставке/наличии и отвечает с призывом написать в ЛС" checked={settings.channel_ai_replies_enabled} onChange={(v) => save({ channel_ai_replies_enabled: v })}
+                tooltip="AI мониторит комментарии под постами канала. Распознаёт вопросы о товаре и отвечает с CTA написать в ЛС." />
+              <Toggle label="Показывать цену в ответе" description="Если пост о конкретном товаре — AI укажет цену из каталога" checked={settings.channel_show_price} onChange={(v) => save({ channel_show_price: v })}
+                tooltip="Если вкл — AI покажет диапазон цен прямо в комментарии. Если выкл — только предложит написать в ЛС для деталей." />
               <div className="py-3 space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">CTA — аккаунт для заказов</label>
@@ -501,6 +603,16 @@ export default function SettingsPage() {
             variant="warning"
             onConfirm={() => { setConfirmReset(false); resetSettings(); }}
             onCancel={() => setConfirmReset(false)}
+          />
+
+          <ConfirmDialog
+            open={!!pendingPreset}
+            title={`Применить пресет «${pendingPreset?.name}»?`}
+            message="Текущие настройки AI будут заменены значениями из пресета. Это действие можно отменить вручную."
+            confirmText="Применить"
+            variant="warning"
+            onConfirm={() => { if (pendingPreset) save(pendingPreset.values); setPendingPreset(null); }}
+            onCancel={() => setPendingPreset(null)}
           />
         </>
       )}

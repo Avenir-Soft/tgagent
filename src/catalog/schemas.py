@@ -2,18 +2,19 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # --- Products ---
 class ProductCreate(BaseModel):
-    name: str
-    slug: str
+    name: str = Field(max_length=500)
+    slug: str | None = Field(None, max_length=500)
     description: str | None = None
     category_id: UUID | None = None
-    brand: str | None = None
-    model: str | None = None
-    external_id: str | None = None
+    brand: str | None = Field(None, max_length=200)
+    model: str | None = Field(None, max_length=200)
+    external_id: str | None = Field(None, max_length=100)
+    variants: list["VariantCreate"] | None = None
 
 
 class ProductUpdate(BaseModel):

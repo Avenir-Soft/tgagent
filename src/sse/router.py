@@ -5,6 +5,7 @@ Each client subscribes to their tenant channel + optionally a conversation chann
 """
 
 import asyncio
+import json
 import logging
 import time
 from uuid import UUID
@@ -23,6 +24,9 @@ router = APIRouter(tags=["sse"])
 _KEEPALIVE_INTERVAL = 15
 # Re-validate JWT every N seconds to catch logout/expiry
 _TOKEN_CHECK_INTERVAL = 300
+# Max concurrent SSE connections per worker — prevents Redis connection exhaustion
+_MAX_SSE_CONNECTIONS = 200
+_active_connections = 0
 
 
 @router.get("/events/stream")
@@ -31,6 +35,10 @@ async def event_stream(
     conversation_id: UUID | None = Query(None, description="Subscribe to specific conversation"),
 ):
     """SSE endpoint. Returns text/event-stream with real-time events."""
+    # --- Connection limit ---
+    if _active_connections >= _MAX_SSE_CONNECTIONS:
+        raise HTTPException(status_code=503, detail="Too many SSE connections")
+
     # --- Auth: manual JWT validation (can't use Depends with SSE) ---
     payload = decode_access_token(token)
     if not payload:
@@ -61,40 +69,30 @@ async def event_stream(
 async def _event_generator(channels: list[str], token: str):
     """Async generator that yields SSE-formatted lines.
 
-    - Listens to Redis pub/sub channels
+    - Uses event_bus.subscribe() for Redis pub/sub (no duplicated connection logic)
     - Sends keepalive comments every 15s
     - Periodically re-validates JWT
+    - Tracks active connections for capacity limiting
     """
-    import redis.asyncio as aioredis
-    from src.core.config import settings
-    import json
-
-    r = aioredis.from_url(settings.redis_url, decode_responses=True)
-    pubsub = r.pubsub()
+    global _active_connections
+    _active_connections += 1
 
     try:
-        await pubsub.subscribe(*channels)
+        # Tell browser to wait 10s before reconnecting (default ~3s is too aggressive)
+        yield "retry: 10000\n\n"
+
         last_keepalive = time.monotonic()
         last_token_check = time.monotonic()
 
-        while True:
-            # Check for messages (non-blocking with 1s timeout)
-            msg = await pubsub.get_message(
-                ignore_subscribe_messages=True, timeout=1.0,
-            )
+        async for event in subscribe(channels):
+            now = time.monotonic()
 
-            if msg and msg["type"] == "message":
-                # Parse to extract event type for SSE "event:" field
-                try:
-                    data = json.loads(msg["data"])
-                    event_type = data.get("event", "message")
-                    yield f"event: {event_type}\ndata: {msg['data']}\n\n"
-                except (json.JSONDecodeError, TypeError):
-                    yield f"data: {msg['data']}\n\n"
-                last_keepalive = time.monotonic()
+            if event is not None:
+                event_type = event.get("event", "message")
+                yield f"event: {event_type}\ndata: {json.dumps(event, default=str)}\n\n"
+                last_keepalive = now
 
             # Keepalive: prevent connection timeout
-            now = time.monotonic()
             if now - last_keepalive >= _KEEPALIVE_INTERVAL:
                 yield ": keepalive\n\n"
                 last_keepalive = now
@@ -105,19 +103,14 @@ async def _event_generator(channels: list[str], token: str):
                 payload = decode_access_token(token)
                 if not payload:
                     yield 'event: auth_expired\ndata: {"reason": "token_expired"}\n\n'
-                    break
+                    return
                 if await is_token_blacklisted(token):
                     yield 'event: auth_expired\ndata: {"reason": "token_revoked"}\n\n'
-                    break
+                    return
 
     except asyncio.CancelledError:
         pass
     except Exception:
         logger.warning("SSE connection error", exc_info=True)
     finally:
-        try:
-            await pubsub.unsubscribe(*channels)
-            await pubsub.aclose()
-            await r.aclose()
-        except Exception:
-            pass
+        _active_connections -= 1

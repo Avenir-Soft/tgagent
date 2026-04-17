@@ -22,8 +22,13 @@ _PROFANITY_RU = {
     "ёб", "ёбтвоюмать", "ебтвоюмать", "уёбок", "уебок", "уёбище", "уебище", "выебать", "съебал",
     "мудак", "мудила", "мудозвон",
     "долбоёб", "долбоеб", "залупа",
-    "пидор", "пидорас", "пидарас", "педик",
+    "пидор", "пидорас", "пидарас", "пидираз", "педик", "пидр",
     "дерьмо", "говно", "говнюк",
+    # Missing common slurs
+    "шалава", "шлюха", "потаскуха", "проститутка",
+    "гандон", "гондон",
+    "битч", "фак", "факю",  # Cyrillic transliteration of English
+    "даун", "дебил", "идиот", "кретин", "урод",
 }
 
 # Uzbek profanity (common vulgar words)
@@ -35,28 +40,77 @@ _PROFANITY_UZ = {
     "жинни", "ахмоқ", "ахмок",
     "siktir", "siqtir", "kutok", "kotak", "ko'tak",
     "onangni", "axmoq",
+    # Latin Uzbek additions
+    "sikish", "siqish", "siktirgin",
+    "buvini", "onalingni",
 }
 
-_PROFANITY_ALL = _PROFANITY_RU | _PROFANITY_UZ
+# English profanity
+_PROFANITY_EN = {
+    "fuck", "fucking", "fucker", "motherfucker", "mf",
+    "shit", "shitty", "bullshit",
+    "bitch", "bitches",
+    "ass", "asshole", "arsehole",
+    "dick", "dickhead",
+    "pussy", "cunt",
+    "nigga", "nigger",
+    "whore", "slut",
+    "bastard", "retard",
+    "stfu", "gtfo",
+}
+
+# Latin transliterations of Russian mat
+_PROFANITY_TRANSLIT = {
+    "naxuy", "nahuy", "nahui", "naxui",
+    "poshel", "pashel", "pashol", "poshol",
+    "suka", "cyka",
+    "blyat", "blyad", "blya", "bliat",
+    "pizdec", "pizdets", "pizda",
+    "ebat", "yobany", "yobaniy",
+    "mudak", "mudila",
+    "pidor", "pidoras", "pidaras",
+    "gavno", "govno",
+    "zalupa",
+    "debil", "urod",
+    "gandon", "gondon",
+    "huy", "hui", "xuy", "xui",
+    "ebal", "ebaniy",
+}
+
+_PROFANITY_ALL = _PROFANITY_RU | _PROFANITY_UZ | _PROFANITY_EN | _PROFANITY_TRANSLIT
 
 _PROFANITY_SUBSTRINGS = [
-    "хуй", "хуя", "хуе", "пизд", "ебат", "ёбан", "ебан", "блят", "сиктир", "siktir",
+    # Cyrillic
+    "хуй", "хуя", "хуе", "пизд", "ебат", "ёбан", "ебан", "блят", "сиктир",
+    # Latin
+    "siktir", "fuck", "naxu", "nahu", "piзд", "blyat", "blya",
+    "xuy", "xui", "pizd",
 ]
 
 
 def contains_profanity(text: str) -> bool:
-    """Detect profanity in Russian/Uzbek text. Code-level check, not LLM."""
+    """Detect profanity in Russian/Uzbek/English text. Code-level check, not LLM."""
     if not text:
         return False
     text_lower = text.lower().replace("ё", "е")
     words = set(text_lower.split())
 
+    # Direct word match
     if words & _PROFANITY_ALL:
         return True
 
+    # Substring match (catches combined words like "иди_нахуй", "fuckoff")
     for sub in _PROFANITY_SUBSTRINGS:
         if sub in text_lower:
             return True
+
+    # Two-word combos: "пошел нахуй" / "иди нахуй" in Latin
+    word_list = text_lower.split()
+    for i, w in enumerate(word_list):
+        if i + 1 < len(word_list):
+            combo = w + word_list[i + 1]
+            if any(sub in combo for sub in ["naxu", "nahu", "fuck"]):
+                return True
 
     return False
 
@@ -215,8 +269,17 @@ def _fix_language_mismatch(final_text: str, text_lower: str, detected_lang: str)
     return None
 
 
-def strip_markdown_links(text: str) -> str:
-    """Strip markdown links that Telegram renders as clickable."""
+def strip_markdown(text: str) -> str:
+    """Strip markdown that Telegram renders poorly — links, headers, bold markers."""
+    # Links: ![alt](url) → alt, [text](url) → text
     text = re.sub(r'!\[([^\]]*)\]\([^)]*\)', r'\1', text)
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    # Headers: ### Title → Title
+    text = re.sub(r'^#{1,4}\s+', '', text, flags=re.MULTILINE)
+    # Bold: **text** → text
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
     return text
+
+
+# Keep old name for backward compat
+strip_markdown_links = strip_markdown

@@ -8,6 +8,9 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
+import { formatPrice } from "@/lib/utils";
+import { Breadcrumb } from "@/components/ui/breadcrumb";
+import { SSEStatusBadge } from "@/components/ui/sse-status";
 
 interface Message {
   id: string;
@@ -81,7 +84,7 @@ const statusLabels: Record<string, string> = {
 
 function formatTime(d: string) { return new Date(d).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" }); }
 function formatDate(d: string) { return new Date(d).toLocaleDateString("ru", { day: "numeric", month: "long" }); }
-function formatPrice(n: number) { return n.toLocaleString("ru"); }
+// formatPrice imported from @/lib/utils
 
 export default function ConversationDetailPage() {
   const { id } = useParams();
@@ -121,14 +124,14 @@ export default function ConversationDetailPage() {
     api.get<Message[]>(`/conversations/${id}/messages?limit=${limit}`).then((msgs) => {
       setMessages(msgs);
       setHasMore(msgs.length >= limit);
-    }).catch(console.error);
+    }).catch(() => toast("Не удалось загрузить сообщения", "error"));
   }, [id]);
 
   const load = useCallback(() => {
     if (!id) return;
-    api.get<Conversation>(`/conversations/${id}`).then(setConv).catch(console.error);
+    api.get<Conversation>(`/conversations/${id}`).then(setConv).catch(() => toast("Не удалось загрузить диалог", "error"));
     loadMessages(msgLimit);
-    api.get<CustomerHistory>(`/conversations/${id}/customer-history`).then(setHistory).catch(console.error);
+    api.get<CustomerHistory>(`/conversations/${id}/customer-history`).then(setHistory).catch(() => {});
   }, [id, msgLimit, loadMessages]);
 
   useEffect(() => { load(); }, [load]);
@@ -140,23 +143,12 @@ export default function ConversationDetailPage() {
       .catch(() => {});
   }, []);
 
-  // Mark as read in localStorage when messages load
-  useEffect(() => {
-    if (messages.length > 0 && id) {
-      try {
-        const readMap = JSON.parse(localStorage.getItem("conv_read_counts") || "{}");
-        readMap[id as string] = messages.length;
-        localStorage.setItem("conv_read_counts", JSON.stringify(readMap));
-      } catch {}
-    }
-  }, [messages.length, id]);
-
   // SSE: real-time updates for this conversation
   const handleSSE = useCallback((event: SSEEvent) => {
     if (event.event === "new_message" && event.conversation_id === id) {
       // Re-fetch messages to get the latest (ensures consistent ordering and fields)
       api.get<Message[]>(`/conversations/${id}/messages?limit=${msgLimit}`)
-        .then(setMessages).catch(console.error);
+        .then(setMessages).catch(() => {});
     }
     if (event.event === "conversation_updated" && event.conversation_id === id) {
       api.get<Conversation>(`/conversations/${id}`).then((c) => {
@@ -165,10 +157,10 @@ export default function ConversationDetailPage() {
           if (prev.state !== c.state || prev.ai_enabled !== c.ai_enabled || prev.status !== c.status) return c;
           return prev;
         });
-      }).catch(console.error);
+      }).catch(() => {});
     }
   }, [id, msgLimit]);
-  useEventSource(id as string, handleSSE);
+  const { status: sseStatus } = useEventSource(id as string, handleSSE);
 
   // Slow fallback poll (30s) in case SSE misses an event
   useEffect(() => {
@@ -183,7 +175,7 @@ export default function ConversationDetailPage() {
             if (a && b && a.id !== b.id) return newMsgs;
             return prev;
           });
-        }).catch(console.error);
+        }).catch(() => {});
     }, 30_000);
     return () => clearInterval(timer);
   }, [id, msgLimit]);
@@ -214,10 +206,16 @@ export default function ConversationDetailPage() {
     return () => document.removeEventListener("keydown", handler);
   }, [editingId]);
 
+  const [togglingAi, setTogglingAi] = useState(false);
   const toggleAi = async () => {
-    if (!conv) return;
-    await api.patch(`/conversations/${id}/toggle-ai`);
-    setConv({ ...conv, ai_enabled: !conv.ai_enabled });
+    if (!conv || togglingAi) return;
+    setTogglingAi(true);
+    try {
+      await api.patch(`/conversations/${id}/toggle-ai`);
+      setConv({ ...conv, ai_enabled: !conv.ai_enabled });
+    } finally {
+      setTogglingAi(false);
+    }
   };
 
   const loadMore = () => {
@@ -401,13 +399,16 @@ export default function ConversationDetailPage() {
   const lang = ctx.language as string | undefined;
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-120px)]">
+    <div className="flex gap-4 h-[calc(100vh-120px)] relative">
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="flex items-center justify-between mb-3 shrink-0">
+        <div className="flex items-start md:items-center justify-between mb-3 shrink-0 gap-2">
           <div>
-            <button type="button" onClick={() => router.push("/conversations")} className="text-sm text-indigo-600 hover:text-indigo-700 hover:underline mb-1 block transition-colors">&larr; Назад</button>
+            <Breadcrumb items={[
+              { label: "Диалоги", href: "/conversations" },
+              { label: conv.telegram_first_name || "Клиент" },
+            ]} />
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900">
                 {conv.telegram_first_name || "Клиент"}{" "}
@@ -425,19 +426,20 @@ export default function ConversationDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <SSEStatusBadge status={sseStatus} />
             {conv.state !== "idle" && (
               <span className={`px-2 py-1 rounded-lg text-xs ${stateColors[conv.state] || "bg-slate-100 text-slate-500"}`}>
                 {stateLabels[conv.state] || conv.state}
               </span>
             )}
             {lang && <span className="px-2 py-1 rounded-lg text-xs bg-slate-100 text-slate-500">🌐 {lang === "ru" ? "RU" : lang === "en" ? "EN" : lang === "uz_latin" ? "UZ" : lang === "uz_cyrillic" ? "ЎЗ" : lang}</span>}
-            <button type="button" onClick={toggleAi} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${conv.ai_enabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
-              AI {conv.ai_enabled ? "ON" : "OFF"}
+            <button type="button" onClick={toggleAi} disabled={togglingAi} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${conv.ai_enabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+              AI {togglingAi ? "..." : conv.ai_enabled ? "ON" : "OFF"}
             </button>
             <button type="button" onClick={() => setShowSidebar(!showSidebar)} className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
               {showSidebar ? "Скрыть" : "Клиент"}
             </button>
-            <button type="button" title="Сбросить AI" onClick={() => setConfirmReset(true)} className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors">
+            <button type="button" title="Сбросить контекст AI: очистить корзину, состояние и историю диалога для бота" onClick={() => setConfirmReset(true)} className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors">
               Сброс
             </button>
             <button type="button" title="Удалить диалог" onClick={() => setShowDeleteDialog(true)} className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors">
@@ -690,10 +692,16 @@ export default function ConversationDetailPage() {
       </div>
 
       {/* Sidebar — customer info + order history */}
+      {/* Mobile: overlay drawer */}
+      {showSidebar && <div className="fixed inset-0 bg-black/40 z-40 md:hidden" onClick={() => setShowSidebar(false)} />}
       {showSidebar && (
-        <div className="w-72 shrink-0 card overflow-y-auto">
+        <div className={`fixed right-0 top-0 h-full w-80 z-50 card overflow-y-auto shadow-2xl md:static md:w-72 md:h-auto md:shrink-0 md:shadow-sm md:z-auto transition-transform`}>
           {history ? (
             <div className="p-4 space-y-4">
+              {/* Mobile close button */}
+              <button type="button" onClick={() => setShowSidebar(false)} className="md:hidden absolute top-3 right-3 p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
               {/* Customer card */}
               <div>
                 <Avatar src={history.avatar_url} name={history.customer_name} size="lg" className="mb-2" />

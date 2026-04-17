@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
+import { formatPrice } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -112,7 +113,7 @@ interface ProductOption {
 
 function fmt(n: number | null | undefined) {
   if (n == null || Number.isNaN(n)) return "0";
-  return Number(n).toLocaleString("ru-RU");
+  return formatPrice(n);
 }
 
 function fmtTime(seconds: number | null): string {
@@ -138,7 +139,37 @@ const riskConfig: Record<string, { label: string; color: string; bg: string }> =
   ok: { label: "Ок", color: "text-emerald-700", bg: "bg-emerald-50" },
 };
 
+interface AiInsight {
+  type: string;
+  title: string;
+  text: string;
+  priority?: string;
+}
+
+interface AiInsightsData {
+  period_days: number;
+  generated_at: string;
+  insights: AiInsight[];
+  data_summary: {
+    revenue: number;
+    revenue_change_pct: number | null;
+    orders: number;
+    avg_check: number;
+    conversations: number;
+    conversion_rate: number;
+    handoffs: number;
+  };
+}
+
+const insightTypeConfig: Record<string, { icon: string; color: string; bg: string; border: string }> = {
+  growth: { icon: "📈", color: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200" },
+  warning: { icon: "⚠️", color: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200" },
+  opportunity: { icon: "💡", color: "text-indigo-700", bg: "bg-indigo-50", border: "border-indigo-200" },
+  action: { icon: "🎯", color: "text-violet-700", bg: "bg-violet-50", border: "border-violet-200" },
+};
+
 const tabs = [
+  { key: "ai-insights", label: "AI Инсайты" },
   { key: "overview", label: "Обзор" },
   { key: "customers", label: "Клиенты" },
   { key: "conversations", label: "Диалоги" },
@@ -150,7 +181,7 @@ const tabs = [
 // ── Main Component ────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("ai-insights");
   const [days, setDays] = useState(30);
   const { toast } = useToast();
 
@@ -164,6 +195,10 @@ export default function AnalyticsPage() {
   const [competitorSummary, setCompetitorSummary] = useState<CompetitorSummary[]>([]);
   const [computing, setComputing] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // AI Insights
+  const [aiInsights, setAiInsights] = useState<AiInsightsData | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
 
   // Sorting: null = default (no active sort)
   const [stockSort, setStockSort] = useState<{ col: string; asc: boolean } | null>(null);
@@ -214,6 +249,10 @@ export default function AnalyticsPage() {
         api.get<RevenueData>(`/analytics/revenue?days=${days}`).then(setRevenue).catch(() => {}),
         api.get<CompetitorPrice[]>("/analytics/competitors").then(setCompetitors).catch(() => {}),
         api.get<CompetitorSummary[]>("/analytics/competitors/summary").then(setCompetitorSummary).catch(() => {}),
+        // Load cached AI insights (no regeneration, fast — returns null if no cache)
+        api.get<AiInsightsData | null>(`/analytics/ai-insights?days=${days}`)
+          .then((data) => setAiInsights(data || null))
+          .catch(() => setAiInsights(null)),
       ]);
     } finally {
       setLoading(false);
@@ -339,6 +378,173 @@ export default function AnalyticsPage() {
       setCustomerDetailLoading(false);
     }
   };
+
+  // ── CSV Export helper ──
+  const exportCSV = (filename: string, headers: string[], rows: string[][]) => {
+    const bom = "\uFEFF";
+    const csv = bom + [headers.join(";"), ...rows.map((r) => r.join(";"))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Tab: AI Insights ──
+
+  const loadInsights = async () => {
+    setInsightsLoading(true);
+    try {
+      const data = await api.get<AiInsightsData>(`/analytics/ai-insights?days=${days}&refresh=true`);
+      setAiInsights(data);
+    } catch {
+      toast("Ошибка генерации инсайтов", "error");
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  const renderAiInsights = () => (
+    <div className="space-y-6">
+      {/* Header + generate button */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">AI Аналитик</h2>
+          <p className="text-sm text-slate-500">Автоматический анализ бизнес-данных за {days} дней</p>
+        </div>
+        <button
+          type="button"
+          onClick={loadInsights}
+          disabled={insightsLoading}
+          className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl text-sm font-medium hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 transition-all shadow-lg shadow-indigo-500/25 flex items-center gap-2"
+        >
+          {insightsLoading ? (
+            <>
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+              Анализирую...
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" /></svg>
+              {aiInsights ? "Обновить инсайты" : "Сгенерировать инсайты"}
+            </>
+          )}
+        </button>
+      </div>
+
+      {!aiInsights && !insightsLoading && (
+        <div className="card p-12 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" /></svg>
+          </div>
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">AI анализ вашего бизнеса</h3>
+          <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
+            AI проанализирует выручку, конверсию, сегменты клиентов, остатки товаров и причины handoff — и даст конкретные рекомендации
+          </p>
+          <button
+            type="button"
+            onClick={loadInsights}
+            className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl text-sm font-semibold hover:from-indigo-500 hover:to-violet-500 transition-all shadow-lg shadow-indigo-500/25"
+          >
+            Запустить анализ
+          </button>
+        </div>
+      )}
+
+      {insightsLoading && (
+        <div className="space-y-4">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="card p-6 animate-pulse">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-slate-200 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-5 bg-slate-200 rounded w-1/3" />
+                  <div className="h-4 bg-slate-100 rounded w-2/3" />
+                  <div className="h-4 bg-slate-100 rounded w-1/2" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {aiInsights && !insightsLoading && (
+        <>
+          {/* Summary KPIs */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="card p-4">
+              <p className="text-xs text-slate-500">Выручка</p>
+              <p className="text-lg font-bold text-slate-900">{fmt(aiInsights.data_summary.revenue)} сум</p>
+              {aiInsights.data_summary.revenue_change_pct !== null ? (
+                <p className={`text-xs font-medium ${aiInsights.data_summary.revenue_change_pct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                  {aiInsights.data_summary.revenue_change_pct >= 0 ? "↑" : "↓"} {Math.abs(aiInsights.data_summary.revenue_change_pct)}% vs прошлый период
+                </p>
+              ) : (
+                <p className="text-xs font-medium text-indigo-500">Новый период</p>
+              )}
+            </div>
+            <div className="card p-4">
+              <p className="text-xs text-slate-500">Заказы</p>
+              <p className="text-lg font-bold text-slate-900">{aiInsights.data_summary.orders}</p>
+              <p className="text-xs text-slate-400">ср. чек {fmt(aiInsights.data_summary.avg_check)} сум</p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs text-slate-500">Конверсия</p>
+              <p className="text-lg font-bold text-slate-900">{aiInsights.data_summary.conversion_rate}%</p>
+              <p className="text-xs text-slate-400">{aiInsights.data_summary.conversations} диалогов</p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs text-slate-500">Handoff</p>
+              <p className="text-lg font-bold text-slate-900">{aiInsights.data_summary.handoffs}</p>
+              <p className="text-xs text-slate-400">передач оператору</p>
+            </div>
+          </div>
+
+          {/* Insight cards */}
+          <div className="space-y-3">
+            {aiInsights.insights.map((insight, i) => {
+              const cfg = insightTypeConfig[insight.type] || insightTypeConfig.action;
+              return (
+                <div key={i} className={`card p-5 border-l-4 ${cfg.border}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl ${cfg.bg} flex items-center justify-center shrink-0 text-lg`}>
+                      {cfg.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className={`font-semibold text-sm ${cfg.color}`}>{insight.title}</h3>
+                        {insight.priority === "high" && (
+                          <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-bold rounded">HIGH</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-600 leading-relaxed">{insight.text}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Export + timestamp */}
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Сгенерировано: {new Date(aiInsights.generated_at).toLocaleString("ru")}</span>
+            <button
+              type="button"
+              onClick={() => {
+                const rows = aiInsights.insights.map((ins) => [ins.type, ins.priority || "", ins.title, `"${ins.text.replace(/"/g, '""')}"`]);
+                exportCSV(`ai-insights-${days}d.csv`, ["Тип", "Приоритет", "Заголовок", "Описание"], rows);
+              }}
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors text-xs font-medium"
+            >
+              Экспорт CSV
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 
   // ── Tab: Overview ──
 
@@ -1049,17 +1255,6 @@ export default function AnalyticsPage() {
     </div>
   );
 
-  const exportCSV = (filename: string, headers: string[], rows: string[][]) => {
-    const bom = "\uFEFF";
-    const csv = bom + [headers.join(";"), ...rows.map((r) => r.join(";"))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-  };
-
   const exportRevenue = () => {
     if (!revenue) return;
     exportCSV("revenue.csv", ["Дата", "Заказов", "Выручка"], revenue.daily.map((r) => [r.date, String(r.orders), String(r.revenue)]));
@@ -1132,6 +1327,7 @@ export default function AnalyticsPage() {
         </div>
       ) : (
         <>
+          {tab === "ai-insights" && renderAiInsights()}
           {tab === "overview" && renderOverview()}
           {tab === "customers" && renderCustomers()}
           {tab === "conversations" && renderConversations()}

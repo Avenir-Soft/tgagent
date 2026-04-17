@@ -1,10 +1,12 @@
 import json
 import logging
+import os
 import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
+from starlette.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +29,18 @@ from src.core.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/telegram", tags=["telegram"])
+
+# ── Media disk cache ──────────────────────────────────────────────────────────
+_MEDIA_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "media_cache")
+_MEDIA_CACHE_TTL = 86400  # 24 hours
+_MEDIA_EXT = {"photo": "jpg", "sticker": "webp", "gif": "mp4", "voice": "ogg", "video_note": "mp4", "video": "mp4"}
+
+
+def _media_cache_path(tenant_id: str, message_id: str, media_type: str) -> str:
+    ext = _MEDIA_EXT.get(media_type, "bin")
+    tenant_dir = os.path.join(_MEDIA_CACHE_DIR, tenant_id)
+    os.makedirs(tenant_dir, exist_ok=True)
+    return os.path.join(tenant_dir, f"{message_id}.{ext}")
 
 # In-memory client cache — Telethon clients can't be serialized to Redis,
 # but auth metadata (hash, tenant, session path) is stored in Redis with TTL
@@ -118,7 +132,9 @@ class ResolveLinkResponse(BaseModel):
 
 
 @router.post("/resolve-link")
+@limiter.limit("60/minute")
 async def resolve_link(
+    request: Request,
     body: ResolveLinkRequest,
     user: User = Depends(require_store_owner),
 ):
@@ -134,7 +150,8 @@ async def resolve_link(
     try:
         entity = await client.get_entity(link)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Не удалось найти: {e}")
+        logger.warning("Failed to resolve Telegram link %s: %s", link, e)
+        raise HTTPException(status_code=404, detail="Не удалось найти канал или группу по этой ссылке")
 
     from telethon.tl.types import Channel, Chat, User as TgUser
 
@@ -162,10 +179,10 @@ async def resolve_link(
                     try:
                         linked = await client.get_entity(full.full_chat.linked_chat_id)
                         result["linked_chat_title"] = getattr(linked, 'title', None)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as e:
+                        logger.warning("Failed to resolve linked chat title for chat_id %s: %s", full.full_chat.linked_chat_id, e)
+            except Exception as e:
+                logger.warning("Failed to fetch full channel info for entity %s: %s", entity.id, e)
         return result
     elif isinstance(entity, Chat):
         return {
@@ -308,6 +325,16 @@ async def verify_code(
 
     await _clear_pending_auth(body.phone_number)
 
+    # Notify frontend via SSE
+    try:
+        from src.sse.event_bus import publish_event
+        await publish_event(
+            f"sse:{user.tenant_id}:tenant",
+            {"event": "telegram_status_changed", "status": "connected", "phone": safe_phone},
+        )
+    except Exception:
+        pass
+
     return {
         "status": "connected",
         "account": TelegramAccountOut.model_validate(account).model_dump(mode="json"),
@@ -316,7 +343,9 @@ async def verify_code(
 
 # --- Disconnect Account ---
 @router.delete("/accounts/{account_id}")
+@limiter.limit("20/minute")
 async def disconnect_account(
+    request: Request,
     account_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -345,12 +374,25 @@ async def disconnect_account(
         os.remove(session_path)
 
     await db.delete(account)
+
+    # Notify frontend via SSE
+    try:
+        from src.sse.event_bus import publish_event
+        await publish_event(
+            f"sse:{user.tenant_id}:tenant",
+            {"event": "telegram_status_changed", "status": "disconnected", "phone": account.phone_number},
+        )
+    except Exception:
+        pass
+
     return {"status": "disconnected", "phone": account.phone_number}
 
 
 # --- Accounts ---
 @router.post("/accounts", response_model=TelegramAccountOut, status_code=201)
+@limiter.limit("30/minute")
 async def create_account(
+    request: Request,
     body: TelegramAccountCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -379,7 +421,9 @@ async def list_accounts(
 
 # --- Channels ---
 @router.post("/channels", response_model=TelegramChannelOut, status_code=201)
+@limiter.limit("30/minute")
 async def create_channel(
+    request: Request,
     body: TelegramChannelCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -409,7 +453,9 @@ async def list_channels(
 
 # --- Discussion Groups ---
 @router.post("/discussion-groups", response_model=DiscussionGroupOut, status_code=201)
+@limiter.limit("30/minute")
 async def create_discussion_group(
+    request: Request,
     body: DiscussionGroupCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -457,8 +503,8 @@ async def telegram_status(
         if client:
             try:
                 is_alive = client.is_connected()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to check Telegram client connection for tenant %s: %s", user.tenant_id, e)
         statuses.append({
             "account_id": str(a.id),
             "phone_number": a.phone_number,
@@ -470,7 +516,9 @@ async def telegram_status(
 
 
 @router.post("/accounts/{account_id}/reconnect")
+@limiter.limit("30/minute")
 async def reconnect_account(
+    request: Request,
     account_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -493,17 +541,20 @@ async def reconnect_account(
     if old_client:
         try:
             await old_client.disconnect()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to disconnect old Telegram client for account %s: %s", account_id, e)
 
     # Start new client
     try:
         await telegram_manager.start_client(account)
         account.status = "connected"
+        # SSE emitted by start_client
         return {"status": "reconnected", "phone": account.phone_number}
     except Exception as e:
         account.status = "error"
-        raise HTTPException(status_code=500, detail=f"Reconnect failed: {e}")
+        logger.error("Telegram reconnect failed for account %s: %s", account_id, e)
+        # SSE emitted by start_client failure path
+        raise HTTPException(status_code=500, detail="Не удалось переподключить Telegram аккаунт")
 
 
 @router.get("/activity-logs")
@@ -574,14 +625,15 @@ async def get_media(
         payload = decode_access_token(jwt_token)
         if not payload or not payload.get("sub"):
             raise HTTPException(status_code=401, detail="Invalid token")
-        # Blacklist check
+        # Blacklist check — fail-closed (consistent with auth/deps.py)
         try:
             if await is_token_blacklisted(jwt_token):
                 raise HTTPException(status_code=401, detail="Token revoked")
         except HTTPException:
             raise
         except Exception:
-            pass  # Redis unavailable — fail-open
+            logger.error("Redis unavailable for media blacklist check — fail-closed")
+            raise HTTPException(status_code=503, detail="Auth service temporarily unavailable")
         user_result = await db.execute(
             select(User).where(User.id == UUID(payload["sub"]), User.is_active.is_(True))
         )
@@ -614,7 +666,8 @@ async def get_media(
                 except HTTPException:
                     raise
                 except Exception:
-                    pass
+                    logger.error("Redis unavailable for media JWT blacklist check — fail-closed")
+                    raise HTTPException(status_code=503, detail="Auth service temporarily unavailable")
                 user_result = await db.execute(
                     select(User).where(User.id == UUID(payload["sub"]), User.is_active.is_(True))
                 )
@@ -651,16 +704,6 @@ async def get_media(
         if not conv:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
-        # Get the Telegram message
-        tg_msg = await client.get_messages(conv.telegram_chat_id, ids=msg.telegram_message_id)
-        if not tg_msg or not tg_msg.media:
-            raise HTTPException(status_code=404, detail="Telegram message not found")
-
-        # Download media to bytes
-        file_bytes = await client.download_media(tg_msg, bytes)
-        if not file_bytes:
-            raise HTTPException(status_code=404, detail="Failed to download media")
-
         # Determine content type
         content_types = {
             "photo": "image/jpeg",
@@ -672,12 +715,30 @@ async def get_media(
             "document": "application/octet-stream",
         }
         content_type = content_types.get(msg.media_type, "application/octet-stream")
+        cache_headers = {"Cache-Control": "public, max-age=86400"}
 
-        return Response(
-            content=file_bytes,
-            media_type=content_type,
-            headers={"Cache-Control": "public, max-age=86400"},
-        )
+        # Check disk cache first — avoids Telegram API call
+        cache_path = _media_cache_path(str(user.tenant_id), str(message_id), msg.media_type or "")
+        if os.path.exists(cache_path) and time.time() - os.path.getmtime(cache_path) < _MEDIA_CACHE_TTL:
+            return FileResponse(cache_path, media_type=content_type, headers=cache_headers)
+
+        # Download from Telegram
+        tg_msg = await client.get_messages(conv.telegram_chat_id, ids=msg.telegram_message_id)
+        if not tg_msg or not tg_msg.media:
+            raise HTTPException(status_code=404, detail="Telegram message not found")
+
+        file_bytes = await client.download_media(tg_msg, bytes)
+        if not file_bytes:
+            raise HTTPException(status_code=404, detail="Failed to download media")
+
+        # Save to disk cache (fire-and-forget — serve even if cache write fails)
+        try:
+            with open(cache_path, "wb") as f:
+                f.write(file_bytes)
+        except OSError:
+            logger.warning("Failed to cache media to %s", cache_path)
+
+        return Response(content=file_bytes, media_type=content_type, headers=cache_headers)
     except HTTPException:
         raise
     except Exception as e:

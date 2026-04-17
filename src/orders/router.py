@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from src.auth.deps import get_current_user, require_store_owner
 from src.auth.models import User
 from src.core.database import get_db
+from src.core.rate_limit import limiter
 from src.orders.models import Order, OrderItem
 from src.orders.schemas import OrderCreate, OrderOut, OrderUpdate
 from src.orders.service import build_orders_out, create_order as svc_create_order, update_order as svc_update_order
@@ -22,7 +23,9 @@ def _order_query(tenant_id: UUID):
 
 
 @router.post("", response_model=OrderOut, status_code=201)
+@limiter.limit("30/minute")
 async def create_order(
+    request: Request,
     body: OrderCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -70,7 +73,9 @@ async def get_order(
 
 
 @router.patch("/{order_id}", response_model=OrderOut)
+@limiter.limit("30/minute")
 async def update_order(
+    request: Request,
     order_id: UUID,
     body: OrderUpdate,
     db: AsyncSession = Depends(get_db),
@@ -88,7 +93,9 @@ async def update_order(
 
 
 @router.delete("/{order_id}", status_code=204)
+@limiter.limit("20/minute")
 async def delete_order(
+    request: Request,
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -107,7 +114,9 @@ async def delete_order(
 
 
 @router.delete("", status_code=200)
+@limiter.limit("10/minute")
 async def delete_cancelled_orders(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):

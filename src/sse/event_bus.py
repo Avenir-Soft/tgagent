@@ -22,7 +22,13 @@ _redis_pub: aioredis.Redis | None = None
 async def _get_redis() -> aioredis.Redis:
     global _redis_pub
     if _redis_pub is None:
-        _redis_pub = aioredis.from_url(settings.redis_url, decode_responses=True)
+        _redis_pub = aioredis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            retry_on_timeout=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+        )
     return _redis_pub
 
 
@@ -35,13 +41,20 @@ async def publish_event(channel: str, event: dict) -> None:
         logger.warning("Failed to publish SSE event to %s", channel, exc_info=True)
 
 
-async def subscribe(channels: list[str]) -> AsyncGenerator[dict, None]:
+async def subscribe(channels: list[str]) -> AsyncGenerator[dict | None, None]:
     """Subscribe to Redis channels and yield parsed event dicts.
 
     Creates its own connection so each SSE client has independent pubsub.
-    Caller must handle CancelledError for cleanup.
+    Yields None when no message received within 1s — allows caller to
+    interleave keepalive and auth checks between messages.
     """
-    r = aioredis.from_url(settings.redis_url, decode_responses=True)
+    r = aioredis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        retry_on_timeout=True,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+    )
     pubsub = r.pubsub()
     try:
         await pubsub.subscribe(*channels)
@@ -54,6 +67,8 @@ async def subscribe(channels: list[str]) -> AsyncGenerator[dict, None]:
                     yield json.loads(msg["data"])
                 except (json.JSONDecodeError, TypeError):
                     pass
+            else:
+                yield None
     finally:
         await pubsub.unsubscribe(*channels)
         await pubsub.aclose()

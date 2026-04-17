@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import Link from "next/link";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 interface Template {
   id: string;
@@ -34,6 +35,7 @@ const langLabels: Record<string, string> = { ru: "Русский", uz: "Узбе
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [channelSettings, setChannelSettings] = useState<AiSettings | null>(null);
+  const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
@@ -56,10 +58,10 @@ export default function TemplatesPage() {
   const [testResults, setTestResults] = useState<TriggerMatch[] | null>(null);
   const [testLoading, setTestLoading] = useState(false);
 
-  const load = () => api.get<Template[]>("/templates").then(setTemplates).catch(console.error);
+  const load = () => api.get<Template[]>("/templates").then(setTemplates).catch(() => toast("Не удалось загрузить шаблоны", "error"));
   useEffect(() => {
     load();
-    api.get<AiSettings>("/ai-settings").then(setChannelSettings).catch(console.error);
+    api.get<AiSettings>("/ai-settings").then(setChannelSettings).catch(() => {});
   }, []);
 
   const addTag = (val: string) => {

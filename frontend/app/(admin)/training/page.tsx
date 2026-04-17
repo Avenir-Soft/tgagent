@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api, API_BASE } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -104,13 +104,13 @@ export default function TrainingPage() {
   const { toast } = useToast();
 
   const refresh = () => {
-    api.get<TrainingStats>("/training/stats").then(setStats).catch(console.error);
-    api.get<CandidateConv[]>("/training/conversations").then(setConvs).catch(console.error);
+    api.get<TrainingStats>("/training/stats").then(setStats).catch(() => toast("Не удалось загрузить статистику обучения", "error"));
+    api.get<CandidateConv[]>("/training/conversations").then(setConvs).catch(() => toast("Не удалось загрузить диалоги", "error"));
   };
 
   const refreshRules = () => {
-    api.get<PromptRule[]>("/ai-settings/prompt-rules").then(setRules).catch(console.error);
-    api.get<RejectionAnalysis>("/training/rejection-analysis").then(setAnalysis).catch(console.error);
+    api.get<PromptRule[]>("/ai-settings/prompt-rules").then(setRules).catch(() => toast("Не удалось загрузить правила", "error"));
+    api.get<RejectionAnalysis>("/training/rejection-analysis").then(setAnalysis).catch(() => toast("Не удалось загрузить анализ", "error"));
   };
 
   useEffect(() => {
@@ -145,7 +145,7 @@ export default function TrainingPage() {
   const smartLabelAll = () => {
     setPendingConfirm({
       title: "Автооценка GPT-4o",
-      message: "Запустить GPT-4o оценку ВСЕХ неразмеченных ответов?\nЭто может занять 1-2 минуты и стоить ~$1-3.",
+      message: "Запустить GPT-4o оценку ВСЕХ неразмеченных ответов?\nЭто может занять 1-2 минуты. Стоимость: ~$0.01 за сообщение (GPT-4o input).",
       variant: "warning",
       action: async () => {
         setSmartLabelingAll(true);
@@ -319,14 +319,14 @@ export default function TrainingPage() {
     }
   };
 
-  const toggleRule = async (id: string, active: boolean) => {
+  const toggleRule = useCallback(async (id: string, active: boolean) => {
     try {
       await api.patch(`/ai-settings/prompt-rules/${id}`, { active });
       setRules((prev) => prev.map((r) => (r.id === id ? { ...r, active } : r)));
     } catch {
       toast("Ошибка", "error");
     }
-  };
+  }, [toast]);
 
   const deleteRule = (id: string) => {
     setPendingConfirm({
@@ -931,8 +931,8 @@ export default function TrainingPage() {
               <li><b>Разметка</b> — GPT-4o проверяет каждый ответ AI на качество</li>
               <li><b>Экспорт</b> — одобренные пары (вопрос/ответ) сохраняются в JSONL</li>
               <li><b>Fine-tuning</b> — OpenAI обучает gpt-4o-mini на ваших данных (10-30 мин)</li>
-              <li><b>Результат</b> — своя модель, которая знает стиль магазина, товары, ответы</li>
-              <li><b>Деплой</b> — вставь имя модели в .env как OPENAI_MODEL_MAIN</li>
+              <li><b>Валидация</b> — проверка качества модели на тестовых диалогах <span className="text-[10px] bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full ml-1">Coming Soon</span></li>
+              <li><b>Деплой</b> — автоматическое переключение на обученную модель <span className="text-[10px] bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full ml-1">Coming Soon</span></li>
             </ol>
           </div>
         </>

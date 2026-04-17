@@ -164,12 +164,24 @@ async def create_order(tenant_id: UUID, body: OrderCreate, db: AsyncSession) -> 
 
     if variant_ids:
         result = await db.execute(
-            select(ProductVariant.id).where(ProductVariant.id.in_(variant_ids), ProductVariant.tenant_id == tenant_id)
+            select(ProductVariant.id, ProductVariant.product_id)
+            .where(ProductVariant.id.in_(variant_ids), ProductVariant.tenant_id == tenant_id)
         )
-        found = {row[0] for row in result.fetchall()}
+        variant_rows = result.fetchall()
+        found = {row[0] for row in variant_rows}
         missing = variant_ids - found
         if missing:
             raise ValueError(f"Variants not found: {[str(v) for v in missing]}")
+        # Validate each variant belongs to its specified product
+        variant_product_map = {row[0]: row[1] for row in variant_rows}
+        for item in body.items:
+            if item.product_variant_id and item.product_id:
+                expected_product = variant_product_map.get(item.product_variant_id)
+                if expected_product and expected_product != item.product_id:
+                    raise ValueError(
+                        f"Variant {item.product_variant_id} belongs to product {expected_product}, "
+                        f"not {item.product_id}"
+                    )
 
     # Validate total_price = qty * unit_price
     for item in body.items:
@@ -209,7 +221,11 @@ async def create_order(tenant_id: UUID, body: OrderCreate, db: AsyncSession) -> 
         item = OrderItem(order_id=order.id, **item_data.model_dump())
         db.add(item)
     await db.flush()
-    return order
+    # Re-fetch with eager-loaded items to avoid MissingGreenlet in async context
+    result = await db.execute(
+        select(Order).where(Order.id == order.id).options(selectinload(Order.items))
+    )
+    return result.scalar_one()
 
 
 async def update_order(
@@ -337,8 +353,8 @@ async def _notify_status_change(tenant_id: UUID, order: Order, new_status: str, 
                 f"sse:{tenant_id}:tenant",
                 {"event": "order_status_changed", "order_id": str(order.id)},
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("SSE publish failed for order status change, order %s: %s", order.id, e)
 
     except Exception:
         logger.exception("Failed to notify user about status change")

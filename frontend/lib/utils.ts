@@ -36,6 +36,16 @@ export function getInitial(name: string | null | undefined, fallback = "?"): str
 }
 
 /**
+ * Format a number with dot separators: 15200000 → "15.200.000"
+ */
+export function formatPrice(val: number | string | null | undefined): string {
+  if (val === null || val === undefined || val === "") return "\u2014";
+  const n = typeof val === "string" ? Number(val) : val;
+  if (isNaN(n)) return "\u2014";
+  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/**
  * Russian plural: picks the right form based on count.
  *   plural(1, "товар", "товара", "товаров") → "товар"
  *   plural(2, "товар", "товара", "товаров") → "товара"

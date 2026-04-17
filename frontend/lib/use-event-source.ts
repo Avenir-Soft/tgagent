@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { API_BASE } from "./api";
 
 export interface SSEEvent {
@@ -21,11 +21,14 @@ export interface SSEEvent {
  * @param onEvent — callback fired for each SSE event
  * @returns { connected } — whether the SSE connection is open
  */
+export type SSEStatus = "connecting" | "connected" | "disconnected";
+
 export function useEventSource(
   conversationId?: string,
   onEvent?: (event: SSEEvent) => void,
 ) {
   const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState<SSEStatus>("disconnected");
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
   const esRef = useRef<EventSource | null>(null);
@@ -38,10 +41,11 @@ export function useEventSource(
     if (conversationId) params.set("conversation_id", conversationId);
 
     const url = `${API_BASE}/events/stream?${params.toString()}`;
+    setStatus("connecting");
     const es = new EventSource(url);
     esRef.current = es;
 
-    es.onopen = () => setConnected(true);
+    es.onopen = () => { setConnected(true); setStatus("connected"); };
 
     // Generic message handler (events without explicit "event:" field)
     es.onmessage = (e) => {
@@ -59,6 +63,7 @@ export function useEventSource(
       "conversation_updated",
       "new_conversation",
       "order_status_changed",
+      "telegram_status_changed",
       "auth_expired",
     ];
     for (const type of eventTypes) {
@@ -68,6 +73,7 @@ export function useEventSource(
           if (type === "auth_expired") {
             es.close();
             setConnected(false);
+            window.dispatchEvent(new CustomEvent("session-expired"));
             return;
           }
           onEventRef.current?.(data);
@@ -79,15 +85,16 @@ export function useEventSource(
 
     es.onerror = () => {
       setConnected(false);
-      // EventSource auto-reconnects — no manual retry needed
+      setStatus("connecting"); // EventSource auto-reconnects
     };
 
     return () => {
       es.close();
       esRef.current = null;
       setConnected(false);
+      setStatus("disconnected");
     };
   }, [conversationId]);
 
-  return { connected };
+  return { connected, status };
 }

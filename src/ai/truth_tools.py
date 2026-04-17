@@ -4,6 +4,10 @@ These are NOT LLM calls. They return factual data from the database.
 The AI agent calls these tools to get price, stock, delivery, etc.
 """
 
+import hashlib
+import json as _json
+import logging
+import time as _time
 import uuid as uuid_mod
 from decimal import Decimal
 from uuid import UUID
@@ -15,6 +19,63 @@ from sqlalchemy.orm import selectinload
 from src.catalog.models import Category, DeliveryRule, Inventory, Product, ProductAlias, ProductMedia, ProductVariant
 from src.leads.models import Lead
 from src.orders.models import Order, OrderItem
+
+_logger = logging.getLogger(__name__)
+
+# ── Cache layer ───────────────────────────────────────────────────────────────
+# Categories: in-memory (small data, rarely changes) — TTL 5 min
+_cat_cache: dict[str, tuple[dict, float]] = {}
+_CAT_TTL = 300
+
+# Product search: Redis (varied queries, larger data) — TTL 3 min
+_SEARCH_TTL = 180
+_redis_cache = None
+
+
+async def _get_cache_redis():
+    global _redis_cache
+    if _redis_cache is None:
+        import redis.asyncio as aioredis
+        from src.core.config import settings as cfg
+        _redis_cache = aioredis.from_url(cfg.redis_url, decode_responses=True)
+    return _redis_cache
+
+
+async def _search_cache_get(tenant_id: UUID, query: str) -> dict | None:
+    try:
+        r = await _get_cache_redis()
+        key = f"cat_srch:{tenant_id}:{hashlib.md5(query.lower().strip().encode()).hexdigest()}"
+        data = await r.get(key)
+        return _json.loads(data) if data else None
+    except Exception as e:
+        _logger.warning("Redis cache GET failed for tenant %s: %s", tenant_id, e)
+        return None
+
+
+async def _search_cache_set(tenant_id: UUID, query: str, result: dict) -> None:
+    try:
+        r = await _get_cache_redis()
+        key = f"cat_srch:{tenant_id}:{hashlib.md5(query.lower().strip().encode()).hexdigest()}"
+        await r.setex(key, _SEARCH_TTL, _json.dumps(result, default=str))
+    except Exception as e:
+        _logger.warning("Redis cache SET failed for tenant %s: %s", tenant_id, e)
+
+
+async def invalidate_catalog_cache(tenant_id) -> None:
+    """Invalidate categories in-memory cache AND Redis search cache."""
+    _cat_cache.pop(str(tenant_id), None)
+    try:
+        r = await _get_cache_redis()
+        prefix = f"cat_srch:{tenant_id}:"
+        cursor = 0
+        while True:
+            cursor, keys = await r.scan(cursor, match=f"{prefix}*", count=100)
+            if keys:
+                await r.delete(*keys)
+            if cursor == 0:
+                break
+    except Exception as e:
+        _logger.warning("Redis cache invalidation failed for tenant %s: %s", tenant_id, e)
 
 
 def _escape_like(s: str) -> str:
@@ -83,7 +144,12 @@ def _classify_product_type(name: str, model: str, category: str) -> str:
 
 
 async def list_categories(tenant_id: UUID, db: AsyncSession) -> dict:
-    """List all active product categories with product counts (single query)."""
+    """List all active product categories with product counts (cached 5 min)."""
+    key = str(tenant_id)
+    cached = _cat_cache.get(key)
+    if cached and _time.monotonic() - cached[1] < _CAT_TTL:
+        return cached[0]
+
     result = await db.execute(
         select(Category, func.count(Product.id).label("product_count"))
         .outerjoin(Product, (Product.category_id == Category.id) & Product.is_active.is_(True) & (Product.tenant_id == tenant_id))
@@ -107,21 +173,35 @@ async def list_categories(tenant_id: UUID, db: AsyncSession) -> dict:
                 "product_count": count,
             })
 
-    return {"categories": cat_list, "total_categories": len(cat_list)}
+    data = {"categories": cat_list, "total_categories": len(cat_list)}
+    _cat_cache[key] = (data, _time.monotonic())
+    return data
 
 
 async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) -> dict:
     """Search products by ILIKE on product.name, product_alias.alias_text, product_variant.title,
-    category.name, product.brand.
+    category.name, product.brand, product.model.
 
     Splits query into words and searches each word separately for better fuzzy matching.
-    Returns top 5 matching products with {product_id, name, brand, model, variants_count}.
+    Returns up to 15 matching products ranked by relevance (name match > brand/model > category).
     """
     # Search with full query + each word separately for better matching
     search_terms = [query.strip()]
     words = query.strip().split()
     if len(words) > 1:
         search_terms.extend([w for w in words if len(w) >= 2])
+
+    # Add stemmed forms for Russian plurals (айфоны→айфон, наушники→наушник, часы→час)
+    _ru_suffixes = ("ы", "и", "ов", "ей", "ами", "ях", "ам", "ов")
+    stemmed = []
+    for w in search_terms:
+        wl = w.lower().rstrip("?!.,;:")
+        if len(wl) >= 4:
+            for suf in sorted(_ru_suffixes, key=len, reverse=True):
+                if wl.endswith(suf) and len(wl) - len(suf) >= 3:
+                    stemmed.append(wl[: -len(suf)])
+                    break
+    search_terms.extend(stemmed)
 
     # Resolve category aliases (Russian/Uzbek → English DB names)
     # Check both directions: query matches alias OR alias is prefix/substring of query
@@ -131,75 +211,52 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
         if q_lower in aliases or any(q_lower in a or a in q_lower for a in aliases):
             search_terms.append(db_name)
 
-    all_product_ids = set()
+    # Check Redis cache first
+    cached_result = await _search_cache_get(tenant_id, query)
+    if cached_result is not None:
+        return cached_result
 
+    # Build ALL subqueries for ALL terms in one pass — single DB round-trip
+    all_subqueries = []
     for term in search_terms:
         like_pattern = f"%{_escape_like(term)}%"
 
-        # Sub-query: product IDs matching by name
-        by_name = (
-            select(Product.id)
-            .where(
-                Product.tenant_id == tenant_id,
-                Product.is_active.is_(True),
-                Product.name.ilike(like_pattern),
-            )
+        all_subqueries.append(
+            select(Product.id.label("pid"))
+            .where(Product.tenant_id == tenant_id, Product.is_active.is_(True), Product.name.ilike(like_pattern))
         )
-
-        # Sub-query: product IDs matching by alias
-        by_alias = (
-            select(ProductAlias.product_id)
-            .where(
-                ProductAlias.tenant_id == tenant_id,
-                ProductAlias.alias_text.ilike(like_pattern),
-            )
+        all_subqueries.append(
+            select(ProductAlias.product_id.label("pid"))
+            .where(ProductAlias.tenant_id == tenant_id, ProductAlias.alias_text.ilike(like_pattern))
         )
-
-        # Sub-query: product IDs matching by variant title
-        by_variant = (
-            select(ProductVariant.product_id)
-            .where(
-                ProductVariant.tenant_id == tenant_id,
-                ProductVariant.is_active.is_(True),
-                ProductVariant.title.ilike(like_pattern),
-            )
+        all_subqueries.append(
+            select(ProductVariant.product_id.label("pid"))
+            .where(ProductVariant.tenant_id == tenant_id, ProductVariant.is_active.is_(True), ProductVariant.title.ilike(like_pattern))
         )
-
-        # Sub-query: product IDs matching by category name
-        by_category = (
-            select(Product.id)
+        all_subqueries.append(
+            select(Product.id.label("pid"))
             .join(Category, Product.category_id == Category.id)
-            .where(
-                Product.tenant_id == tenant_id,
-                Product.is_active.is_(True),
-                Category.name.ilike(like_pattern),
-            )
+            .where(Product.tenant_id == tenant_id, Product.is_active.is_(True), Category.name.ilike(like_pattern))
+        )
+        all_subqueries.append(
+            select(Product.id.label("pid"))
+            .where(Product.tenant_id == tenant_id, Product.is_active.is_(True), Product.brand.ilike(like_pattern))
+        )
+        all_subqueries.append(
+            select(Product.id.label("pid"))
+            .where(Product.tenant_id == tenant_id, Product.is_active.is_(True), Product.model.ilike(like_pattern))
         )
 
-        # Sub-query: product IDs matching by brand
-        by_brand = (
-            select(Product.id)
-            .where(
-                Product.tenant_id == tenant_id,
-                Product.is_active.is_(True),
-                Product.brand.ilike(like_pattern),
-            )
-        )
-
-        matching_ids = union_all(by_name, by_alias, by_variant, by_category, by_brand).subquery()
-
-        result = await db.execute(
-            select(Product.id).where(
-                Product.id.in_(select(matching_ids.c.id)),
-            )
-        )
-        for row in result.scalars().all():
-            all_product_ids.add(row)
+    matching_ids = union_all(*all_subqueries).subquery()
+    result = await db.execute(select(matching_ids.c.pid).distinct())
+    all_product_ids = set(result.scalars().all())
 
     if not all_product_ids:
-        return {"found": False, "products": []}
+        empty = {"found": False, "products": []}
+        await _search_cache_set(tenant_id, query, empty)
+        return empty
 
-    # Fetch full product data with inventory
+    # Fetch full product data with inventory (limit 15 to avoid dropping relevant matches)
     result = await db.execute(
         select(Product)
         .where(
@@ -213,7 +270,7 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
             selectinload(Product.category),
             selectinload(Product.media),
         )
-        .limit(5)
+        .limit(15)
     )
     products = result.scalars().unique().all()
 
@@ -261,19 +318,37 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
             "total_photos": len(_all_photo_urls),
         })
 
+    # Rank by relevance: exact name match > name contains > brand/model match > category match
+    q_lower = query.strip().lower()
+    def _relevance(p):
+        name_l = (p["name"] or "").lower()
+        brand_l = (p.get("brand") or "").lower()
+        model_l = (p.get("model") or "").lower()
+        if name_l == q_lower:
+            return 0  # exact name match
+        if q_lower in name_l or name_l in q_lower:
+            return 1  # name contains query or vice versa
+        if q_lower in brand_l or q_lower in model_l:
+            return 2  # brand/model match
+        return 3  # category/alias match
+
+    product_list.sort(key=_relevance)
+
     in_stock = [p for p in product_list if p["in_stock"]]
     out_of_stock = [p for p in product_list if not p["in_stock"]]
 
     result = {
-        "found": len(in_stock) > 0,
+        "found": len(in_stock) > 0 or len(out_of_stock) > 0,
         "products": in_stock,
     }
     if out_of_stock:
-        oos_info = [{"name": p["name"], "category": p.get("category")} for p in out_of_stock]
-        result["out_of_stock_products"] = oos_info
+        result["out_of_stock_products"] = out_of_stock
         categories = set(p.get("category") for p in out_of_stock if p.get("category"))
         if categories:
-            result["suggestion"] = f"Out of stock. Search for alternatives in same category: {', '.join(categories)}"
+            result["suggestion"] = f"These products exist but are out of stock. Mention them to the customer and suggest alternatives in: {', '.join(categories)}"
+
+    # Cache result in Redis (TTL 3 min)
+    await _search_cache_set(tenant_id, query, result)
     return result
 
 
@@ -1271,6 +1346,7 @@ async def request_return(
         handoff = Handoff(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
+            reason=f"Возврат заказа {order.order_number}",
             priority="high",
             summary=f"Запрос на возврат: {order.order_number}. Причина: {reason}",
             linked_order_id=order.id,

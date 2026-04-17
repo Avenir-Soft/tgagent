@@ -1,0 +1,28 @@
+# Development override — hot reload, source mounting, exposed ports
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  backend:
+    volumes:
+      - ./src:/app/src
+      - ./sessions:/app/sessions
+      - ./media_cache:/app/media_cache
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir src
+    environment:
+      LOG_FORMAT: text
+      LOG_LEVEL: DEBUG
+      DEBUG: "true"
+
+  frontend:
+    volumes:
+      - ./frontend/app:/app/app
+      - ./frontend/components:/app/components
+      - ./frontend/lib:/app/lib
+    command: npx next dev -H 0.0.0.0
+
+  db:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"

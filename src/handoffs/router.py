@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import get_current_user, require_operator
 from src.auth.models import User
 from src.core.database import get_db
+from src.core.rate_limit import limiter
 from src.handoffs.models import Handoff
 from src.handoffs.schemas import HandoffCreate, HandoffOut, HandoffUpdate
 
@@ -21,7 +22,7 @@ async def _build_handoffs_out(handoffs: list[Handoff], db: AsyncSession) -> list
 
     # Collect IDs
     order_ids = {h.linked_order_id for h in handoffs if h.linked_order_id}
-    conv_ids = {h.conversation_id for h in handoffs}
+    conv_ids = {h.conversation_id for h in handoffs if h.conversation_id}
     user_ids = {h.assigned_to_user_id for h in handoffs if h.assigned_to_user_id}
 
     # Batch load (3 queries instead of 3*N)
@@ -47,12 +48,71 @@ async def _build_handoffs_out(handoffs: list[Handoff], db: AsyncSession) -> list
         data = HandoffOut.model_validate(h)
         if h.linked_order_id and h.linked_order_id in order_numbers:
             data.linked_order_number = order_numbers[h.linked_order_id]
-        if h.conversation_id in conv_names:
+        if h.conversation_id and h.conversation_id in conv_names:
             data.conversation_name = conv_names[h.conversation_id]
         if h.assigned_to_user_id and h.assigned_to_user_id in user_names:
             data.assigned_to_user_name = user_names[h.assigned_to_user_id]
         out.append(data)
     return out
+
+
+@router.get("/stats")
+async def handoff_stats(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get handoff stats: counts, avg reaction time."""
+    from sqlalchemy import func, extract
+
+    total_result = await db.execute(
+        select(func.count()).where(Handoff.tenant_id == user.tenant_id)
+    )
+    total = total_result.scalar() or 0
+
+    pending_result = await db.execute(
+        select(func.count()).where(
+            Handoff.tenant_id == user.tenant_id, Handoff.status == "pending"
+        )
+    )
+    pending = pending_result.scalar() or 0
+
+    resolved_result = await db.execute(
+        select(func.count()).where(
+            Handoff.tenant_id == user.tenant_id, Handoff.status == "resolved"
+        )
+    )
+    resolved = resolved_result.scalar() or 0
+
+    # Avg reaction time (resolved_at - created_at) in seconds
+    avg_reaction = None
+    min_reaction = None
+    max_reaction = None
+    if resolved > 0:
+        reaction_result = await db.execute(
+            select(
+                func.avg(extract("epoch", Handoff.resolved_at) - extract("epoch", Handoff.created_at)).label("avg_s"),
+                func.min(extract("epoch", Handoff.resolved_at) - extract("epoch", Handoff.created_at)).label("min_s"),
+                func.max(extract("epoch", Handoff.resolved_at) - extract("epoch", Handoff.created_at)).label("max_s"),
+            ).where(
+                Handoff.tenant_id == user.tenant_id,
+                Handoff.status == "resolved",
+                Handoff.resolved_at.isnot(None),
+            )
+        )
+        row = reaction_result.fetchone()
+        if row and row.avg_s is not None:
+            avg_reaction = round(row.avg_s)
+            min_reaction = round(row.min_s)
+            max_reaction = round(row.max_s)
+
+    return {
+        "total": total,
+        "pending": pending,
+        "resolved": resolved,
+        "avg_reaction_seconds": avg_reaction,
+        "min_reaction_seconds": min_reaction,
+        "max_reaction_seconds": max_reaction,
+    }
 
 
 @router.get("", response_model=list[HandoffOut])
@@ -73,7 +133,9 @@ async def list_handoffs(
 
 
 @router.patch("/{handoff_id}", response_model=HandoffOut)
+@limiter.limit("30/minute")
 async def update_handoff(
+    request: Request,
     handoff_id: UUID,
     body: HandoffUpdate,
     db: AsyncSession = Depends(get_db),
@@ -89,15 +151,17 @@ async def update_handoff(
         handoff.status = body.status
         if body.status == "resolved":
             handoff.resolved_at = datetime.now(timezone.utc)
-            # Restore conversation from handoff status
-            from src.conversations.models import Conversation
-            conv_result = await db.execute(
-                select(Conversation).where(Conversation.id == handoff.conversation_id)
-            )
-            conv = conv_result.scalar_one_or_none()
-            if conv and conv.status == "handoff":
-                conv.status = "active"
-                conv.ai_enabled = True
+            # Restore conversation from handoff status (if linked to a conversation)
+            if handoff.conversation_id:
+                from src.conversations.models import Conversation
+                conv_result = await db.execute(
+                    select(Conversation).where(Conversation.id == handoff.conversation_id)
+                )
+                conv = conv_result.scalar_one_or_none()
+                if conv and conv.status == "handoff":
+                    conv.status = "active"
+                    conv.state = "idle"
+                    conv.ai_enabled = True
     if body.assigned_to_user_id:
         handoff.assigned_to_user_id = body.assigned_to_user_id
     if body.resolution_notes is not None:

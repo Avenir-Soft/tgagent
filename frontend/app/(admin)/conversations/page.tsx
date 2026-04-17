@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useEventSource, SSEEvent } from "@/lib/use-event-source";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
+import { SSEStatusBadge } from "@/components/ui/sse-status";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -84,6 +85,18 @@ const sourceFilters = [
   { value: "comment_thread", label: "Комменты" },
 ];
 
+interface CommentInteraction {
+  id: string;
+  action: string;
+  trigger_text: string;
+  reply_text: string;
+  sender_name: string | null;
+  sender_username: string | null;
+  chat_title: string | null;
+  product_name: string | null;
+  created_at: string | null;
+}
+
 function getCartItemsCount(ctx: Record<string, any> | null): number {
   if (!ctx?.cart_items) return 0;
   return (ctx.cart_items as any[]).reduce((sum: number, item: any) => sum + (item.qty || 1), 0);
@@ -123,6 +136,14 @@ export default function ConversationsPage() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const PAGE_SIZE = 50;
+
+  // Comment interactions
+  const [comments, setComments] = useState<CommentInteraction[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+
+  // Track known IDs for "new conversation" animation
+  const knownIdsRef = useRef<Set<string>>(new Set());
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
   // Delete state
   const [deletingConv, setDeletingConv] = useState<Conversation | null>(null);
@@ -168,10 +189,20 @@ export default function ConversationsPage() {
       try {
         const data = await api.get<Conversation[]>(`/conversations?${params}`);
         if (reset) {
+          // Detect newly appeared conversations
+          if (knownIdsRef.current.size > 0) {
+            const fresh = data.filter((c) => !knownIdsRef.current.has(c.id)).map((c) => c.id);
+            if (fresh.length > 0) {
+              setNewIds(new Set(fresh));
+              setTimeout(() => setNewIds(new Set()), 2000);
+            }
+          }
+          data.forEach((c) => knownIdsRef.current.add(c.id));
           setConversations(data);
           pageRef.current = 0;
           setPage(0);
         } else {
+          data.forEach((c) => knownIdsRef.current.add(c.id));
           setConversations((prev) => [...prev, ...data]);
           pageRef.current += 1;
           setPage((p) => p + 1);
@@ -192,6 +223,17 @@ export default function ConversationsPage() {
     fetchConversations(true);
   }, [fetchConversations]);
 
+  // Load comments when comment_thread filter is active
+  useEffect(() => {
+    if (sourceFilter === "comment_thread") {
+      setCommentsLoading(true);
+      api.get<CommentInteraction[]>("/conversations/comments?limit=50")
+        .then(setComments)
+        .catch(() => {})
+        .finally(() => setCommentsLoading(false));
+    }
+  }, [sourceFilter]);
+
   // SSE: real-time updates for conversation list (debounced to avoid rapid re-fetches)
   const sseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSSE = useCallback((event: SSEEvent) => {
@@ -200,7 +242,7 @@ export default function ConversationsPage() {
       sseTimerRef.current = setTimeout(() => fetchConversations(true), 500);
     }
   }, [fetchConversations]);
-  useEventSource(undefined, handleSSE);
+  const { status: sseStatus } = useEventSource(undefined, handleSSE);
 
   // Slow fallback poll (30s) in case SSE is disconnected
   useEffect(() => {
@@ -279,6 +321,7 @@ export default function ConversationsPage() {
   return (
     <div>
       <PageHeader title="Диалоги" badge={totalUnread}>
+        <SSEStatusBadge status={sseStatus} />
         <FilterBar filters={sourceFilters} selected={sourceFilter} onChange={setSourceFilter} size="xs" />
       </PageHeader>
 
@@ -350,7 +393,94 @@ export default function ConversationsPage() {
         </div>
       )}
 
-      {/* Conversation list */}
+      {/* Comments view */}
+      {sourceFilter === "comment_thread" ? (
+        <div className="space-y-2">
+          {commentsLoading ? (
+            <>
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </>
+          ) : comments.length === 0 ? (
+            <EmptyState
+              message="Нет ответов на комментарии"
+              description="Когда AI ответит на комментарий в канале, он появится здесь. Включите «Умные ответы» в настройках."
+              action={{ label: "Настройки AI", href: "/settings" }}
+            />
+          ) : (
+            comments.map((c) => (
+              <div key={c.id} className="card px-5 py-4 space-y-3">
+                {/* Header: sender + channel + time */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-violet-50 flex items-center justify-center shrink-0">
+                      <svg className="w-4 h-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <span className="font-medium text-sm text-slate-900">
+                        {c.sender_name || c.sender_username || "Пользователь"}
+                      </span>
+                      {c.sender_username && c.sender_name && (
+                        <span className="text-xs text-indigo-500 ml-1.5">@{c.sender_username}</span>
+                      )}
+                    </div>
+                    {c.chat_title && (
+                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[11px] truncate max-w-[160px]">
+                        {c.chat_title}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                      c.action === "comment_smart_reply"
+                        ? "bg-indigo-50 text-indigo-700"
+                        : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {c.action === "comment_smart_reply" ? "AI" : "Шаблон"}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {c.created_at ? timeAgo(c.created_at) : ""}
+                    </span>
+                  </div>
+                </div>
+                {/* Messages: trigger + reply */}
+                <div className="space-y-2 pl-10">
+                  {/* Customer message */}
+                  <div className="flex gap-2">
+                    <div className="w-1 rounded-full bg-slate-200 shrink-0" />
+                    <p className="text-sm text-slate-700">{c.trigger_text}</p>
+                  </div>
+                  {/* AI reply */}
+                  <div className="flex gap-2">
+                    <div className="w-1 rounded-full bg-indigo-400 shrink-0" />
+                    {c.reply_text ? (
+                      <p className="text-sm text-slate-600">{c.reply_text}</p>
+                    ) : (
+                      <p className="text-sm text-slate-400 italic">Ответ не был записан (старый формат логов)</p>
+                    )}
+                  </div>
+                </div>
+                {/* Product tag */}
+                {c.product_name && (
+                  <div className="pl-10">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-violet-50 text-violet-700 text-xs">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path d="M7.875 1.5L3.75 5.25v13.5A1.5 1.5 0 005.25 20.25h13.5a1.5 1.5 0 001.5-1.5V5.25L16.125 1.5H7.875z" />
+                      </svg>
+                      {c.product_name}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+
+      /* Conversation list */
       <div className="space-y-2">
         {loading && conversations.length === 0 ? (
           <>
@@ -361,7 +491,25 @@ export default function ConversationsPage() {
             <SkeletonCard />
           </>
         ) : filtered.length === 0 ? (
-          <EmptyState message={search ? "Ничего не найдено" : "Нет диалогов"} />
+          <EmptyState
+            message={
+              search ? "Ничего не найдено"
+              : statusFilter === "handoff" ? "Нет диалогов на операторе"
+              : statusFilter === "closed" ? "Нет закрытых диалогов"
+              : "Нет диалогов"
+            }
+            description={
+              search ? undefined
+              : statusFilter === "handoff" ? "Когда AI передаёт диалог оператору, он появится здесь"
+              : statusFilter === "closed" ? "Закрытые диалоги появятся здесь после завершения"
+              : "Подключите Telegram аккаунт и AI начнёт общаться с клиентами автоматически"
+            }
+            action={
+              search ? undefined
+              : statusFilter !== "all" ? undefined
+              : { label: "Подключить Telegram", href: "/telegram" }
+            }
+          />
         ) : (
           filtered.map((c) => {
             const cartCount = getCartItemsCount(c.state_context);
@@ -372,7 +520,7 @@ export default function ConversationsPage() {
               <Link key={c.id} href={`/conversations/${c.id}`} className="block group">
                 <div className={`card px-5 py-4 flex items-center gap-4 transition-all group-hover:shadow-md group-hover:border-slate-300 ${
                   unread > 0 ? "border-l-3 border-l-indigo-500" : ""
-                } ${selected.has(c.id) ? "ring-2 ring-indigo-400 bg-indigo-50/30" : ""}`}>
+                } ${selected.has(c.id) ? "ring-2 ring-indigo-400 bg-indigo-50/30" : ""} ${newIds.has(c.id) ? "animate-slide-in-highlight" : ""}`}>
                   {/* Checkbox */}
                   <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }} className="shrink-0">
                     <input
@@ -510,6 +658,7 @@ export default function ConversationsPage() {
           </div>
         )}
       </div>
+      )}
 
       <ConfirmDialog
         open={!!deletingConv}

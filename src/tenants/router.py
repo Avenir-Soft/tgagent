@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +8,7 @@ from src.auth.deps import require_super_admin
 from src.auth.models import User
 from src.auth.schemas import UserCreate
 from src.core.database import get_db
+from src.core.rate_limit import limiter
 from src.core.security import hash_password
 from src.tenants.models import Tenant
 from src.tenants.schemas import TenantCreate, TenantOut, TenantUpdate
@@ -16,7 +17,9 @@ router = APIRouter(prefix="/tenants", tags=["tenants"])
 
 
 @router.post("/", response_model=TenantOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_tenant(
+    request: Request,
     body: TenantCreate,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_super_admin),
@@ -50,7 +53,9 @@ async def get_tenant(
 
 
 @router.patch("/{tenant_id}", response_model=TenantOut)
+@limiter.limit("30/minute")
 async def update_tenant(
+    request: Request,
     tenant_id: UUID,
     body: TenantUpdate,
     db: AsyncSession = Depends(get_db),
@@ -67,7 +72,9 @@ async def update_tenant(
 
 
 @router.post("/{tenant_id}/users", response_model=dict, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_tenant_user(
+    request: Request,
     tenant_id: UUID,
     body: UserCreate,
     db: AsyncSession = Depends(get_db),

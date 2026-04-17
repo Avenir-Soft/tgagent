@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { timeAgo } from "@/lib/time-ago";
-import { plural } from "@/lib/utils";
+import { plural, formatPrice } from "@/lib/utils";
 
 interface AbandonedCart {
   id: string;
@@ -98,16 +98,16 @@ export default function BroadcastPage() {
 
   // Load carts + history
   useEffect(() => {
-    api.get<AbandonedCart[]>("/dashboard/abandoned-carts").then(setAbandonedCarts).catch(console.error);
+    api.get<AbandonedCart[]>("/dashboard/abandoned-carts").then(setAbandonedCarts).catch(() => toast("Не удалось загрузить брошенные корзины", "error"));
     loadHistory();
     const timer = setInterval(() => {
-      api.get<AbandonedCart[]>("/dashboard/abandoned-carts").then(setAbandonedCarts).catch(console.error);
+      api.get<AbandonedCart[]>("/dashboard/abandoned-carts").then(setAbandonedCarts).catch(() => {});
     }, 30000);
     return () => clearInterval(timer);
   }, []);
 
   const loadHistory = () => {
-    api.get<BroadcastHistoryItem[]>("/dashboard/broadcast-history").then(setHistory).catch(console.error);
+    api.get<BroadcastHistoryItem[]>("/dashboard/broadcast-history").then(setHistory).catch(() => toast("Не удалось загрузить историю рассылок", "error"));
   };
 
   // Load recipients when filter changes
@@ -118,7 +118,7 @@ export default function BroadcastPage() {
         setRecipients(r);
         setSelectedIds(new Set(r.map((x) => x.id))); // select all by default
       })
-      .catch(console.error)
+      .catch(() => toast("Не удалось загрузить получателей", "error"))
       .finally(() => setLoadingRecipients(false));
     // Check actual audience size (may be > 5000)
     api.get<{ count: number; truncated?: boolean }>(`/dashboard/broadcast-estimate?filter=${broadcastFilter}`)
@@ -183,12 +183,29 @@ export default function BroadcastPage() {
         setImageUrl("");
         setScheduledAt("");
         setScheduleMode(false);
+        loadHistory();
       } else {
-        const r = await api.post<BroadcastResult>("/dashboard/broadcast", payload);
-        setBroadcastResult(r);
-        toast(`Отправлено ${r.sent} из ${r.total_targets}`, "success");
+        const r = await api.post<{ status: string; total_targets: number; id: string }>("/dashboard/broadcast", payload);
+        toast(`Рассылка отправляется (${r.total_targets})...`, "info");
+        loadHistory();
+        // Poll until broadcast finishes
+        const pollId = setInterval(() => {
+          api.get<BroadcastHistoryItem[]>("/dashboard/broadcast-history").then((h) => {
+            setHistory(h);
+            const entry = h.find((x) => x.id === r.id);
+            if (entry && entry.status !== "sending") {
+              clearInterval(pollId);
+              if (entry.status === "sent") {
+                toast(`Отправлено ${entry.sent_count} из ${entry.total_targets}`, "success");
+              } else if (entry.status === "failed") {
+                toast("Рассылка не удалась", "error");
+              }
+            }
+          }).catch(() => {});
+        }, 2000);
+        // Safety: stop polling after 5 min
+        setTimeout(() => clearInterval(pollId), 300000);
       }
-      loadHistory();
       loadRecipients();
     } catch {
       toast("Ошибка при отправке рассылки", "error");
@@ -276,7 +293,7 @@ export default function BroadcastPage() {
                   <div className="text-xs text-slate-500 mt-1">
                     {c.cart_items.map((i) => `${i.title}${i.qty > 1 ? ` ×${i.qty}` : ""}`).join(", ")}
                     {c.cart_total > 0 && (
-                      <span className="ml-2 font-medium">{Number(c.cart_total).toLocaleString("ru")} сум</span>
+                      <span className="ml-2 font-medium">{formatPrice(c.cart_total)} сум</span>
                     )}
                   </div>
                 </div>
@@ -536,37 +553,69 @@ export default function BroadcastPage() {
         </div>
       </section>
 
-      {/* Confirmation dialog */}
+      {/* Preview & Confirm dialog */}
       {showConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 mx-4">
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 mx-4">
+            <h3 className="text-lg font-semibold text-slate-900 mb-1">
               {scheduleMode ? "Запланировать рассылку?" : "Отправить рассылку?"}
             </h3>
-            <div className="space-y-2 mb-4">
-              <p className="text-sm text-slate-600">
-                <span className="font-medium">Получатели:</span> {selectedIds.size} из {recipients.length} ({broadcastFilter === "ordered" ? "покупатели" : "все клиенты"})
-              </p>
-              {imageUrl.trim() && (
-                <p className="text-sm text-slate-600">
-                  <span className="font-medium">Фото:</span> прикреплено
-                </p>
-              )}
-              {scheduleMode && scheduledAt && (
-                <p className="text-sm text-slate-600">
-                  <span className="font-medium">Время:</span> {new Date(scheduledAt).toLocaleString("ru")}
-                </p>
-              )}
-              <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-700 max-h-32 overflow-y-auto whitespace-pre-wrap">
-                {broadcastText}
+            <p className="text-xs text-slate-500 mb-4">Так сообщение будет выглядеть в Telegram</p>
+
+            {/* Telegram-style preview */}
+            <div className="bg-[#0e1621] rounded-xl p-4 mb-4">
+              <div className="max-w-[320px]">
+                {/* Image preview */}
+                {imageUrl.trim() && (
+                  <div className="mb-1 rounded-xl overflow-hidden">
+                    <img
+                      src={imageUrl}
+                      alt="Preview"
+                      className="w-full max-h-48 object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='120' fill='%23334155'%3E%3Crect width='320' height='120' fill='%231e293b'/%3E%3Ctext x='160' y='65' text-anchor='middle' fill='%2364748b' font-size='14'%3EФото%3C/text%3E%3C/svg%3E"; }}
+                    />
+                  </div>
+                )}
+                {/* Message bubble */}
+                <div className="bg-[#2b5278] rounded-xl rounded-tl-sm px-3.5 py-2.5 max-h-40 overflow-y-auto">
+                  <p className="text-[13px] text-white/95 whitespace-pre-wrap leading-relaxed">{broadcastText}</p>
+                  <p className="text-[10px] text-white/40 text-right mt-1">
+                    {scheduleMode && scheduledAt
+                      ? new Date(scheduledAt).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" })
+                      : new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" })}
+                    <span className="ml-1">✓✓</span>
+                  </p>
+                </div>
               </div>
             </div>
+
+            {/* Meta info */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <div className="bg-slate-50 rounded-lg px-3 py-2">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Получатели</p>
+                <p className="text-sm font-semibold text-slate-900">{selectedIds.size} <span className="text-slate-400 font-normal">из {recipients.length}</span></p>
+                <p className="text-[10px] text-slate-400">{broadcastFilter === "ordered" ? "Покупатели" : "Все клиенты"}</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg px-3 py-2">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">{scheduleMode ? "Время отправки" : "Отправка"}</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  {scheduleMode && scheduledAt
+                    ? new Date(scheduledAt).toLocaleString("ru", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+                    : "Сейчас"}
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  {imageUrl.trim() ? "С фото" : "Текст"}
+                  {broadcastText.length > 0 && ` · ${broadcastText.length} симв.`}
+                </p>
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowConfirm(false)}
                 className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors"
               >
-                Отмена
+                Назад
               </button>
               <button
                 onClick={sendBroadcast}
@@ -603,8 +652,8 @@ export default function BroadcastPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-3">
-                      {h.status === "sent" && (
-                        <span className="text-xs text-emerald-600 font-medium">
+                      {(h.status === "sent" || h.status === "sending") && (
+                        <span className={`text-xs font-medium ${h.status === "sent" ? "text-emerald-600" : "text-blue-600"}`}>
                           {h.sent_count}/{h.total_targets}
                           {h.failed_count > 0 && <span className="text-rose-500 ml-1">({h.failed_count} {plural(h.failed_count, "ошибка", "ошибки", "ошибок")})</span>}
                         </span>

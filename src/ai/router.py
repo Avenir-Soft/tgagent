@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -9,8 +9,11 @@ from sqlalchemy.orm.attributes import flag_modified
 from src.auth.deps import get_current_user, require_store_owner
 from src.auth.models import User
 from src.core.database import get_db
+from src.core.rate_limit import limiter
 from src.ai.models import AiSettings
+from src.ai.orchestrator import invalidate_ai_settings_cache
 from src.ai.schemas import AiSettingsCreate, AiSettingsOut
+from src.ai.tracer import get_traces, clear_traces
 
 router = APIRouter(tags=["ai"])
 
@@ -33,7 +36,9 @@ async def get_ai_settings(
 
 
 @router.put("/ai-settings", response_model=AiSettingsOut)
+@limiter.limit("30/minute")
 async def update_ai_settings(
+    request: Request,
     body: AiSettingsCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -52,11 +57,14 @@ async def update_ai_settings(
         settings = AiSettings(tenant_id=user.tenant_id, **body.model_dump())
         db.add(settings)
     await db.flush()
+    invalidate_ai_settings_cache(user.tenant_id)
     return AiSettingsOut.model_validate(settings)
 
 
 @router.post("/ai-settings/test-notification")
+@limiter.limit("60/minute")
 async def test_notification(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
@@ -84,7 +92,9 @@ async def test_notification(
 
 
 @router.post("/ai-settings/reset", response_model=AiSettingsOut)
+@limiter.limit("30/minute")
 async def reset_ai_settings(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
@@ -105,6 +115,7 @@ async def reset_ai_settings(
             continue  # preserve manually curated rules
         setattr(settings, field, value)
     await db.flush()
+    invalidate_ai_settings_cache(user.tenant_id)
     return AiSettingsOut.model_validate(settings)
 
 
@@ -123,7 +134,9 @@ async def get_prompt_rules(
 
 
 @router.post("/ai-settings/prompt-rules")
+@limiter.limit("30/minute")
 async def add_prompt_rule(
+    request: Request,
     body: dict,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -155,11 +168,14 @@ async def add_prompt_rule(
     ai_settings.prompt_rules = rules
     flag_modified(ai_settings, "prompt_rules")
     await db.flush()
+    invalidate_ai_settings_cache(user.tenant_id)
     return new_rule
 
 
 @router.patch("/ai-settings/prompt-rules/{rule_id}")
+@limiter.limit("30/minute")
 async def toggle_prompt_rule(
+    request: Request,
     rule_id: str,
     body: dict,
     db: AsyncSession = Depends(get_db),
@@ -180,12 +196,15 @@ async def toggle_prompt_rule(
             ai_settings.prompt_rules = rules
             flag_modified(ai_settings, "prompt_rules")
             await db.flush()
+            invalidate_ai_settings_cache(user.tenant_id)
             return r
     raise HTTPException(404, "Rule not found")
 
 
 @router.delete("/ai-settings/prompt-rules/{rule_id}")
+@limiter.limit("20/minute")
 async def delete_prompt_rule(
+    request: Request,
     rule_id: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -206,4 +225,66 @@ async def delete_prompt_rule(
     ai_settings.prompt_rules = rules
     flag_modified(ai_settings, "prompt_rules")
     await db.flush()
+    invalidate_ai_settings_cache(user.tenant_id)
     return {"deleted": True, "remaining": len(rules)}
+
+
+# ── AI Trace Monitor ─────────────────────────────────────────────────────────
+
+@router.get("/ai-traces")
+async def get_ai_traces(
+    limit: int = 30,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get AI traces from DB with pagination."""
+    traces, total = await get_traces(user.tenant_id, db, limit=min(limit, 100), offset=offset)
+    return {"traces": traces, "total": total, "count": len(traces)}
+
+
+@router.get("/ai-traces/daily-stats")
+async def get_ai_traces_daily_stats(
+    days: int = 14,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get daily aggregated AI trace stats for charts."""
+    from sqlalchemy import func, cast, Date
+    from src.ai.models import AITraceLog
+    from datetime import datetime, timedelta, timezone
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    result = await db.execute(
+        select(
+            cast(AITraceLog.created_at, Date).label("day"),
+            func.count().label("count"),
+            func.sum(AITraceLog.prompt_tokens).label("prompt_tokens"),
+            func.sum(AITraceLog.completion_tokens).label("completion_tokens"),
+            func.avg(AITraceLog.total_duration_ms).label("avg_duration_ms"),
+        )
+        .where(AITraceLog.tenant_id == user.tenant_id, AITraceLog.created_at >= since)
+        .group_by("day")
+        .order_by("day")
+    )
+    rows = result.fetchall()
+    return [
+        {
+            "date": str(row.day),
+            "count": row.count,
+            "prompt_tokens": row.prompt_tokens or 0,
+            "completion_tokens": row.completion_tokens or 0,
+            "avg_duration_ms": round(row.avg_duration_ms or 0),
+        }
+        for row in rows
+    ]
+
+
+@router.delete("/ai-traces")
+async def clear_ai_traces(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    """Clear all AI traces for this tenant."""
+    await clear_traces(user.tenant_id, db)
+    return {"cleared": True}

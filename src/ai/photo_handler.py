@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 _PHOTO_KEYWORDS = {
     "фото", "фотк", "фотог", "фоточ", "покажи", "photo", "picture",
     "pic", "image", "show me", "расм", "rasm", "сурат", "увидеть",
+    # Uzbek: "show" / "send" / "photo"
+    "курсат", "кўрсат", "курсатинг", "кўрсатинг", "ko'rsat", "ko'rsating",
+    "korsat", "korsating", "юбор", "жўнат", "jo'nat", "jonat",
+    "rasmini", "suratini", "suratni", "rasmni",
 }
 
 # Patterns to strip from AI text when photos are attached
@@ -44,6 +48,63 @@ _PHOTO_DENY_PATTERNS = [
 ]
 
 
+# Cross-script color matching: English ↔ Cyrillic transliterations
+_COLOR_TRANSLIT: dict[str, list[str]] = {
+    "black": ["блэк", "чёрный", "черный", "қора", "qora"],
+    "white": ["уайт", "белый", "оқ", "oq"],
+    "natural": ["натурал", "натуральный", "табиий", "tabiiy"],
+    "titanium": ["титаниум", "титан"],
+    "blue": ["блю", "синий", "голубой", "кўк", "ko'k"],
+    "gold": ["голд", "золотой", "олтин", "oltin"],
+    "silver": ["силвер", "серебряный", "кумуш", "kumush"],
+    "red": ["рэд", "красный", "қизил", "qizil"],
+    "green": ["грин", "зелёный", "зеленый", "яшил", "yashil"],
+    "purple": ["пёрпл", "фиолетовый", "бинафша", "binafsha"],
+    "pink": ["пинк", "розовый", "пушти", "pushti"],
+    "gray": ["грей", "серый", "кулранг", "kulrang"],
+    "grey": ["грей", "серый", "кулранг", "kulrang"],
+    "midnight": ["миднайт", "тунги"],
+    "starlight": ["старлайт", "юлдузли"],
+    "desert": ["дезерт", "саҳро"],
+    "cream": ["крим", "крем", "кремовый"],
+    "space": ["спейс"],
+    "deep": ["дип"],
+    "sierra": ["сиерра", "сиера"],
+    "pacific": ["пасифик"],
+    "graphite": ["графит"],
+    "alpine": ["алпайн", "альпийский"],
+    "coral": ["корал", "коралловый"],
+    "phantom": ["фантом"],
+    "pro": ["про"],
+    "max": ["макс"],
+    "ultra": ["ультра"],
+}
+
+
+def _color_matches_text(color_en: str, text: str) -> bool:
+    """Check if English color name matches in multilingual text via transliteration."""
+    if not color_en:
+        return False
+    text_lower = text.lower()
+    color_lower = color_en.lower()
+
+    # Direct match (exact substring)
+    if color_lower in text_lower:
+        return True
+
+    # Check each word of the color name — ALL must match (direct or translit)
+    words = color_lower.split()
+    for word in words:
+        if word in text_lower:
+            continue  # direct match for this word
+        translits = _COLOR_TRANSLIT.get(word, [])
+        if any(t in text_lower for t in translits):
+            continue  # translit match for this word
+        return False  # this word doesn't match at all
+
+    return True  # all words matched
+
+
 def extract_images_from_tool_result(
     tool_name: str,
     result: dict,
@@ -56,16 +117,20 @@ def extract_images_from_tool_result(
     Updates variant_images_map for get_variant_candidates.
     """
     if tool_name == "get_product_candidates":
+        # Only mark photos as available — DON'T collect URLs here.
+        # get_product_candidates returns multiple products (iPhones + Samsungs + etc.)
+        # and collecting all their photos causes wrong images in album.
+        # Photos are collected from get_variant_candidates (specific product) or force_fetch_photos.
         for prod in result.get("products", []):
             img = prod.pop("image_url", None)
             total_ph = prod.get("total_photos", 0)
             if img:
                 prod["photo_available"] = True
                 prod["total_photos"] = total_ph
-                if img not in collected_image_urls:
-                    collected_image_urls.append(img)
             else:
                 prod["total_photos"] = total_ph
+        for prod in result.get("out_of_stock_products", []):
+            prod.pop("image_url", None)
 
     elif tool_name == "get_variant_candidates":
         variant_images_map.clear()
@@ -100,21 +165,58 @@ def pick_variant_photos(
 ) -> list[str] | None:
     """Pick correct variant photos based on AI response + user message.
 
-    Returns matched image URLs or None if no specific match.
+    Uses scoring: color match (direct/translit) scores highest,
+    then unique title words. Picks the variant with the highest score.
     """
     if not variant_images_map or len(variant_images_map) <= 1 or not final_text:
         return None
 
     combined = (final_text or "").lower() + " " + user_message.lower()
+
+    # Collect all colors to find UNIQUE distinguishing words
+    all_colors = [vinfo["color"] for vinfo in variant_images_map.values() if vinfo["color"]]
+
+    best_score = 0
+    best_vid = None
+    best_images = None
+
     for vid, vinfo in variant_images_map.items():
+        score = 0
         vc = vinfo["color"]
-        vt = vinfo["title"]
-        if vc and vc in combined:
-            logger.info("PHOTO VARIANT MATCH by color=%s vid=%s", vc, vid)
-            return vinfo["images"]
-        if vt and any(w in combined for w in vt.split() if len(w) > 3):
-            logger.info("PHOTO VARIANT MATCH by title=%s vid=%s", vt, vid)
-            return vinfo["images"]
+
+        # --- Color match (strongest signal) ---
+        if vc:
+            # Full color string match (e.g. "natural titanium" in text)
+            if vc in combined:
+                score += 20
+            elif _color_matches_text(vc, combined):
+                # Cross-script match (e.g. "натурал титаниум" ↔ "natural titanium")
+                score += 15
+
+            # Match on UNIQUE color words only (words not shared by other variants)
+            # e.g. "natural" is unique, "titanium" is shared → only score "natural"
+            other_color_words: set[str] = set()
+            for oc in all_colors:
+                if oc != vc:
+                    other_color_words.update(oc.split())
+            for cw in vc.split():
+                if cw in other_color_words:
+                    continue  # shared word (e.g. "titanium") — skip
+                if cw in combined:
+                    score += 10
+                else:
+                    translits = _COLOR_TRANSLIT.get(cw, [])
+                    if any(t in combined for t in translits):
+                        score += 8
+
+        if score > best_score:
+            best_score = score
+            best_vid = vid
+            best_images = vinfo["images"]
+
+    if best_images and best_score > 0:
+        logger.info("PHOTO VARIANT MATCH: vid=%s score=%d", best_vid, best_score)
+        return best_images
 
     return None
 
@@ -122,6 +224,41 @@ def pick_variant_photos(
 def user_wants_photos(user_message: str) -> bool:
     """Check if user explicitly asked to see photos."""
     return any(kw in user_message.lower() for kw in _PHOTO_KEYWORDS)
+
+
+async def _pick_best_seller(tenant_id, candidates: list[dict], db: AsyncSession) -> str:
+    """Pick the best-selling product from candidates by order_items count."""
+    if len(candidates) == 1:
+        return candidates[0]["product_id"]
+
+    from sqlalchemy import select, func
+    from src.orders.models import OrderItem
+    from src.catalog.models import ProductVariant
+
+    product_ids = [c["product_id"] for c in candidates]
+    try:
+        # Count order items per product (via variant → product mapping)
+        result = await db.execute(
+            select(ProductVariant.product_id, func.count(OrderItem.id).label("sales"))
+            .join(OrderItem, OrderItem.variant_id == ProductVariant.id)
+            .where(
+                ProductVariant.product_id.in_(product_ids),
+                ProductVariant.tenant_id == tenant_id,
+            )
+            .group_by(ProductVariant.product_id)
+            .order_by(func.count(OrderItem.id).desc())
+        )
+        rows = result.all()
+        if rows:
+            best_pid = str(rows[0][0])
+            best_name = next((c.get("name") for c in candidates if c["product_id"] == best_pid), "?")
+            logger.info("PHOTO: best-seller pick: %s (%d sales)", best_name, rows[0][1])
+            return best_pid
+    except Exception as e:
+        logger.debug("Best-seller query failed, using first result: %s", e)
+
+    # No sales data — return first (most relevant by search ranking)
+    return candidates[0]["product_id"]
 
 
 async def force_fetch_photos(
@@ -135,24 +272,68 @@ async def force_fetch_photos(
 
     product_uuid = None
 
-    # Search DB directly for the product mentioned in user message
-    try:
-        search_result = await get_product_candidates(tenant_id, user_message, db)
-        if search_result.get("found") and search_result.get("products"):
-            product_uuid = search_result["products"][0]["product_id"]
-            logger.info("PHOTO: found product via search: %s (%s)", search_result["products"][0].get("name"), product_uuid)
-    except Exception:
-        pass
+    # Strip photo-related words to get clean product search query
+    # "скинь фотки айфона" → "айфона", "покажи фото iphone" → "iphone"
+    clean_query = user_message.lower()
+    for noise in ("скинь", "покажи", "пришли", "отправь", "кинь", "дай", "хочу", "можно",
+                   "фотки", "фоток", "фото", "фотографии", "фотку", "фоточки",
+                   "фотографию", "фотографий", "картинки", "картинку", "фоточку",
+                   "photo", "photos", "picture", "pictures", "pic", "pics",
+                   "image", "images", "show", "send", "see", "want", "wanna",
+                   "can", "give", "look", "loook", "okay", "ok",
+                   "me", "it", "you", "please", "пж", "пожалуйста",
+                   # Uzbek noise words
+                   "курсат", "кўрсат", "курсатинг", "кўрсатинг", "юбор", "жўнат",
+                   "ko'rsat", "ko'rsating", "korsat", "jonat", "jo'nat",
+                   "расмини", "расмни", "суратини", "суратни",
+                   "rasmini", "rasmni", "suratini", "suratni",
+                   "салом", "salom", "керак", "kerak", "менга", "menga",
+                   "бер", "берингиз", "ber", "bering", "beringiz"):
+        clean_query = clean_query.replace(noise, "")
+    clean_query = " ".join(clean_query.split()).strip()
 
-    # Fallback: use last product from state_context
+    # Search with cleaned query (e.g. "айфона"), pick best-seller among matches
+    if clean_query and len(clean_query) >= 2:
+        try:
+            search_result = await get_product_candidates(tenant_id, clean_query, db)
+            if search_result.get("found") and search_result.get("products"):
+                candidates = search_result["products"]
+                product_uuid = await _pick_best_seller(tenant_id, candidates, db)
+                logger.info("PHOTO: found product via cleaned search '%s': %s",
+                            clean_query, product_uuid)
+        except Exception as e:
+            logger.debug("Product search for photo failed: %s", e)
+
+    # Fallback: try full user message
+    if not product_uuid:
+        try:
+            search_result = await get_product_candidates(tenant_id, user_message, db)
+            if search_result.get("found") and search_result.get("products"):
+                candidates = search_result["products"]
+                product_uuid = await _pick_best_seller(tenant_id, candidates, db)
+                logger.info("PHOTO: found product via full search: %s", product_uuid)
+        except Exception as e:
+            logger.debug("Product search for photo failed: %s", e)
+
+    # Fallback: use last product from state_context that matches user message keywords
     if not product_uuid:
         products = state_context.get("products", {})
+        msg_lower = user_message.lower()
+        # First try: match product name against user message
         for pkey, pinfo in reversed(list(products.items())):
             pid = pinfo.get("product_id")
-            if pid:
+            if pid and any(w in msg_lower for w in pkey.lower().split() if len(w) > 3):
                 product_uuid = pid
-                logger.info("PHOTO: fallback to state_context product %s", pkey)
+                logger.info("PHOTO: matched state_context product by name '%s'", pkey)
                 break
+        # Last resort: just take the last product
+        if not product_uuid:
+            for pkey, pinfo in reversed(list(products.items())):
+                pid = pinfo.get("product_id")
+                if pid:
+                    product_uuid = pid
+                    logger.info("PHOTO: fallback to last state_context product %s", pkey)
+                    break
 
     if not product_uuid:
         logger.info("PHOTO: no product found to fetch photos for")
@@ -167,14 +348,12 @@ async def force_fetch_photos(
             v_imgs = vr.get("image_urls", [])
             if not v_imgs:
                 continue
-            v_title = (vr.get("title") or "").lower()
             v_color = (vr.get("color") or "").lower()
 
-            if v_color and v_color in msg_lower:
+            # Cross-script color match (e.g. "натурал титаниум" ↔ "natural titanium")
+            if v_color and _color_matches_text(v_color, msg_lower):
                 best_imgs = v_imgs
-                break
-            if any(w in msg_lower for w in v_title.split() if len(w) > 3):
-                best_imgs = v_imgs
+                logger.info("PHOTO FORCE-FETCH: matched color '%s'", v_color)
                 break
             if not best_imgs:
                 best_imgs = v_imgs  # fallback to first variant with images

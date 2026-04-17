@@ -6,7 +6,9 @@ import Link from "next/link";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CardSkeleton } from "@/components/ui/page-skeleton";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { formatPrice } from "@/lib/utils";
 import { timeAgo } from "@/lib/time-ago";
 
 interface OrderItem {
@@ -66,7 +68,7 @@ const orderFilters = [
 ];
 
 function fmt(val: string | number): string {
-  return Number(val).toLocaleString("ru-RU");
+  return formatPrice(val);
 }
 
 function plural(n: number, one: string, few: string, many: string): string {
@@ -108,10 +110,13 @@ export default function OrdersPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const { toast } = useToast();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const fetchOrders = useCallback(() => {
-    const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
-    api.get<Order[]>(`/orders${params}`).then(setOrders).catch(console.error);
+    const params = new URLSearchParams({ limit: "200" });
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    api.get<Order[]>(`/orders?${params}`).then((data) => { setOrders(data); setLoading(false); }).catch(() => { toast("Не удалось загрузить заказы", "error"); setLoading(false); });
   }, [statusFilter]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
@@ -195,12 +200,15 @@ export default function OrdersPage() {
   const cancelledCount = orders.filter((o) => o.status === "cancelled" || o.status === "returned").length;
 
   const deleteCancelled = async () => {
+    setDeleting(true);
     try {
       const res = await api.delete<{ deleted: number }>("/orders");
       toast(`Удалено ${res.deleted} заказов`, "success");
       setOrders((prev) => prev.filter((o) => o.status !== "cancelled" && o.status !== "returned"));
     } catch {
       toast("Ошибка при удалении", "error");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -279,15 +287,20 @@ export default function OrdersPage() {
             onClick={() => setConfirmDelete(true)}
             className="ml-auto px-4 py-2 rounded-full text-xs font-medium text-rose-600 border border-rose-200 hover:bg-rose-50 transition-colors"
           >
-            Очистить отменённые ({cancelledCount})
+            Удалить отменённые ({cancelledCount})
           </button>
         )}
       </div>
 
       {/* Orders list */}
       <div className="space-y-3">
-        {paginated.length === 0 ? (
-          <EmptyState message={search ? "Ничего не найдено" : "Нет заказов"} />
+        {loading ? (
+          <CardSkeleton count={6} />
+        ) : paginated.length === 0 ? (
+          <EmptyState
+            message={search ? "Ничего не найдено" : "Нет заказов"}
+            description={search ? undefined : "Заказы появятся когда AI оформит первую продажу через Telegram"}
+          />
         ) : (
           paginated.map((o) => (
             <div key={o.id} className={`card overflow-hidden ${o.status === "cancelled" ? "opacity-60" : ""}`}>
@@ -324,7 +337,7 @@ export default function OrdersPage() {
                   <div className="font-bold text-lg text-slate-900">{fmt(o.total_amount)} <span className="text-xs font-normal text-slate-400">сум</span></div>
                   <div className="text-xs text-slate-400">{timeAgo(o.created_at)}</div>
                 </div>
-                <div className="text-slate-300 shrink-0 text-lg">{expandedId === o.id ? "\u25B2" : "\u25BC"}</div>
+                <svg className={`w-5 h-5 text-slate-400 shrink-0 transition-transform duration-200 ${expandedId === o.id ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
               </div>
 
               {/* Expanded */}
@@ -426,7 +439,8 @@ export default function OrdersPage() {
         message={`Удалить ${cancelledCount} отменённых/возвращённых заказов? Это действие нельзя отменить.`}
         confirmText="Удалить"
         variant="danger"
-        onConfirm={() => { setConfirmDelete(false); deleteCancelled(); }}
+        loading={deleting}
+        onConfirm={() => { deleteCancelled().then(() => setConfirmDelete(false)); }}
         onCancel={() => setConfirmDelete(false)}
       />
     </div>

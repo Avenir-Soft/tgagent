@@ -1,15 +1,19 @@
 """Conversations API — thin HTTP handlers delegating to service layer."""
 
+import logging
 import re
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from src.auth.deps import get_current_user, require_store_owner
 from src.auth.models import User
 from src.core.database import get_db
+from src.core.rate_limit import limiter
 from src.conversations.models import CommentTemplate, Conversation, Message
 from src.conversations.schemas import (
     BulkDeleteRequest, CommentTemplateCreate, CommentTemplateOut, CommentTemplateUpdate,
@@ -32,7 +36,9 @@ router = APIRouter(tags=["conversations"])
 
 
 @router.post("/templates", response_model=CommentTemplateOut, status_code=201)
+@limiter.limit("30/minute")
 async def create_template(
+    request: Request,
     body: CommentTemplateCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -61,7 +67,9 @@ async def list_templates(
 
 
 @router.patch("/templates/{template_id}", response_model=CommentTemplateOut)
+@limiter.limit("30/minute")
 async def update_template(
+    request: Request,
     template_id: UUID,
     body: CommentTemplateUpdate,
     db: AsyncSession = Depends(get_db),
@@ -83,7 +91,9 @@ async def update_template(
 
 
 @router.delete("/templates/{template_id}")
+@limiter.limit("20/minute")
 async def delete_template(
+    request: Request,
     template_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -102,7 +112,9 @@ async def delete_template(
 
 
 @router.post("/templates/test-trigger")
+@limiter.limit("60/minute")
 async def test_trigger(
+    request: Request,
     body: dict,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -150,6 +162,47 @@ async def test_trigger(
                 "language": tpl.language,
             })
     return {"matches": matches}
+
+
+# --- Comment interactions (from audit logs) ---
+
+
+@router.get("/conversations/comments")
+async def list_comment_interactions(
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List AI comment replies from audit logs."""
+    from src.core.audit import AuditLog
+
+    result = await db.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.tenant_id == user.tenant_id,
+            AuditLog.entity_type == "comment",
+            AuditLog.action.in_(["comment_smart_reply", "comment_template_reply"]),
+        )
+        .order_by(AuditLog.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    logs = result.scalars().all()
+    return [
+        {
+            "id": str(log.id),
+            "action": log.action,
+            "trigger_text": (log.meta_json or {}).get("trigger_text", ""),
+            "reply_text": (log.meta_json or {}).get("reply_text", ""),
+            "sender_name": (log.meta_json or {}).get("sender_name"),
+            "sender_username": (log.meta_json or {}).get("sender_username"),
+            "chat_title": (log.meta_json or {}).get("chat_title"),
+            "product_name": (log.meta_json or {}).get("product_name"),
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        }
+        for log in logs
+    ]
 
 
 # --- Conversations ---
@@ -214,7 +267,9 @@ async def get_customer_history(
 
 
 @router.patch("/conversations/{conversation_id}/toggle-ai")
+@limiter.limit("60/minute")
 async def toggle_ai(
+    request: Request,
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -236,7 +291,9 @@ async def toggle_ai(
 
 
 @router.post("/conversations/{conversation_id}/reset")
+@limiter.limit("30/minute")
 async def reset_conversation(
+    request: Request,
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -253,7 +310,9 @@ async def reset_conversation(
 
 
 @router.patch("/conversations/{conversation_id}/messages/{message_id}", response_model=MessageOut)
+@limiter.limit("30/minute")
 async def edit_message(
+    request: Request,
     conversation_id: UUID,
     message_id: UUID,
     body: MessageEdit,
@@ -287,7 +346,9 @@ async def edit_message(
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageOut, status_code=201)
+@limiter.limit("30/minute")
 async def send_operator_message(
+    request: Request,
     conversation_id: UUID,
     body: MessageSend,
     db: AsyncSession = Depends(get_db),
@@ -331,14 +392,16 @@ async def send_operator_message(
             f"sse:{user.tenant_id}:tenant",
             {"event": "conversation_updated", "conversation_id": str(conversation_id)},
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("SSE publish failed for operator message in conversation %s: %s", conversation_id, e)
 
     return MessageOut.model_validate(msg)
 
 
 @router.delete("/conversations/{conversation_id}")
+@limiter.limit("20/minute")
 async def delete_conversation(
+    request: Request,
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -357,7 +420,9 @@ async def delete_conversation(
 
 
 @router.post("/conversations/bulk-delete")
+@limiter.limit("10/minute")
 async def bulk_delete_conversations(
+    request: Request,
     body: BulkDeleteRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),

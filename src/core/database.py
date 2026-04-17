@@ -8,7 +8,9 @@ engine = create_async_engine(
     echo=settings.database_echo,
     pool_size=20,
     max_overflow=10,
-    pool_pre_ping=True,
+    pool_pre_ping=True,  # auto-reconnect on stale connections
+    pool_recycle=1800,  # recycle connections every 30 min (prevents DB timeout kills)
+    pool_timeout=10,  # wait up to 10s for a connection from pool
     connect_args={"ssl": False},
 )
 

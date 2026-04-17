@@ -1,11 +1,15 @@
 "use client";
 
+import Link from "next/link";
+
 interface EmptyStateProps {
   message?: string;
+  description?: string;
   icon?: React.ReactNode;
+  action?: { label: string; href?: string; onClick?: () => void };
 }
 
-export function EmptyState({ message = "Ничего не найдено", icon }: EmptyStateProps) {
+export function EmptyState({ message = "Ничего не найдено", description, icon, action }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       {icon || (
@@ -14,6 +18,18 @@ export function EmptyState({ message = "Ничего не найдено", icon 
         </svg>
       )}
       <p className="text-sm text-slate-400">{message}</p>
+      {description && <p className="text-xs text-slate-400/70 mt-1 max-w-sm">{description}</p>}
+      {action && (
+        action.href ? (
+          <Link href={action.href} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
+            {action.label}
+          </Link>
+        ) : (
+          <button type="button" onClick={action.onClick} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
+            {action.label}
+          </button>
+        )
+      )}
     </div>
   );
 }

@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isAuthenticated } from "@/lib/auth";
+import { isAuthenticated, logout } from "@/lib/auth";
+import { resetSessionFlag } from "@/lib/api";
 import Sidebar from "@/components/sidebar";
 import { ToastProvider } from "@/components/ui/toast";
+import { GlobalHandoffNotifier } from "@/components/global-handoff-notifier";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -18,6 +21,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       setAuthChecked(true);
     }
   }, [router]);
+
+  // Listen for session expiry events from API client
+  useEffect(() => {
+    const handler = () => setSessionExpired(true);
+    window.addEventListener("session-expired", handler);
+    return () => window.removeEventListener("session-expired", handler);
+  }, []);
+
+  const handleSessionLogout = () => {
+    resetSessionFlag();
+    logout();
+  };
 
   // Don't render admin content until auth is verified
   if (!authChecked) {
@@ -37,6 +52,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <ToastProvider>
+      <GlobalHandoffNotifier />
+      {/* Session expiry dialog */}
+      {sessionExpired && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Сессия истекла">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900 mb-1">Сессия истекла</h3>
+            <p className="text-sm text-slate-500 mb-6">Ваша сессия завершена. Войдите снова для продолжения работы.</p>
+            <button type="button" onClick={handleSessionLogout} className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white py-2.5 rounded-xl font-semibold text-sm hover:from-indigo-500 hover:to-violet-500 transition-all shadow-lg shadow-indigo-500/25">
+              Войти снова
+            </button>
+          </div>
+        </div>
+      )}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:text-sm focus:font-medium">
+        Перейти к контенту
+      </a>
       <div className="flex min-h-screen bg-slate-50">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0">
@@ -61,7 +95,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span className="font-bold text-sm text-slate-900">AI Closer</span>
             </div>
           </header>
-          <main className="flex-1 p-4 md:p-8 overflow-auto">{children}</main>
+          <main id="main-content" className="flex-1 p-4 md:p-8 overflow-auto">{children}</main>
         </div>
       </div>
     </ToastProvider>

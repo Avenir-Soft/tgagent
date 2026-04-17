@@ -45,7 +45,9 @@ async def get_abandoned_carts(
 
 
 @router.post("/abandoned-carts/{conversation_id}/recover")
+@limiter.limit("10/minute")
 async def send_cart_recovery(
+    request: Request,
     conversation_id,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -220,8 +222,39 @@ async def send_broadcast(
 
     from src.telegram.service import telegram_manager
     client = telegram_manager.get_client(user.tenant_id)
+    # If client not in memory (e.g. after --reload), try to start it
+    if not client:
+        from src.telegram.models import TelegramAccount
+        acct_result = await db.execute(
+            select(TelegramAccount).where(
+                TelegramAccount.tenant_id == user.tenant_id,
+                TelegramAccount.status == "connected",
+            )
+        )
+        acct = acct_result.scalar_one_or_none()
+        if acct:
+            try:
+                await telegram_manager.start_client(acct)
+                client = telegram_manager.get_client(user.tenant_id)
+            except Exception:
+                pass
     if not client:
         raise HTTPException(503, "Telegram client not connected")
+    # Auto-reconnect if disconnected or broken
+    try:
+        if not client.is_connected():
+            raise ConnectionError("not connected")
+        await client.get_me()
+    except Exception:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        try:
+            await client.connect()
+            await client.get_me()
+        except Exception:
+            raise HTTPException(503, "Telegram client disconnected — try reconnecting on Telegram page")
 
     entry = BroadcastHistory(
         tenant_id=user.tenant_id,
@@ -233,7 +266,7 @@ async def send_broadcast(
         created_by_user_id=user.id,
     )
     db.add(entry)
-    await db.flush()
+    await db.commit()
 
     conv_data = [
         {
@@ -259,7 +292,9 @@ async def send_broadcast(
 
 
 @router.delete("/broadcast-history/{broadcast_id}")
+@limiter.limit("20/minute")
 async def cancel_scheduled_broadcast(
+    request: Request,
     broadcast_id: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -282,8 +317,10 @@ async def cancel_scheduled_broadcast(
 
 
 @router.post("/cleanup-drafts")
+@limiter.limit("10/minute")
 async def cleanup_drafts_endpoint(
+    request: Request,
     user: User = Depends(require_store_owner),
 ):
-    cancelled = await cleanup_expired_drafts(max_age_hours=2)
+    cancelled = await cleanup_expired_drafts(max_age_hours=2, tenant_id=user.tenant_id)
     return {"cancelled": cancelled}

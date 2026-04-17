@@ -1,4 +1,6 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+import { refreshAccessToken } from "./auth";
+
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8001";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -6,7 +8,18 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// Session expiry: emit custom event instead of hard redirect
+let _sessionExpired = false;
+function handleSessionExpiry() {
+  if (_sessionExpired) return; // prevent multiple dialogs
+  _sessionExpired = true;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("session-expired"));
+  }
+}
+export function resetSessionFlag() { _sessionExpired = false; }
+
+async function request<T>(path: string, options: RequestInit = {}, _retried = false): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -18,7 +31,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/auth/")) {
-      throw new ApiError(401, "Not authenticated");
+      // Try silent refresh before giving up
+      if (!_retried) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          return request<T>(path, options, true);
+        }
+      }
+      handleSessionExpiry();
+      throw new ApiError(401, "Сессия истекла");
     }
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, body.detail || res.statusText);
@@ -46,7 +67,17 @@ export const api = {
     const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: formData });
     if (!res.ok) {
       if (res.status === 401 && typeof window !== "undefined") {
-        throw new ApiError(401, "Not authenticated");
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          headers["Authorization"] = `Bearer ${newToken}`;
+          const retry = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: formData });
+          if (retry.ok) {
+            if (retry.status === 204) return null as T;
+            return retry.json() as Promise<T>;
+          }
+        }
+        handleSessionExpiry();
+        throw new ApiError(401, "Сессия истекла");
       }
       const body = await res.json().catch(() => ({}));
       throw new ApiError(res.status, body.detail || res.statusText);

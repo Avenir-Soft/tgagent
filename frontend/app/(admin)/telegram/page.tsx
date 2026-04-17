@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import { useEventSource, SSEEvent } from "@/lib/use-event-source";
 import { timeAgo } from "@/lib/time-ago";
 import { PageHeader } from "@/components/ui/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -183,39 +184,48 @@ export default function TelegramPage() {
     api.get<ActivityLog[]>("/telegram/activity-logs").then(setLogs).catch(() => {});
   }, []);
 
-  // Poll connection status every 5s (stop on auth failure)
+  // SSE for real-time Telegram status updates + fallback polling (30s)
+  const onSSE = useCallback((ev: SSEEvent) => {
+    if (ev.event === "telegram_status_changed") {
+      // Refresh full status + accounts on any change
+      api.get<AccountStatus[]>("/telegram/status").then((data) => {
+        const map: Record<string, string> = {};
+        data.forEach((s) => { map[s.account_id] = s.status; });
+        setStatuses(map);
+      }).catch(() => {});
+      reload();
+    }
+  }, [reload]);
+  const { connected: sseConnected } = useEventSource(undefined, onSSE);
+
+  // Fallback polling — 30s when SSE connected, 5s when disconnected
   useEffect(() => {
     let stopped = false;
-    let interval: ReturnType<typeof setInterval>;
-    const fetchStatus = () => {
+    let tick = 0;
+    const interval = sseConnected ? 30000 : 5000;
+
+    const poll = () => {
       if (stopped) return;
+      tick++;
       api.get<AccountStatus[]>("/telegram/status").then((data) => {
         const map: Record<string, string> = {};
         data.forEach((s) => { map[s.account_id] = s.status; });
         setStatuses(map);
       }).catch((e) => {
-        if (e?.status === 401) { stopped = true; clearInterval(interval); }
+        if (e?.status === 401) stopped = true;
       });
+      // Logs every 2nd tick
+      if (tick % 2 === 0) {
+        api.get<ActivityLog[]>("/telegram/activity-logs").then(setLogs).catch((e) => {
+          if (e?.status === 401) stopped = true;
+        });
+      }
     };
-    fetchStatus();
-    interval = setInterval(fetchStatus, 5000);
-    return () => { stopped = true; clearInterval(interval); };
-  }, []);
 
-  // Poll activity logs every 10s (stop on auth failure)
-  useEffect(() => {
-    let stopped = false;
-    let interval: ReturnType<typeof setInterval>;
-    const fetchLogs = () => {
-      if (stopped) return;
-      api.get<ActivityLog[]>("/telegram/activity-logs").then(setLogs).catch((e) => {
-        if (e?.status === 401) { stopped = true; clearInterval(interval); }
-      });
-    };
-    fetchLogs();
-    interval = setInterval(fetchLogs, 10000);
-    return () => { stopped = true; clearInterval(interval); };
-  }, []);
+    poll();
+    const timer = setInterval(poll, interval);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [sseConnected]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -353,13 +363,22 @@ export default function TelegramPage() {
           action={authStep === "idle" ? { label: "+ Подключить аккаунт", onClick: () => setAuthStep("phone") } : undefined}
         />
 
+        {accounts.length === 0 && authStep === "idle" && (
+          <div className="card p-5 mb-4 border-l-4 border-l-indigo-400">
+            <h3 className="text-sm font-semibold text-slate-900 mb-1">Зачем подключать Telegram?</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              AI Closer работает через ваш Telegram аккаунт — отвечает клиентам в личных сообщениях, принимает заказы и консультирует по товарам автоматически. Подключите аккаунт чтобы AI начал работать.
+            </p>
+          </div>
+        )}
+
         {/* Auth Flow */}
         {authStep !== "idle" && authStep !== "done" && (
           <div className="card p-6 mb-4 max-w-lg">
             <h3 className="font-bold text-slate-900 mb-4">
               {authStep === "phone" && "Шаг 1: Введите номер телефона"}
               {authStep === "code" && "Шаг 2: Введите код из Telegram"}
-              {authStep === "2fa" && "Шаг 3: Введите пароль 2FA"}
+              {authStep === "2fa" && "Шаг 2б: Введите пароль 2FA"}
             </h3>
 
             {authError && (
@@ -727,7 +746,14 @@ export default function TelegramPage() {
                     <tr
                       key={log.id}
                       className="hover:bg-indigo-50/50 transition-colors cursor-pointer"
-                      onClick={() => router.push(`/conversations/${log.conversation_id}?highlight=${log.id}`)}
+                      onClick={async () => {
+                        try {
+                          await api.get(`/conversations/${log.conversation_id}`);
+                          router.push(`/conversations/${log.conversation_id}?highlight=${log.id}`);
+                        } catch {
+                          toast("Диалог был удалён", "error");
+                        }
+                      }}
                       title="Открыть диалог"
                     >
                       <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{timeAgo(log.created_at)}</td>

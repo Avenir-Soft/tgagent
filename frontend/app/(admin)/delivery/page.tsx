@@ -4,7 +4,9 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/ui/page-header";
+import { TableSkeleton } from "@/components/ui/page-skeleton";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { formatPrice } from "@/lib/utils";
 
 interface DeliveryRule {
   id: string;
@@ -45,7 +47,7 @@ const typePillLabels: Record<string, string> = {
 };
 
 function fmt(val: string | number): string {
-  return Number(val).toLocaleString("ru-RU");
+  return formatPrice(val);
 }
 
 export default function DeliveryPage() {
@@ -70,8 +72,9 @@ export default function DeliveryPage() {
   // CSV import
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const load = () => api.get<DeliveryRule[]>("/delivery-rules").then(setRules).catch(() => {});
+  const load = () => api.get<DeliveryRule[]>("/delivery-rules").then((data) => { setRules(data); setLoading(false); }).catch(() => { setLoading(false); });
   useEffect(() => { load(); }, []);
 
   // Unique cities for dropdown
@@ -109,10 +112,9 @@ export default function DeliveryPage() {
   };
   const getCityLabel = (city: string) => cityDisplayName[city] || city;
 
-  // ETA display: "1-1 дн." → "В тот же день", "0-1 дн." → "0-1 дн."
+  // ETA display
   const formatEta = (min: number, max: number) => {
     if (min === 0 && max === 0) return "В тот же день";
-    if (min === max && min <= 1) return "В тот же день";
     if (min === max) return `${min} дн.`;
     return `${min}-${max} дн.`;
   };
@@ -130,7 +132,7 @@ export default function DeliveryPage() {
 
     // "Все города" (null) first
     if (cityMap.has("__null__")) {
-      groups.push({ city: "__null__", displayName: "Все города", rules: cityMap.get("__null__")! });
+      groups.push({ city: "__null__", displayName: "Все города (без привязки к городу — применяются везде)", rules: cityMap.get("__null__")! });
       cityMap.delete("__null__");
     }
 
@@ -154,6 +156,10 @@ export default function DeliveryPage() {
     const price = parseFloat(form.price);
     if (isNaN(price) || price < 0) {
       toast("Цена должна быть числом >= 0", "error");
+      return;
+    }
+    if (form.eta_min_days > form.eta_max_days) {
+      toast("Минимальный срок не может превышать максимальный", "error");
       return;
     }
     const data = {
@@ -223,7 +229,7 @@ export default function DeliveryPage() {
       const token = localStorage.getItem("token");
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/delivery-rules/import-csv`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8001"}/delivery-rules/import-csv`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -272,6 +278,22 @@ export default function DeliveryPage() {
         badge={rules.length}
         action={{ label: showForm ? "Отмена" : "+ Добавить", onClick: () => { resetForm(); setShowForm(!showForm); } }}
       >
+        <button
+          type="button"
+          onClick={() => {
+            const csv = "city,zone,delivery_type,price,eta_min_days,eta_max_days,cod_available\nТашкент,Центр,standard,25000,1,2,true\nТашкент,Окраина,express,50000,0,1,false";
+            const blob = new Blob([csv], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a"); a.href = url; a.download = "delivery_template.csv"; a.click();
+            URL.revokeObjectURL(url);
+          }}
+          className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+          Шаблон
+        </button>
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -461,6 +483,9 @@ export default function DeliveryPage() {
       )}
 
       {/* Rules grouped by city */}
+      {loading ? (
+        <TableSkeleton rows={6} cols={5} />
+      ) : (
       <div className="space-y-6">
         {filteredRules.length === 0 ? (
           <div className="card p-8 text-center text-slate-400">
@@ -548,6 +573,7 @@ export default function DeliveryPage() {
           ))
         )}
       </div>
+      )}
     </div>
   );
 }

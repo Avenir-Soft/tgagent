@@ -10,7 +10,10 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("App error:", error);
+    // Log only in development — no stack traces in production console
+    if (process.env.NODE_ENV === "development") {
+      console.error("App error:", error);
+    }
   }, [error]);
 
   return (

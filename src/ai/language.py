@@ -315,12 +315,12 @@ def _check_greeting(text: str, language: str) -> str | None:
             if len(pattern_words) > 1:
                 if pattern_words <= clean_words_set:
                     # Use matched pattern's language — more reliable than detected for short greetings
-                    resp_lang = lang if lang == language else language
+                    resp_lang = lang
                     responses = _HOW_ARE_YOU_RESPONSES.get(resp_lang, _HOW_ARE_YOU_RESPONSES["ru"])
                     return _random.choice(responses)
             else:
                 if pattern in clean_words_set:
-                    resp_lang = lang if lang == language else language
+                    resp_lang = lang
                     responses = _HOW_ARE_YOU_RESPONSES.get(resp_lang, _HOW_ARE_YOU_RESPONSES["ru"])
                     return _random.choice(responses)
 

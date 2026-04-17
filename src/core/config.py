@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # Auth
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24 hours
+    refresh_token_expire_days: int = 7
 
     # Telegram
     telegram_api_id: int = 0
@@ -40,8 +41,12 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     openai_moderation_model: str = "omni-moderation-latest"
 
+    # Logging
+    log_format: str = "text"  # "text" for dev, "json" for production
+    log_level: str = "INFO"
+
     # CORS
-    cors_origins: str = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001,http://192.168.1.99:3000"
+    cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002,http://127.0.0.1:3003,http://192.168.1.99:3000"
 
     # Encryption key for sensitive data (Telegram sessions, etc.)
     encryption_key: str = "CHANGE-ME-32-BYTES-KEY-HERE!!!!"

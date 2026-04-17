@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CardSkeleton } from "@/components/ui/page-skeleton";
 import { timeAgo } from "@/lib/time-ago";
 
 interface Handoff {
@@ -61,6 +62,30 @@ const handoffFilters = [
 
 const priorityOrder: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 
+interface HandoffStats {
+  total: number;
+  pending: number;
+  resolved: number;
+  avg_reaction_seconds: number | null;
+  min_reaction_seconds: number | null;
+  max_reaction_seconds: number | null;
+}
+
+function fmtDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds} сек`;
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins} мин ${seconds % 60} сек`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} ч ${mins % 60} мин`;
+  const days = Math.floor(hrs / 24);
+  return `${days} дн ${hrs % 24} ч`;
+}
+
+function reactionTime(created: string, resolved: string): string {
+  const ms = new Date(resolved).getTime() - new Date(created).getTime();
+  return fmtDuration(Math.max(0, Math.round(ms / 1000)));
+}
+
 function timePending(created: string): string {
   const ms = Date.now() - new Date(created).getTime();
   const mins = Math.floor(ms / 60000);
@@ -81,7 +106,17 @@ export default function HandoffsPage() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
   const [soundReady, setSoundReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<HandoffStats | null>(null);
+
+  useEffect(() => { mutedRef.current = muted; }, [muted]);
+
+  // Load stats
+  useEffect(() => {
+    api.get<HandoffStats>("/handoffs/stats").then(setStats).catch(() => {});
+  }, [handoffs]);
 
   // Resolve dialog state
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -138,7 +173,7 @@ export default function HandoffsPage() {
 
   // Load operators once
   useEffect(() => {
-    api.get<Operator[]>("/auth/operators").then(setOperators).catch(console.error);
+    api.get<Operator[]>("/auth/operators").then(setOperators).catch(() => toast("Не удалось загрузить операторов", "error"));
   }, []);
 
   const load = useCallback(() => {
@@ -157,7 +192,7 @@ export default function HandoffsPage() {
       const currentPendingIds = new Set(data.filter((h) => h.status === "pending").map((h) => h.id));
       if (initialLoadDone.current) {
         const newIds = [...currentPendingIds].filter((id) => !knownPendingIds.current.has(id));
-        if (newIds.length > 0 && !muted) {
+        if (newIds.length > 0 && !mutedRef.current) {
           playSound();
           const newH = data.find((h) => h.id === newIds[0]);
           sendBrowserNotification(
@@ -170,8 +205,9 @@ export default function HandoffsPage() {
       initialLoadDone.current = true;
 
       setHandoffs(data);
-    }).catch(console.error);
-  }, [filter, muted]);
+      setLoading(false);
+    }).catch(() => { toast("Не удалось загрузить хендоффы", "error"); setLoading(false); });
+  }, [filter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -254,13 +290,46 @@ export default function HandoffsPage() {
         </div>
       </PageHeader>
 
+      {/* Stats bar */}
+      {stats && stats.total > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
+          <div className="card p-3">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Всего</p>
+            <p className="text-lg font-bold tabular-nums text-slate-900">{stats.total}</p>
+          </div>
+          <div className="card p-3">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Ожидают</p>
+            <p className={`text-lg font-bold tabular-nums ${stats.pending > 0 ? "text-amber-600" : "text-slate-400"}`}>{stats.pending}</p>
+          </div>
+          <div className="card p-3">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Решено</p>
+            <p className="text-lg font-bold tabular-nums text-emerald-600">{stats.resolved}</p>
+          </div>
+          <div className="card p-3">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Ср. время реакции</p>
+            <p className={`text-lg font-bold tabular-nums ${
+              stats.avg_reaction_seconds !== null
+                ? stats.avg_reaction_seconds > 3600 ? "text-rose-600" : stats.avg_reaction_seconds > 600 ? "text-amber-600" : "text-emerald-600"
+                : "text-slate-400"
+            }`}>
+              {stats.avg_reaction_seconds !== null ? fmtDuration(stats.avg_reaction_seconds) : "—"}
+            </p>
+            {stats.min_reaction_seconds !== null && stats.max_reaction_seconds !== null && (
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                мин: {fmtDuration(stats.min_reaction_seconds)} / макс: {fmtDuration(stats.max_reaction_seconds)}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Resolve dialog */}
       {resolvingId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Решение хендоффа">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 mx-4">
             <h3 className="text-lg font-semibold text-slate-900 mb-1">Решение хандоффа</h3>
             <p className="text-sm text-slate-500 mb-4">
-              Добавьте заметки о том, как была решена проблема (необязательно)
+              Опишите как была решена проблема (минимум 10 символов)
             </p>
             <textarea
               value={resolveNotes}
@@ -280,8 +349,16 @@ export default function HandoffsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => resolve(resolvingId, resolveNotes)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
+                onClick={() => {
+                  if (resolveNotes.trim().length < 10) { toast("Заметка должна содержать минимум 10 символов", "error"); return; }
+                  const h = handoffs.find((x) => x.id === resolvingId);
+                  if (h && !h.assigned_to_user_id) {
+                    if (!confirm("Оператор не назначен. Всё равно закрыть?")) return;
+                  }
+                  resolve(resolvingId, resolveNotes);
+                }}
+                disabled={resolveNotes.trim().length < 10}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Решено
               </button>
@@ -291,8 +368,13 @@ export default function HandoffsPage() {
       )}
 
       <div className="space-y-3">
-        {handoffs.length === 0 ? (
-          <EmptyState message="Нет запросов на передачу оператору" />
+        {loading ? (
+          <CardSkeleton count={6} />
+        ) : handoffs.length === 0 ? (
+          <EmptyState
+            message="Нет запросов на передачу оператору"
+            description="Когда AI не сможет обработать запрос клиента, он создаст хендофф для оператора"
+          />
         ) : (
           handoffs.map((h) => {
             const priority = priorityConfig[h.priority] || priorityConfig.normal;
@@ -397,6 +479,9 @@ export default function HandoffsPage() {
                   {h.resolved_at && (
                     <span className="text-xs text-slate-400">
                       Решено: {new Date(h.resolved_at).toLocaleString("ru")}
+                      <span className="ml-2 text-emerald-600 font-medium">
+                        ({reactionTime(h.created_at, h.resolved_at)})
+                      </span>
                     </span>
                   )}
                 </div>

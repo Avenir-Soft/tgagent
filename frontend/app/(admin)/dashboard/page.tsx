@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useEventSource, SSEEvent } from "@/lib/use-event-source";
+import { useToast } from "@/components/ui/toast";
+import { SSEStatusBadge } from "@/components/ui/sse-status";
 
 interface DailyCount { date: string; count: number }
 interface RecentOrder { order_number: string; customer: string; amount: number; status: string; created_at: string | null }
@@ -25,7 +27,7 @@ const statusColors: Record<string, string> = { draft: "bg-slate-400", confirmed:
 const statusDots: Record<string, string> = { draft: "bg-slate-300", confirmed: "bg-blue-400", processing: "bg-amber-400", shipped: "bg-violet-400", delivered: "bg-emerald-400", cancelled: "bg-rose-300" };
 const leadLabels: Record<string, string> = { new: "Новые", contacted: "Связались", qualified: "Квалиф.", converted: "Конверт.", lost: "Потерян" };
 
-function fmtPrice(val: number) { return val.toLocaleString("ru-RU"); }
+function fmtPrice(val: number) { return val.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "."); }
 
 /* ── Trend Badge ─────────────────────────────── */
 function TrendBadge({ current, previous, suffix = "" }: { current: number; previous: number; suffix?: string }) {
@@ -310,11 +312,12 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
   const [chartDays, setChartDays] = useState(7);
+  const { toast } = useToast();
 
   const load = useCallback((days?: number) => {
     const d = days ?? chartDays;
-    api.get<Stats>(`/dashboard/stats?days=${d}`).then(setStats).catch(console.error);
-    api.get<LowStockItem[]>("/dashboard/low-stock").then(setLowStock).catch(console.error);
+    api.get<Stats>(`/dashboard/stats?days=${d}`).then(setStats).catch(() => toast("Не удалось загрузить статистику", "error"));
+    api.get<LowStockItem[]>("/dashboard/low-stock").then(setLowStock).catch(() => toast("Не удалось загрузить остатки", "error"));
   }, [chartDays]);
 
   // SSE: refresh dashboard on relevant events (debounced)
@@ -325,13 +328,14 @@ export default function DashboardPage() {
       sseTimerRef.current = setTimeout(() => load(), 1000);
     }
   }, [load]);
-  useEventSource(undefined, handleSSE);
+  const { status: sseStatus } = useEventSource(undefined, handleSSE);
 
   // Initial load + slow fallback poll (60s)
   useEffect(() => { load(); const id = setInterval(() => load(), 60_000); return () => clearInterval(id); }, [load]);
 
   const handlePeriodChange = (days: number) => {
     setChartDays(days);
+    load(days);
   };
 
   if (!stats) return <DashSkeleton />;
@@ -339,9 +343,12 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Дашборд</h1>
-        <p className="text-sm text-slate-400 mt-0.5">Обзор вашего магазина</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Дашборд</h1>
+          <p className="text-sm text-slate-400 mt-0.5">Обзор вашего магазина</p>
+        </div>
+        <SSEStatusBadge status={sseStatus} />
       </div>
 
       {/* Row 1: Today stats */}
@@ -387,7 +394,7 @@ export default function DashboardPage() {
               {[
                 { v: stats.total_orders, l: "заказов" },
                 { v: stats.dm_conversations, l: "диалогов" },
-                { v: `${stats.conversion_rate_pct}%`, l: "конверсия" },
+                { v: stats.total_leads > 0 ? `${stats.conversion_rate_pct}%` : "N/A", l: "конверсия" },
               ].map(({ v, l }) => (
                 <div key={l}>
                   <p className="text-xl font-bold">{v}</p>
@@ -484,6 +491,11 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
+            {lowStock.length > 8 && (
+              <Link href="/products" className="block px-6 py-3 text-center text-xs text-indigo-600 hover:bg-indigo-50/50 font-medium transition-colors">
+                Показать все ({lowStock.length})
+              </Link>
+            )}
           </div>
         </div>
       )}

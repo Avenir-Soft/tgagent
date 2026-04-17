@@ -5,13 +5,14 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import get_current_user, require_store_owner
 from src.auth.models import User
 from src.core.database import get_db
+from src.core.rate_limit import limiter
 from src.analytics.models import CustomerSegment, CompetitorPrice
 from src.analytics.schemas import (
     CompetitorPriceCreate,
@@ -35,7 +36,9 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 @router.post("/rfm/compute")
+@limiter.limit("10/minute")
 async def compute_rfm(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
@@ -113,12 +116,12 @@ async def compute_rfm(
             updated_at = now()
     """)
 
-    # Batch upsert in chunks of 100 to reduce memory pressure
-    batch_size = 100
+    # Batch upsert — executemany sends all params in one round-trip
+    batch_size = 500
     for batch_start in range(0, len(rows), batch_size):
         batch = rows[batch_start:batch_start + batch_size]
-        for row in batch:
-            await db.execute(upsert_query, {"tid": tid, **dict(row)})
+        params = [{"tid": tid, **dict(row)} for row in batch]
+        await db.execute(upsert_query, params)
         await db.flush()
 
     # Remove stale segments (leads without qualifying orders anymore)
@@ -332,15 +335,19 @@ async def get_conversation_analytics(
     total_convs = total_result.scalar() or 0
 
     # Resolution rate (reached post_order or has confirmed+ order)
+    # Use LEFT JOIN instead of correlated EXISTS for better performance
     resolved_result = await db.execute(
         text("""
+            WITH ordered_users AS (
+                SELECT DISTINCT l.telegram_user_id
+                FROM leads l JOIN orders o ON o.lead_id = l.id
+                WHERE l.tenant_id = :tid
+                  AND o.status IN ('confirmed','processing','shipped','delivered')
+            )
             SELECT COUNT(*)::int AS cnt FROM conversations c
+            LEFT JOIN ordered_users ou ON ou.telegram_user_id = c.telegram_user_id
             WHERE c.tenant_id = :tid AND c.source_type = 'dm' AND c.created_at >= :since
-              AND (c.state = 'post_order' OR EXISTS (
-                  SELECT 1 FROM leads l JOIN orders o ON o.lead_id = l.id
-                  WHERE l.telegram_user_id = c.telegram_user_id AND l.tenant_id = :tid
-                    AND o.status IN ('confirmed','processing','shipped','delivered')
-              ))
+              AND (c.state = 'post_order' OR ou.telegram_user_id IS NOT NULL)
         """),
         {"tid": tid, "since": since},
     )
@@ -571,7 +578,9 @@ async def get_revenue_by_day(
 
 
 @router.post("/competitors", response_model=CompetitorPriceOut, status_code=201)
+@limiter.limit("30/minute")
 async def add_competitor_price(
+    request: Request,
     body: CompetitorPriceCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
@@ -641,8 +650,223 @@ async def get_competitor_summary(
     return [CompetitorSummary(**dict(r)) for r in result.mappings()]
 
 
+# ── AI Insights ───────────────────────────────────────────────────────
+
+
+@router.get("/ai-insights")
+@limiter.limit("30/minute")
+async def get_ai_insights(
+    request: Request,
+    days: int = Query(30, ge=7, le=90),
+    refresh: bool = Query(False, description="Force regeneration (ignore cache)"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Generate AI-powered business insights from analytics data.
+
+    Results are cached in Redis for 1 hour per tenant+days.
+    Pass ?refresh=true to force regeneration.
+    """
+    import json as _json
+    import openai
+    from src.core.config import settings as app_settings
+    from src.core.security import _redis
+
+    tid = str(user.tenant_id)
+    cache_key = f"ai_insights:{tid}:{days}"
+
+    # For refresh=true (actual OpenAI generation): enforce stricter per-tenant limit
+    if refresh:
+        try:
+            gen_key = f"ai_insights_gen:{tid}"
+            gen_count = await _redis.incr(gen_key)
+            if gen_count == 1:
+                await _redis.expire(gen_key, 600)  # 10-minute window
+            if gen_count > 5:
+                raise HTTPException(status_code=429, detail="Лимит генерации: 5 раз за 10 минут. Попробуйте позже.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # fail-open if Redis unavailable
+
+    # Return cached insights if available and not forced refresh
+    if not refresh:
+        try:
+            cached = await _redis.get(cache_key)
+            if cached:
+                return _json.loads(cached)
+        except Exception:
+            pass  # fail-open
+        # No cache and no refresh — return empty (don't generate on page load)
+        return None
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Gather data in parallel-ish (sequential but fast — all indexed queries)
+    # 1) Revenue summary
+    rev = await db.execute(text("""
+        SELECT COUNT(*)::int AS orders, COALESCE(SUM(total_amount),0)::float AS revenue,
+               COALESCE(AVG(total_amount),0)::float AS avg_check
+        FROM orders WHERE tenant_id = :tid AND status NOT IN ('draft','cancelled') AND created_at >= :since
+    """), {"tid": tid, "since": since})
+    rev_data = dict(rev.mappings().first() or {})
+
+    # Previous period for comparison
+    prev_since = since - timedelta(days=days)
+    prev_rev = await db.execute(text("""
+        SELECT COUNT(*)::int AS orders, COALESCE(SUM(total_amount),0)::float AS revenue
+        FROM orders WHERE tenant_id = :tid AND status NOT IN ('draft','cancelled')
+          AND created_at >= :prev_since AND created_at < :since
+    """), {"tid": tid, "prev_since": prev_since, "since": since})
+    prev_data = dict(prev_rev.mappings().first() or {})
+
+    # 2) Conversation stats
+    conv = await db.execute(text("""
+        SELECT COUNT(*)::int AS total,
+               COUNT(*) FILTER (WHERE state = 'post_order')::int AS converted,
+               COUNT(*) FILTER (WHERE status = 'handoff')::int AS handoffs
+        FROM conversations WHERE tenant_id = :tid AND source_type = 'dm' AND created_at >= :since
+    """), {"tid": tid, "since": since})
+    conv_data = dict(conv.mappings().first() or {})
+
+    # 3) Top products
+    top_products = await db.execute(text("""
+        SELECT p.name, SUM(oi.qty)::int AS sold, SUM(oi.total_price)::float AS revenue
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        JOIN product_variants pv ON pv.id = oi.product_variant_id
+        JOIN products p ON p.id = pv.product_id
+        WHERE o.tenant_id = :tid AND o.status NOT IN ('draft','cancelled') AND o.created_at >= :since
+        GROUP BY p.name ORDER BY revenue DESC LIMIT 5
+    """), {"tid": tid, "since": since})
+    top_prods = [dict(r) for r in top_products.mappings()]
+
+    # 4) Stock alerts
+    stock_alerts = await db.execute(text("""
+        SELECT p.name, pv.title, (i.quantity - i.reserved_quantity)::int AS stock
+        FROM inventory i
+        JOIN product_variants pv ON pv.id = i.variant_id
+        JOIN products p ON p.id = pv.product_id
+        WHERE i.tenant_id = :tid AND pv.is_active = true AND (i.quantity - i.reserved_quantity) <= 3
+        ORDER BY stock ASC LIMIT 10
+    """), {"tid": tid})
+    low_stock = [dict(r) for r in stock_alerts.mappings()]
+
+    # 5) RFM summary
+    rfm = await db.execute(text("""
+        SELECT segment, COUNT(*)::int AS cnt FROM customer_segments WHERE tenant_id = :tid GROUP BY segment
+    """), {"tid": tid})
+    rfm_data = {r.segment: r.cnt for r in rfm}
+
+    # 6) Handoff reasons
+    handoff_reasons = await db.execute(text("""
+        SELECT reason, COUNT(*)::int AS cnt FROM handoffs
+        WHERE tenant_id = :tid AND created_at >= :since
+        GROUP BY reason ORDER BY cnt DESC LIMIT 5
+    """), {"tid": tid, "since": since})
+    handoff_data = [dict(r) for r in handoff_reasons.mappings()]
+
+    # Build context for GPT
+    conversion_rate = round(conv_data.get("converted", 0) / conv_data.get("total", 1) * 100, 1) if conv_data.get("total") else 0
+    prev_rev = prev_data.get("revenue", 0) or 0
+    if prev_rev > 0:
+        rev_change = round((rev_data.get("revenue", 0) - prev_rev) / prev_rev * 100, 1)
+        rev_change = max(min(rev_change, 9999.9), -100.0)  # cap at ±9999.9%
+    elif rev_data.get("revenue", 0) > 0:
+        rev_change = None  # new revenue, no prior baseline
+    else:
+        rev_change = 0.0
+
+    data_summary = f"""
+Период: последние {days} дней
+
+ВЫРУЧКА:
+- Заказов: {rev_data.get('orders', 0) or 0}, выручка: {(rev_data.get('revenue', 0) or 0):,.0f} сум, средний чек: {(rev_data.get('avg_check', 0) or 0):,.0f} сум
+- Прошлый период: {prev_data.get('orders', 0) or 0} заказов, {(prev_data.get('revenue', 0) or 0):,.0f} сум
+- Изменение выручки: {f'{rev_change:+.1f}%' if rev_change is not None else 'нет данных за прошлый период (первые продажи)'}
+
+КОНВЕРСИЯ:
+- Всего диалогов: {conv_data.get('total', 0)}, конвертировано: {conv_data.get('converted', 0)} ({conversion_rate}%)
+- Передач оператору: {conv_data.get('handoffs', 0)}
+
+ТОП ТОВАРЫ (по выручке):
+{chr(10).join(f'- {p["name"]}: {p["sold"]} шт, {p["revenue"]:,.0f} сум' for p in top_prods) if top_prods else '- Нет данных'}
+
+НИЗКИЙ ОСТАТОК:
+{chr(10).join(f'- {s["name"]} ({s["title"]}): {s["stock"]} шт' for s in low_stock) if low_stock else '- Все в норме'}
+
+RFM СЕГМЕНТЫ:
+{chr(10).join(f'- {seg}: {cnt} клиентов' for seg, cnt in rfm_data.items()) if rfm_data else '- Не рассчитано'}
+
+ПРИЧИНЫ HANDOFF:
+{chr(10).join(f'- {h["reason"]}: {h["cnt"]} раз' for h in handoff_data) if handoff_data else '- Нет данных'}
+"""
+
+    client = openai.AsyncOpenAI(api_key=app_settings.openai_api_key)
+    try:
+        response = await client.chat.completions.create(
+            model=app_settings.openai_model_main,
+            messages=[
+                {"role": "system", "content": """Ты — аналитик электронной коммерции для Telegram-магазина в Узбекистане. Анализируй данные и давай конкретные, actionable инсайты.
+
+Формат ответа — JSON массив объектов:
+[
+  {"type": "growth|warning|opportunity|action", "title": "Краткий заголовок", "text": "Подробное объяснение с цифрами", "priority": "high|medium|low"}
+]
+
+Правила:
+- 4-6 инсайтов, каждый с конкретными цифрами
+- Сравнивай текущий период с прошлым
+- Укажи что растёт, что падает, что требует внимания
+- Давай конкретные рекомендации (какой товар продвигать, что заказать, кого вернуть)
+- Используй валюту "сум" (Узбекистан)
+- Пиши на русском языке, кратко и по делу"""},
+                {"role": "user", "content": data_summary},
+            ],
+            temperature=0.3,
+            max_tokens=1000,
+        )
+        import json
+        raw = response.choices[0].message.content.strip()
+        # Strip markdown code block if present
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+            if raw.endswith("```"):
+                raw = raw[:-3]
+            raw = raw.strip()
+        insights = json.loads(raw)
+    except Exception as e:
+        logger.error("AI insights generation failed: %s", e)
+        insights = [{"type": "warning", "title": "Не удалось сгенерировать инсайты", "text": str(e)[:200], "priority": "low"}]
+
+    result = {
+        "period_days": days,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "insights": insights,
+        "data_summary": {
+            "revenue": rev_data.get("revenue", 0) or 0,
+            "revenue_change_pct": rev_change,
+            "orders": rev_data.get("orders", 0) or 0,
+            "avg_check": rev_data.get("avg_check", 0) or 0,
+            "conversations": conv_data.get("total", 0) or 0,
+            "conversion_rate": conversion_rate,
+            "handoffs": conv_data.get("handoffs", 0) or 0,
+        },
+    }
+
+    # Cache for 1 hour
+    try:
+        await _redis.setex(cache_key, 3600, _json.dumps(result, default=str))
+    except Exception:
+        pass  # fail-open
+
+    return result
+
+
 @router.delete("/competitors/{entry_id}")
+@limiter.limit("20/minute")
 async def delete_competitor_price(
+    request: Request,
     entry_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
