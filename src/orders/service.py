@@ -24,52 +24,56 @@ logger = logging.getLogger(__name__)
 # ── Status transition rules ──────────────────────────────────────────────────
 
 VALID_TRANSITIONS = {
-    "draft": {"confirmed", "processing", "cancelled"},
-    "confirmed": {"processing", "shipped", "cancelled"},
-    "processing": {"shipped", "delivered", "cancelled"},
-    "shipped": {"delivered"},
-    "delivered": {"returned"},
+    "draft": {"pending_payment", "confirmed", "cancelled"},
+    "pending_payment": {"confirmed", "cancelled"},
+    "confirmed": {"completed", "cancelled"},
+    "completed": set(),
     "cancelled": set(),
-    "returned": set(),
 }
 
 # ── Notification templates ───────────────────────────────────────────────────
 
 STATUS_LABELS = {
     "ru": {
-        "draft": "Ожидает подтверждения", "confirmed": "Подтверждён",
-        "processing": "В обработке", "shipped": "Отправлен",
-        "delivered": "Доставлен", "cancelled": "Отменён",
+        "draft": "Черновик", "pending_payment": "Ожидает оплаты",
+        "confirmed": "Подтверждён", "completed": "Завершён",
+        "cancelled": "Отменён",
     },
     "en": {
-        "draft": "Pending confirmation", "confirmed": "Confirmed",
-        "processing": "Processing", "shipped": "Shipped",
-        "delivered": "Delivered", "cancelled": "Cancelled",
+        "draft": "Draft", "pending_payment": "Pending payment",
+        "confirmed": "Confirmed", "completed": "Completed",
+        "cancelled": "Cancelled",
     },
     "uz_latin": {
-        "draft": "Tasdiqlash kutilmoqda", "confirmed": "Tasdiqlangan",
-        "processing": "Ishlov berilmoqda", "shipped": "Jo'natildi",
-        "delivered": "Yetkazildi", "cancelled": "Bekor qilindi",
+        "draft": "Qoralama", "pending_payment": "To'lov kutilmoqda",
+        "confirmed": "Tasdiqlangan", "completed": "Yakunlangan",
+        "cancelled": "Bekor qilindi",
     },
     "uz_cyrillic": {
-        "draft": "Тасдиқлаш кутилмоқда", "confirmed": "Тасдиқланган",
-        "processing": "Ишлов берилмоқда", "shipped": "Жўнатилди",
-        "delivered": "Етказилди", "cancelled": "Бекор қилинди",
+        "draft": "Қоралама", "pending_payment": "Тўлов кутилмоқда",
+        "confirmed": "Тасдиқланган", "completed": "Якунланган",
+        "cancelled": "Бекор қилинди",
     },
 }
 
 _NOTIFICATION_TEMPLATES = {
-    "shipped": {
-        "ru": "\n\nВаш заказ отправлен! Ожидайте доставку.",
-        "en": "\n\nYour order has been shipped! Expect delivery soon.",
-        "uz_latin": "\n\nBuyurtmangiz jo'natildi! Yetkazilishini kuting.",
-        "uz_cyrillic": "\n\nБуюртмангиз жўнатилди! Етказилишини кутинг.",
+    "pending_payment": {
+        "ru": "\n\nОтправьте фото чека для подтверждения оплаты.",
+        "en": "\n\nPlease send a payment receipt photo for confirmation.",
+        "uz_latin": "\n\nTo'lovni tasdiqlash uchun chek rasmini yuboring.",
+        "uz_cyrillic": "\n\nТўловни тасдиқлаш учун чек расмини юборинг.",
     },
-    "delivered": {
-        "ru": "\n\nВаш заказ доставлен! Спасибо за покупку!",
-        "en": "\n\nYour order has been delivered! Thank you for your purchase!",
-        "uz_latin": "\n\nBuyurtmangiz yetkazildi! Xaridingiz uchun rahmat!",
-        "uz_cyrillic": "\n\nБуюртмангиз етказилди! Харидингиз учун раҳмат!",
+    "confirmed": {
+        "ru": "\n\nОплата подтверждена! Ждём вас на туре! 🎉",
+        "en": "\n\nPayment confirmed! We look forward to seeing you on the tour! 🎉",
+        "uz_latin": "\n\nTo'lov tasdiqlandi! Sizni turda kutamiz! 🎉",
+        "uz_cyrillic": "\n\nТўлов тасдиқланди! Сизни турда кутамиз! 🎉",
+    },
+    "completed": {
+        "ru": "\n\nТур завершён! Спасибо за участие! ⭐",
+        "en": "\n\nTour completed! Thank you for joining us! ⭐",
+        "uz_latin": "\n\nTur yakunlandi! Qatnashganingiz uchun rahmat! ⭐",
+        "uz_cyrillic": "\n\nТур якунланди! Қатнашганингиз учун раҳмат! ⭐",
     },
     "cancelled": {
         "ru": "\n\nЕсли у вас есть вопросы, напишите нам.",
@@ -80,8 +84,8 @@ _NOTIFICATION_TEMPLATES = {
 }
 
 _NOTIFICATION_HEADER = {
-    "ru": "Обновление по заказу {num}:\nСтатус: {label}",
-    "en": "Order {num} update:\nStatus: {label}",
+    "ru": "Обновление по бронированию {num}:\nСтатус: {label}",
+    "en": "Booking {num} update:\nStatus: {label}",
     "uz_latin": "Buyurtma {num} yangilandi:\nHolat: {label}",
     "uz_cyrillic": "Буюртма {num} янгиланди:\nҲолат: {label}",
 }
@@ -91,7 +95,7 @@ _NOTIFICATION_HEADER = {
 
 
 def generate_order_number() -> str:
-    return f"ORD-{uuid_mod.uuid4().hex[:12].upper()}"
+    return f"BK-{uuid_mod.uuid4().hex[:12].upper()}"
 
 
 async def build_orders_out(orders: list[Order], db: AsyncSession) -> list[OrderOut]:
@@ -251,7 +255,7 @@ async def update_order(
     await db.flush()
 
     # Auto-update lead status
-    if body.status in ("confirmed", "processing", "shipped", "delivered") and old_status == "draft" and order.lead_id:
+    if body.status in ("confirmed", "completed") and old_status in ("draft", "pending_payment") and order.lead_id:
         lead = await db.get(Lead, order.lead_id)
         if lead and lead.status in ("new", "contacted", "qualified"):
             lead.status = "converted"
@@ -329,6 +333,32 @@ async def _notify_status_change(tenant_id: UUID, order: Order, new_status: str, 
 
         await client.send_message(entity, msg_text)
 
+        # Auto-create tour group and send invite link on confirmation
+        if new_status == "confirmed":
+            invite_link = await _create_tour_group_and_invite(
+                tenant_id, order, conv, client, lang, db,
+            )
+            if invite_link:
+                group_msgs = {
+                    "uz_latin": f"🏔 Tur guruhiga qo'shiling:\n{invite_link}\n\nGuruhda muhim ma'lumotlar va boshqa qatnashchilar bilan bog'lanish mumkin.",
+                    "uz_cyrillic": f"🏔 Тур гуруҳига қўшилинг:\n{invite_link}\n\nГуруҳда муҳим маълумотлар ва бошқа қатнашчилар билан боғланиш мумкин.",
+                    "ru": f"🏔 Присоединяйтесь к группе тура:\n{invite_link}\n\nВ группе будет важная информация и связь с другими участниками.",
+                    "en": f"🏔 Join the tour group:\n{invite_link}\n\nYou'll find important info and connect with other participants.",
+                }
+                group_text = group_msgs.get(lang, group_msgs["uz_latin"])
+                await client.send_message(entity, group_text)
+
+                # Save group invite as message
+                group_msg = Message(
+                    tenant_id=tenant_id,
+                    conversation_id=conv.id,
+                    direction="outbound",
+                    sender_type="system",
+                    raw_text=group_text,
+                    ai_generated=False,
+                )
+                db.add(group_msg)
+
         # Save notification as message
         notif_msg = Message(
             tenant_id=tenant_id,
@@ -340,6 +370,11 @@ async def _notify_status_change(tenant_id: UUID, order: Order, new_status: str, 
         )
         db.add(notif_msg)
         conv.last_message_at = datetime.now(timezone.utc)
+
+        # Re-enable AI for the conversation after confirmation
+        if new_status == "confirmed" and not conv.ai_enabled:
+            conv.ai_enabled = True
+
         await db.flush()
 
         # SSE: notify about order status change + new message
@@ -358,3 +393,103 @@ async def _notify_status_change(tenant_id: UUID, order: Order, new_status: str, 
 
     except Exception:
         logger.exception("Failed to notify user about status change")
+
+
+async def _create_tour_group_and_invite(
+    tenant_id: UUID, order: Order, conv, client, lang: str, db: AsyncSession,
+) -> str | None:
+    """Create a Telegram group for the tour booking and return the invite link.
+
+    Group name format: "Tour Name — DD.MM YYYY"
+    Adds the customer to the group automatically.
+    """
+    try:
+        from telethon.tl.functions.messages import CreateChatRequest, ExportChatInviteRequest
+        from telethon.tl.functions.channels import CreateChannelRequest, EditPhotoRequest
+
+        # Get tour name and dates from order items
+        if not order.items:
+            return None
+
+        item = order.items[0]
+        product_name = "Tur"
+        departure_date = ""
+
+        if item.product_id:
+            prod = await db.get(Product, item.product_id)
+            if prod:
+                product_name = prod.name
+
+        if item.product_variant_id:
+            variant = await db.get(ProductVariant, item.product_variant_id)
+            if variant:
+                departure_date = variant.color or variant.title or ""
+
+        # Build group title: "Paltau sharshara — 19-aprel 2026"
+        group_title = product_name
+        if departure_date:
+            group_title += f" — {departure_date}"
+
+        # Truncate to Telegram limit (128 chars)
+        if len(group_title) > 128:
+            group_title = group_title[:125] + "..."
+
+        # Create a regular group chat (small group, not supergroup)
+        # We need to add the customer as a participant
+        customer_entity = None
+        try:
+            customer_entity = await client.get_input_entity(conv.telegram_chat_id)
+        except ValueError:
+            if conv.telegram_username:
+                customer_entity = await client.get_input_entity(conv.telegram_username)
+
+        if not customer_entity:
+            logger.warning("Cannot resolve customer entity for group creation")
+            return None
+
+        result = await client(CreateChatRequest(
+            users=[customer_entity],
+            title=group_title,
+        ))
+
+        # Extract chat from result
+        chat = result.chats[0] if result.chats else None
+        if not chat:
+            logger.warning("Group created but no chat in result")
+            return None
+
+        chat_id = chat.id
+        logger.info("Tour group created: '%s' (chat_id=%s)", group_title, chat_id)
+
+        # Export invite link
+        try:
+            invite_result = await client(ExportChatInviteRequest(peer=chat_id))
+            invite_link = invite_result.link
+            logger.info("Group invite link: %s", invite_link)
+        except Exception:
+            logger.warning("Failed to export invite link, trying alternate method", exc_info=True)
+            # Try getting existing invite link
+            try:
+                from telethon.tl.functions.messages import GetFullChatRequest
+                full = await client(GetFullChatRequest(chat_id=chat_id))
+                invite_link = getattr(full.full_chat.exported_invite, 'link', None)
+            except Exception:
+                logger.warning("Could not get invite link at all", exc_info=True)
+                invite_link = None
+
+        # Save group to DB
+        from src.telegram.models import TelegramDiscussionGroup
+        group_record = TelegramDiscussionGroup(
+            tenant_id=tenant_id,
+            telegram_group_id=chat_id,
+            title=group_title,
+            is_active=True,
+        )
+        db.add(group_record)
+        await db.flush()
+
+        return invite_link
+
+    except Exception:
+        logger.exception("Failed to create tour group for order %s", order.order_number)
+        return None

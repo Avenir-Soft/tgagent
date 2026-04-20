@@ -1,6 +1,7 @@
 """AI response guards — profanity detection, hallucination checks, language correction.
 
 All code-level checks that catch AI misbehaviour BEFORE sending to user.
+Adapted for Easy Tour — tour booking context.
 """
 
 import logging
@@ -24,10 +25,9 @@ _PROFANITY_RU = {
     "долбоёб", "долбоеб", "залупа",
     "пидор", "пидорас", "пидарас", "пидираз", "педик", "пидр",
     "дерьмо", "говно", "говнюк",
-    # Missing common slurs
     "шалава", "шлюха", "потаскуха", "проститутка",
     "гандон", "гондон",
-    "битч", "фак", "факю",  # Cyrillic transliteration of English
+    "битч", "фак", "факю",
     "даун", "дебил", "идиот", "кретин", "урод",
 }
 
@@ -40,7 +40,6 @@ _PROFANITY_UZ = {
     "жинни", "ахмоқ", "ахмок",
     "siktir", "siqtir", "kutok", "kotak", "ko'tak",
     "onangni", "axmoq",
-    # Latin Uzbek additions
     "sikish", "siqish", "siktirgin",
     "buvini", "onalingni",
 }
@@ -119,27 +118,6 @@ def contains_profanity(text: str) -> bool:
 # HALLUCINATION DETECTION
 # ──────────────────────────────────────────────
 
-# Past-tense "added to cart" claims
-_CART_CLAIM_PATTERNS = [
-    re.compile(r"добавил\w*\s"),        # "добавил", "добавила" (I added)
-    re.compile(r"добавлено\b"),          # "добавлено" (was added)
-    re.compile(r"\badded\b"),            # English
-    re.compile(r"qo'shildi\b"),          # Uzbek Latin
-    re.compile(r"қўшилди\b"),            # Uzbek Cyrillic
-]
-
-# Fabricated product specs (should NEVER appear unless tools returned them)
-_FABRICATED_SPEC_PATTERNS = [
-    re.compile(r'\d+\s*(?:соат|час|hour|ч\.?)\s*(?:давомида|ишлайди|работы|работает|battery|батарея)', re.IGNORECASE),
-    re.compile(r'(?:батарея|аккумулятор|зарядка|battery)\s*(?:[-—:]?\s*\d+)', re.IGNORECASE),
-    re.compile(r'\d+\s*(?:мп|мегапиксел|megapixel|mp)\b', re.IGNORECASE),
-    re.compile(r'\d+(?:\.\d+)?[\s"]*(?:дюйм|inch)', re.IGNORECASE),
-    re.compile(r'(?:процессор|chipset|чип)\s*[-—:]?\s*\w+\s+\w+', re.IGNORECASE),
-    re.compile(r'(?:AMOLED|OLED|IPS|LCD|TFT)\s+(?:дисплей|экран|display)', re.IGNORECASE),
-    re.compile(r'\d+\s*(?:Гц|Hz)\s+(?:обновлен|refresh)', re.IGNORECASE),
-    re.compile(r'(?:давом этади|ишлайди|етади)\b', re.IGNORECASE),
-]
-
 # Price pattern: "1 234 567" or "1,234,567"
 _PRICE_PATTERN = re.compile(r'\d{1,3}[\s,]\d{3}[\s,]\d{3}')
 _PRICE_EXTRACT = re.compile(r'(\d{1,3}[\s,]\d{3}[\s,]\d{3})')
@@ -150,12 +128,30 @@ _RUSSIAN_MARKERS = [
     "обращайтесь", "что-нибудь ещё", "спасибо за",
 ]
 
+# Fabricated tour details (should NEVER appear unless tools returned them)
+_FABRICATED_TOUR_PATTERNS = [
+    re.compile(r'(?:otel|отель|гостиница|hotel)\s*[-—:]?\s*\d+\s*(?:yulduz|звёзд|star)', re.IGNORECASE),
+    re.compile(r'(?:aviachipta|авиабилет|flight)\s*[-—:]?\s*(?:kiritilgan|включен|included)', re.IGNORECASE),
+]
+
+# Fabricated metrics — AI invents heights, distances, travel times not in DB
+_FABRICATED_METRIC_PATTERNS = [
+    # Height: "30 metr", "30 метров", "30 meters"
+    re.compile(r'\d+\s*(?:metr|метр|meters?|feet|fut)\b', re.IGNORECASE),
+    # Distance: "50 km", "50 километров"
+    re.compile(r'\d+\s*(?:km|км|километр|kilom)', re.IGNORECASE),
+    # Travel time: "1.5 soat", "2 часа", "1,5-2 soat"
+    re.compile(r'\d[\d,.\-–]*\s*(?:soat|час|hour|minut|минут|daqiqa)', re.IGNORECASE),
+    # Temperature: "20 gradus", "20°C"
+    re.compile(r'\d+\s*(?:gradus|градус|°[CF])', re.IGNORECASE),
+]
+
 
 def detect_hallucinations(
     final_text: str,
     tools_called: set[str],
     state_context: dict,
-    cart_before_ai: list[str],
+    booking_before_ai: dict,
     detected_lang: str,
 ) -> str | None:
     """Check AI response for hallucinations and return corrected text or None.
@@ -166,36 +162,11 @@ def detect_hallucinations(
         return None
 
     text_lower = final_text.lower()
-    cart = state_context.get("cart", [])
 
-    # --- 1. Cart claim without tool call ---
-    claims_added = any(p.search(text_lower) for p in _CART_CLAIM_PATTERNS)
-    cart_after = [item.get("title", "") for item in cart]
-    cart_actually_changed = set(cart_after) != set(cart_before_ai)
-
-    if claims_added and "select_for_cart" not in tools_called and not cart_actually_changed:
-        logger.warning("AI claimed to add to cart but select_for_cart was never called — overriding")
-        if cart:
-            cart_lines = ", ".join(item.get("title", "?") for item in cart)
-            corrections = {
-                "ru": f"В корзине сейчас: {cart_lines}. Какой ещё товар хотите добавить?",
-                "uz_cyrillic": f"Саватчада ҳозир: {cart_lines}. Яна қайси товар қўшамиз?",
-                "uz_latin": f"Savatchada hozir: {cart_lines}. Yana qaysi tovar qo'shamiz?",
-                "en": f"Currently in cart: {cart_lines}. What else would you like to add?",
-            }
-        else:
-            corrections = {
-                "ru": "Для добавления в корзину мне нужно сначала проверить наличие. Какой товар вас интересует?",
-                "uz_cyrillic": "Саватчага қўшиш учун аввал мавжудлигини текшириб олишим керак. Қайси товар керак?",
-                "uz_latin": "Savatchaga qo'shish uchun avval mavjudligini tekshirib olishim kerak. Qaysi tovar kerak?",
-                "en": "I need to check availability first before adding to cart. Which product are you interested in?",
-            }
-        return corrections.get(detected_lang, corrections["ru"])
-
-    # --- 2. Price shown without price tools ---
+    # --- 1. Price shown without price tools ---
     has_price_pattern = bool(_PRICE_PATTERN.search(final_text))
     price_tools = {"get_variant_candidates", "check_order_status", "get_product_candidates", "create_order_draft"}
-    if has_price_pattern and not (tools_called & price_tools) and not cart:
+    if has_price_pattern and not (tools_called & price_tools):
         known_prices: set[int] = set()
         for prod_info in state_context.get("products", {}).values():
             for v in prod_info.get("variants", []):
@@ -220,25 +191,41 @@ def detect_hallucinations(
             except ValueError:
                 pass
 
-    # --- 3. Fabricated product specs ---
-    has_specs_in_context = any(
-        v.get("specs") for prod_info in state_context.get("products", {}).values()
-        for v in prod_info.get("variants", [])
-        if isinstance(v, dict)
-    )
-    if "get_variant_candidates" not in tools_called and not has_specs_in_context:
-        for pattern in _FABRICATED_SPEC_PATTERNS:
+    # --- 2. Fabricated tour details ---
+    if "get_variant_candidates" not in tools_called:
+        for pattern in _FABRICATED_TOUR_PATTERNS:
             if pattern.search(final_text):
-                logger.warning("AI fabricated specs (pattern: %s) — overriding response", pattern.pattern)
+                logger.warning("AI fabricated tour details (pattern: %s) — overriding response", pattern.pattern)
                 corrections = {
-                    "ru": "Я могу показать только цены и наличие. Для подробных характеристик вызови get_variant_candidates. Чем ещё могу помочь?",
-                    "uz_cyrillic": "Мен фақат нарх ва мавжудлигини кўрсата оламан. Батафсил характеристикалар учун операторга мурожаат қилинг. Яна нима керак?",
-                    "uz_latin": "Men faqat narx va mavjudligini ko'rsata olaman. Batafsil xarakteristikalar uchun operatorga murojaat qiling. Yana nima kerak?",
-                    "en": "I can only show prices and availability. For detailed specs, please contact our operator. Anything else I can help with?",
+                    "ru": "Я могу показать только доступные туры и цены. Для подробностей используйте инструменты. Чем ещё помочь?",
+                    "uz_cyrillic": "Мен фақат мавжуд турлар ва нархларни кўрсата оламан. Яна нима керак?",
+                    "uz_latin": "Men faqat mavjud turlar va narxlarni ko'rsata olaman. Yana nima kerak?",
+                    "en": "I can only show available tours and prices. What else can I help with?",
                 }
-                return corrections.get(detected_lang, corrections["ru"])
+                return corrections.get(detected_lang, corrections["uz_latin"])
 
-    # --- 4. Language mismatch correction ---
+    # --- 2b. Fabricated metrics (heights, distances, travel times) ---
+    # These facts are NOT in our database — AI must not invent them
+    for pattern in _FABRICATED_METRIC_PATTERNS:
+        match = pattern.search(final_text)
+        if match:
+            matched_text = match.group()
+            # Allow if it's from variant attributes_json (tool returned it)
+            if "get_variant_candidates" in tools_called:
+                continue
+            # Allow known quantities: seat counts, prices, participant counts
+            # Only block descriptive metrics (height, distance, time)
+            logger.warning("AI fabricated metric '%s' — stripping from response", matched_text)
+            # Remove the fabricated sentence containing the metric
+            sentences = re.split(r'[.!]\s+', final_text)
+            cleaned = [s for s in sentences if not pattern.search(s)]
+            if cleaned:
+                final_text_clean = ". ".join(cleaned)
+                if not final_text_clean.endswith((".", "!", "?")):
+                    final_text_clean += "."
+                return final_text_clean
+
+    # --- 3. Language mismatch correction ---
     corrected = _fix_language_mismatch(final_text, text_lower, detected_lang)
     if corrected:
         return corrected
@@ -255,8 +242,8 @@ def _fix_language_mismatch(final_text: str, text_lower: str, detected_lang: str)
             logger.warning("AI responded in Russian instead of uz_cyrillic — fixing")
             if any(w in text_lower for w in ["готово", "обновлён", "обращайтесь"]):
                 return "Тайёр! Буюртмангиз янгиланди 👍 Яна нима керак бўлса, ёзинг!"
-            elif any(w in text_lower for w in ["спасибо", "покупку"]):
-                return "Раҳмат! Харидингиз учун ташаккур 🙏"
+            elif any(w in text_lower for w in ["спасибо", "покупку", "бронь"]):
+                return "Раҳмат! Броningиз учун ташаккур 🙏"
 
     elif detected_lang == "uz_latin" and final_text:
         cyrillic_count = sum(1 for c in final_text if "\u0400" <= c <= "\u04FF")

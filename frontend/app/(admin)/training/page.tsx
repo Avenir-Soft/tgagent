@@ -440,7 +440,7 @@ export default function TrainingPage() {
           <div className="bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 rounded-xl p-5 mb-6">
             <p className="font-semibold text-indigo-800 mb-3">Пайплайн обучения</p>
             <div className="flex items-center gap-2 text-sm">
-              <Step n={1} label="Диалоги с заказами" done={(stats?.candidate_conversations ?? 0) > 0} />
+              <Step n={1} label="Диалоги с бронированиями" done={(stats?.candidate_conversations ?? 0) > 0} />
               <Arrow />
               <Step n={2} label="GPT-4o разметка" done={(stats?.coverage_pct ?? 0) > 50} />
               <Arrow />
@@ -478,7 +478,7 @@ export default function TrainingPage() {
           <div className="space-y-2">
             {convs.length === 0 ? (
               <div className="card p-8 text-center text-slate-400">
-                Нет диалогов-кандидатов. Они появятся после первых заказов через AI.
+                Нет диалогов-кандидатов. Они появятся после первых бронирований через AI.
               </div>
             ) : (
               convs.map((c) => (

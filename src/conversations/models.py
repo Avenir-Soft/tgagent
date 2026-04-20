@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,10 @@ class CommentTemplate(PkMixin, TenantMixin, TimestampMixin, Base):
     )
     template_text: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    platform: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'all'")
+    )  # all, telegram, instagram
+    usage_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
 
 class Conversation(PkMixin, TenantMixin, TimestampMixin, Base):
@@ -71,6 +75,9 @@ class Conversation(PkMixin, TenantMixin, TimestampMixin, Base):
     current_variant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Instagram fields
+    instagram_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    instagram_thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     messages = relationship("Message", back_populates="conversation", lazy="noload")
 

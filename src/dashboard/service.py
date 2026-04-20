@@ -150,7 +150,7 @@ async def get_dashboard_stats(tenant_id: UUID, days: int, db: AsyncSession) -> d
         .where(Order.tenant_id == tid).group_by(Order.status)
     )).all()
     orders_by_status = {row[0]: {"count": row[1], "revenue": float(row[2])} for row in status_rows}
-    active_statuses = {"confirmed", "processing", "shipped", "delivered"}
+    active_statuses = {"pending_payment", "confirmed", "completed"}
     total_revenue = sum(v["revenue"] for k, v in orders_by_status.items() if k in active_statuses)
 
     # Today / yesterday stats

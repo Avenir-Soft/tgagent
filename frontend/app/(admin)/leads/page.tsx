@@ -16,6 +16,8 @@ interface Lead {
   customer_name: string | null;
   telegram_user_id: number;
   telegram_username: string | null;
+  instagram_user_id: string | null;
+  instagram_username: string | null;
   phone: string | null;
   city: string | null;
   status: string;
@@ -56,11 +58,14 @@ const allowedTransitions: Record<string, string[]> = {
   lost: ["converted"],
 };
 
-const sourceLabels: Record<string, string> = { dm: "DM", comment: "Коммент", manual: "Вручную" };
+const sourceLabels: Record<string, string> = {
+  dm: "TG DM", comment: "TG Коммент", manual: "Вручную",
+  instagram_dm: "IG DM", instagram_comment: "IG Коммент",
+};
 
 const orderStatusLabels: Record<string, string> = {
-  draft: "Черновик", confirmed: "Подтверждён", processing: "В обработке",
-  shipped: "Отправлен", delivered: "Доставлен", cancelled: "Отменён", returned: "Возврат",
+  draft: "Черновик", pending_payment: "Ожидает оплаты", confirmed: "Подтверждён",
+  completed: "Завершён", cancelled: "Отменён",
 };
 
 export default function LeadsPage() {
@@ -355,7 +360,7 @@ export default function LeadsPage() {
                     <div className="flex items-center gap-2 mt-2 flex-wrap text-xs text-slate-500">
                       {l.phone && <span>{l.phone}</span>}
                       {l.city && <span>{l.city}</span>}
-                      {l.order_count > 0 && <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-medium">{l.order_count} зак.</span>}
+                      {l.order_count > 0 && <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-medium">{l.order_count} брон.</span>}
                       <span className="text-slate-400">{timeAgo(l.created_at)}</span>
                     </div>
                     {l.conversation_id && (
@@ -387,7 +392,7 @@ export default function LeadsPage() {
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Клиент</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Контакты</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Источник</th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Заказы</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Брони</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Заметки</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Дата</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider w-36">Статус</th>
@@ -424,6 +429,11 @@ export default function LeadsPage() {
                                 @{l.telegram_username}
                               </a>
                             )}
+                            {l.instagram_username && (
+                              <span className="text-xs text-pink-500 truncate block">
+                                IG: @{l.instagram_username}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -436,7 +446,9 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600">
+                          <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${
+                            l.source.startsWith("instagram") ? "bg-gradient-to-r from-purple-50 to-pink-50 text-pink-700" : "bg-slate-100 text-slate-600"
+                          }`}>
                             {sourceLabels[l.source] || l.source}
                           </span>
                           {l.conversation_id && (
@@ -456,7 +468,7 @@ export default function LeadsPage() {
                       <td className="px-3 py-3">
                         {l.order_count > 0 ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700">
-                            {l.order_count} зак.
+                            {l.order_count} брон.
                           </span>
                         ) : (
                           <span className="text-xs text-slate-300">&mdash;</span>
@@ -607,11 +619,11 @@ export default function LeadsPage() {
 
                             {/* Orders history */}
                             <div>
-                              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Заказы</h4>
+                              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Брони</h4>
                               {loadingOrders === l.id ? (
                                 <p className="text-xs text-slate-400">Загрузка...</p>
                               ) : (ordersMap[l.id] || []).length === 0 ? (
-                                <p className="text-xs text-slate-400">Нет заказов</p>
+                                <p className="text-xs text-slate-400">Нет бронирований</p>
                               ) : (
                                 <div className="space-y-2">
                                   {(ordersMap[l.id] || []).map((o) => (

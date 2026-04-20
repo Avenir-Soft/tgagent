@@ -73,7 +73,7 @@ export default function LoginPage() {
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-white">AI Closer</h1>
+          <h1 className="text-2xl font-bold text-white">Easy Tour</h1>
           <p className="text-slate-400 text-sm mt-1">{forgotMode ? "Восстановление пароля" : "Войти в панель управления"}</p>
         </div>
 

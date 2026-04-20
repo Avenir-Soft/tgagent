@@ -366,6 +366,8 @@ class TelegramClientManager:
         self, tenant_id: UUID, chat_id: int, events_and_texts: list[tuple]
     ) -> None:
         """Process a batch of messages as a single AI request."""
+        from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
+
         async with async_session_factory() as db:
             try:
                 # Use the first event for sender info, last event for responding
@@ -568,6 +570,21 @@ class TelegramClientManager:
                         len(events_and_texts), chat_id, combined_text
                     )
 
+                # Download customer photo for Vision analysis (if any event has a photo)
+                customer_photo_path = None
+                for ev, _ in events_and_texts:
+                    if ev.media and isinstance(ev.media, MessageMediaPhoto):
+                        try:
+                            import tempfile
+                            tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+                            tmp.close()
+                            customer_photo_path = await client.download_media(ev.media, file=tmp.name)
+                            if customer_photo_path:
+                                logger.info("Downloaded customer photo for Vision: %s", customer_photo_path)
+                            break
+                        except Exception:
+                            logger.debug("Failed to download customer photo for Vision", exc_info=True)
+
                 # Check for comment→DM hint (user previously asked about a product in comments)
                 import time as _time
                 comment_hint = None
@@ -621,6 +638,7 @@ class TelegramClientManager:
                         user_message=combined_text,
                         db=db,
                         comment_hint=comment_hint,
+                        customer_photo_path=customer_photo_path,
                     )
 
                     # Extract text and image URLs from result
@@ -891,6 +909,7 @@ class TelegramClientManager:
                     select(CommentTemplate).where(
                         CommentTemplate.tenant_id == tenant_id,
                         CommentTemplate.is_active.is_(True),
+                        CommentTemplate.platform.in_(["all", "telegram"]),
                     )
                 )
                 templates = result.scalars().all()
@@ -991,7 +1010,7 @@ class TelegramClientManager:
                         pass
                 stock_str = "✅" if p.get("in_stock") else "❌ нет в наличии"
                 lines.append(f"- {p['name']}{price_str} {stock_str}")
-            product_context = "Найденные товары:\n" + "\n".join(lines)
+            product_context = "Найденные туры:\n" + "\n".join(lines)
 
         # 2. Delivery info
         delivery_context = ""
@@ -1025,25 +1044,24 @@ class TelegramClientManager:
         from src.core.config import settings
         client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
 
-        system_prompt = f"""Ты — ассистент магазина в Telegram канале. Отвечаешь на комментарии коротко и по делу.
+        system_prompt = f"""Ты — консультант туристического агентства Easy Tour в Telegram канале. Отвечаешь на комментарии коротко и по делу.
 Ты говоришь на русском, узбекском (кириллица и латиница) и английском — отвечай на языке пользователя.
 
 ПРАВИЛА:
 - Максимум 3-4 предложения
 - ВСЕГДА заканчивай призывом написать в ЛС: {cta_handle}
-- Если спрашивают о товаре — используй данные из контекста, НЕ выдумывай
-- Если товар не найден — скажи "напишите в ЛС, подберём"
-- Если спрашивают о доставке — ответь из данных о доставке
+- Если спрашивают о туре — используй данные из контекста, НЕ выдумывай
+- Если тур не найден — скажи "напишите в ЛС, подберём подходящий тур"
 - Если сообщение оскорбительное/агрессивное/угрозы — ответь ТОЛЬКО: HANDOFF
 - Если спам/бессмысленный набор — ответь ТОЛЬКО: SKIP
-- Если просто приветствие без вопроса — приветствуй и предложи помощь
+- Если просто приветствие без вопроса — приветствуй и предложи помощь с выбором тура
 - {"Показывай цены из данных" if show_price else "НЕ показывай цены, скажи 'уточним в ЛС'"}
 - Не используй markdown, только обычный текст и эмодзи
 
 ПРИМЕРЫ:
-Комментарий (uz latin): "bu telefonni narxi qancha?" → ответь на узбекском латиницей
-Комментарий (uz cyrillic): "бу телефон борми?" → ответь на узбекском кириллицей
-Комментарий (ru): "есть ли айфон?" → ответь на русском
+Комментарий (uz latin): "bu turni narxi qancha?" → ответь на узбекском латиницей
+Комментарий (uz cyrillic): "бу тур борми?" → ответь на узбекском кириллицей
+Комментарий (ru): "есть ли тур в горы?" → ответь на русском
 Комментарий: "ты дурак" → HANDOFF"""
 
         context_parts = []
@@ -1053,7 +1071,7 @@ class TelegramClientManager:
             context_parts.append(delivery_context)
         context_str = "\n\n".join(context_parts) if context_parts else "Нет релевантных данных."
 
-        user_msg = f"Комментарий: {text}\n\nКонтекст магазина:\n{context_str}"
+        user_msg = f"Комментарий: {text}\n\nКонтекст турагентства:\n{context_str}"
 
         try:
             response = await client.chat.completions.create(

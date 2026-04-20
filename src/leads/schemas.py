@@ -37,6 +37,8 @@ class LeadOut(BaseModel):
     source: str
     avatar_url: str | None = None
     order_count: int = 0
+    instagram_user_id: str | None = None
+    instagram_username: str | None = None
     created_at: datetime
     updated_at: datetime
 

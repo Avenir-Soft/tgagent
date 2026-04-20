@@ -2,123 +2,103 @@
 
 These functions return deterministic answers: can/cannot do X given current state.
 The AI agent uses these to decide actions without hallucinating rules.
+
+Adapted for Easy Tour — tour booking policies.
 """
 
 
-# Order statuses where AI can directly modify the order
-AI_EDITABLE_STATUSES = {"draft", "confirmed"}
-CANCELLABLE_STATUSES = {"draft", "confirmed"}
-
-# Statuses where changes need operator (in progress)
-OPERATOR_REQUIRED_STATUSES = {"processing"}
+# Booking statuses where AI can directly modify
+AI_EDITABLE_STATUSES = {"draft", "pending_payment"}
+CANCELLABLE_STATUSES = {"draft", "pending_payment"}
 
 # Statuses where changes are impossible (final states)
-LOCKED_STATUSES = {"shipped", "delivered", "cancelled", "returned"}
+LOCKED_STATUSES = {"confirmed", "completed", "cancelled"}
 
-# Statuses eligible for return request
-RETURNABLE_STATUSES = {"delivered"}
+STATUS_LABELS = {
+    "draft": "Qoralama",
+    "pending_payment": "To'lov kutilmoqda",
+    "confirmed": "Tasdiqlangan",
+    "completed": "Yakunlangan",
+    "cancelled": "Bekor qilindi",
+}
 
 STATUS_LABELS_RU = {
-    "draft": "Ожидает подтверждения",
+    "draft": "Черновик",
+    "pending_payment": "Ожидает оплаты",
     "confirmed": "Подтверждён",
-    "processing": "В обработке",
-    "shipped": "Отправлен",
-    "delivered": "Доставлен",
+    "completed": "Завершён",
     "cancelled": "Отменён",
-    "returned": "Возвращён",
+}
+
+STATUS_LABELS_UZ_CYR = {
+    "draft": "Қоралама",
+    "pending_payment": "Тўлов кутилмоқда",
+    "confirmed": "Тасдиқланган",
+    "completed": "Якунланган",
+    "cancelled": "Бекор қилинди",
+}
+
+STATUS_LABELS_EN = {
+    "draft": "Draft",
+    "pending_payment": "Pending payment",
+    "confirmed": "Confirmed",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+}
+
+_STATUS_LABELS_BY_LANG = {
+    "uz_latin": STATUS_LABELS,
+    "uz_cyrillic": STATUS_LABELS_UZ_CYR,
+    "ru": STATUS_LABELS_RU,
+    "en": STATUS_LABELS_EN,
 }
 
 
-def can_cancel_order(status: str, ai_settings=None) -> dict:
-    """Check if order can be cancelled by customer.
+def get_status_label(status: str, lang: str = "uz_latin") -> str:
+    """Return localized booking status label."""
+    labels = _STATUS_LABELS_BY_LANG.get(lang, STATUS_LABELS)
+    return labels.get(status, status)
 
-    Respects ai_settings.allow_ai_cancel_draft when provided.
-    """
+
+def can_cancel_order(status: str, ai_settings=None) -> dict:
+    """Check if booking can be cancelled by customer."""
     if status in CANCELLABLE_STATUSES:
         if status == "draft":
-            # Check if AI is allowed to cancel drafts without operator
             if ai_settings and not ai_settings.allow_ai_cancel_draft:
-                return {"allowed": True, "needs_operator": True, "message": "Подключу оператора для отмены заказа"}
+                return {"allowed": True, "needs_operator": True, "message": "Operatorni chaqiraman bekor qilish uchun"}
             return {"allowed": True, "needs_operator": False, "message": None}
-        return {"allowed": True, "needs_operator": True, "message": "Заказ подтверждён — подключу оператора для отмены"}
+        # pending_payment — customer can cancel directly, no operator needed
+        return {"allowed": True, "needs_operator": False, "message": None}
     return {
         "allowed": False,
         "needs_operator": False,
-        "message": f"Заказ в статусе \"{STATUS_LABELS_RU.get(status, status)}\" — отмена невозможна",
+        "message": f"Buyurtma \"{STATUS_LABELS.get(status, status)}\" holatida — bekor qilish mumkin emas",
     }
 
 
 def can_edit_order(status: str, ai_settings=None) -> dict:
-    """Check if order can be edited by customer.
-
-    Respects ai_settings.require_operator_for_edit when provided.
-    """
+    """Check if booking can be edited by customer."""
     if status in AI_EDITABLE_STATUSES:
-        # Check if operator is always required for edits
         if ai_settings and ai_settings.require_operator_for_edit:
-            return {"allowed": True, "needs_operator": True, "message": "Подключу оператора для изменения заказа"}
+            return {"allowed": True, "needs_operator": True, "message": "Operatorni chaqiraman o'zgartirish uchun"}
         return {"allowed": True, "needs_operator": False, "message": None}
-    if status in OPERATOR_REQUIRED_STATUSES:
-        return {"allowed": True, "needs_operator": True, "message": "Заказ в обработке — подключу оператора для изменений"}
     return {
         "allowed": False,
         "needs_operator": False,
-        "message": f"Заказ в статусе \"{STATUS_LABELS_RU.get(status, status)}\" — изменения невозможны",
+        "message": f"Buyurtma \"{STATUS_LABELS.get(status, status)}\" holatida — o'zgartirish mumkin emas",
     }
 
 
-RETURN_WINDOW_DAYS = 14  # Days after delivery when returns are still accepted
-
-
-def can_return_order(status: str, ai_settings=None, delivered_at=None) -> dict:
-    """Check if order is eligible for a return request.
-
-    Returns are only possible for delivered orders within RETURN_WINDOW_DAYS.
-    By default (or when require_operator_for_returns=True), always routes to operator.
-    """
-    if status not in RETURNABLE_STATUSES:
-        reason = STATUS_LABELS_RU.get(status, status)
-        if status in ("draft", "confirmed", "processing", "shipped"):
-            return {"allowed": False, "needs_operator": False,
-                    "message": f"Заказ в статусе \"{reason}\" — можно отменить, но не вернуть. Для отмены используй cancel_order."}
-        return {"allowed": False, "needs_operator": False,
-                "message": f"Заказ в статусе \"{reason}\" — возврат невозможен"}
-
-    # Check return window (if delivery date is known)
-    if delivered_at:
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        if delivered_at.tzinfo is None:
-            delivered_at = delivered_at.replace(tzinfo=timezone.utc)
-        days_since = (now - delivered_at).days
-        if days_since > RETURN_WINDOW_DAYS:
-            return {"allowed": False, "needs_operator": False,
-                    "message": f"Срок возврата ({RETURN_WINDOW_DAYS} дней) истёк. Заказ доставлен {days_since} дней назад."}
-
-    # Delivered — return is possible
-    if ai_settings and not getattr(ai_settings, "require_operator_for_returns", True):
-        # AI can process return directly (future: auto-return flow)
-        return {"allowed": True, "needs_operator": False, "message": None}
-    # Default: always require operator for returns
-    return {"allowed": True, "needs_operator": True,
-            "message": "Для оформления возврата подключу оператора"}
-
-
 def get_allowed_actions(status: str, ai_settings=None) -> list[str]:
-    """Return list of actions available for given order status."""
+    """Return list of actions available for given booking status."""
     actions = ["check_status"]
     if status in CANCELLABLE_STATUSES:
-        # If cancel not allowed by AI for drafts, still show cancel but it will route to operator
         actions.append("cancel")
     if status in AI_EDITABLE_STATUSES:
         if ai_settings and ai_settings.require_operator_for_edit:
             actions.append("edit_via_operator")
         else:
             actions.append("edit")
-    if status in OPERATOR_REQUIRED_STATUSES:
-        actions.append("edit_via_operator")
-    if status in RETURNABLE_STATUSES:
-        actions.append("return_request")
     return actions
 
 
@@ -127,15 +107,10 @@ STATE_AFTER_TOOL = {
     "list_categories": "browsing",
     "get_product_candidates": "browsing",
     "get_variant_candidates": "selection",
-    "select_for_cart": "cart",
-    "remove_from_cart": "cart",
-    "create_order_draft": "post_order",
+    "create_order_draft": "pending_payment",
     "check_order_status": "post_order",
     "cancel_order": "post_order",
-    "add_item_to_order": "post_order",
-    "remove_item_from_order": "post_order",
     "request_handoff": "handoff",
-    "request_return": "post_order",
 }
 
 

@@ -14,12 +14,26 @@ interface Template {
   template_text: string;
   is_active: boolean;
   usage_count: number;
+  platform: string;
 }
 
 interface AiSettings {
   channel_cta_handle: string | null;
   channel_ai_replies_enabled: boolean;
   channel_show_price: boolean;
+}
+
+interface CommentLog {
+  id: string;
+  action: string;
+  platform: string;
+  trigger_text: string;
+  reply_text: string;
+  sender_name: string | null;
+  sender_username: string | null;
+  chat_title: string | null;
+  product_name: string | null;
+  created_at: string | null;
 }
 
 interface TriggerMatch {
@@ -45,6 +59,7 @@ export default function TemplatesPage() {
     trigger_type: "keyword",
     language: "ru",
     template_text: "",
+    platform: "all",
   });
 
   // Delete confirmation
@@ -58,9 +73,16 @@ export default function TemplatesPage() {
   const [testResults, setTestResults] = useState<TriggerMatch[] | null>(null);
   const [testLoading, setTestLoading] = useState(false);
 
+  // Comment log
+  const [commentLogs, setCommentLogs] = useState<CommentLog[]>([]);
+  const [logPlatform, setLogPlatform] = useState<"all" | "telegram" | "instagram">("all");
+  const [showLogs, setShowLogs] = useState(false);
+
   const load = () => api.get<Template[]>("/templates").then(setTemplates).catch(() => toast("Не удалось загрузить шаблоны", "error"));
+  const loadLogs = () => api.get<CommentLog[]>("/conversations/comments?limit=50").then(setCommentLogs).catch(() => {});
   useEffect(() => {
     load();
+    loadLogs();
     api.get<AiSettings>("/ai-settings").then(setChannelSettings).catch(() => {});
   }, []);
 
@@ -126,6 +148,7 @@ export default function TemplatesPage() {
       trigger_type: t.trigger_type,
       language: t.language,
       template_text: t.template_text,
+      platform: t.platform || "all",
     });
   };
 
@@ -134,7 +157,7 @@ export default function TemplatesPage() {
     setEditingId(null);
     setTags([]);
     setTagInput("");
-    setForm({ trigger_type: "keyword", language: "ru", template_text: "" });
+    setForm({ trigger_type: "keyword", language: "ru", template_text: "", platform: "all" });
   };
 
   const runTriggerTest = async () => {
@@ -155,7 +178,7 @@ export default function TemplatesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Шаблоны комментариев</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Шаблоны комментариев (TG + IG)</h1>
         <button
           onClick={() => { resetForm(); setShowForm(!showForm); }}
           className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
@@ -250,7 +273,19 @@ export default function TemplatesPage() {
       {showForm && (
         <form onSubmit={editingId ? handleUpdate : handleCreate} className="card p-5 mb-4 space-y-4">
           <h3 className="text-sm font-semibold text-slate-900">{editingId ? "Редактировать шаблон" : "Новый шаблон"}</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Платформа</label>
+              <select
+                value={form.platform}
+                onChange={(e) => setForm({ ...form, platform: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+              >
+                <option value="all">TG + IG (обе)</option>
+                <option value="telegram">Только Telegram</option>
+                <option value="instagram">Только Instagram</option>
+              </select>
+            </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">Тип триггера</label>
               <select
@@ -361,6 +396,15 @@ export default function TemplatesPage() {
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    t.platform === "instagram"
+                      ? "bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700"
+                      : t.platform === "telegram"
+                      ? "bg-sky-100 text-sky-700"
+                      : "bg-emerald-100 text-emerald-700"
+                  }`}>
+                    {t.platform === "instagram" ? "IG" : t.platform === "telegram" ? "TG" : "TG+IG"}
+                  </span>
                   <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-medium">
                     {t.trigger_type}
                   </span>
@@ -431,6 +475,88 @@ export default function TemplatesPage() {
               )}
             </div>
           ))
+        )}
+      </div>
+
+      {/* Comment Interaction Log */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-slate-900">Лог ответов на комментарии</h2>
+          <button
+            onClick={() => { setShowLogs(!showLogs); if (!showLogs) loadLogs(); }}
+            className="text-sm text-indigo-600 hover:text-indigo-700 transition-colors"
+          >
+            {showLogs ? "Скрыть" : "Показать"}
+          </button>
+        </div>
+        {showLogs && (
+          <>
+            <div className="flex gap-2 mb-3">
+              {(["all", "telegram", "instagram"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setLogPlatform(p)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    logPlatform === p
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {p === "all" ? "Все" : p === "telegram" ? "Telegram" : "Instagram"}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-2">
+              {commentLogs
+                .filter((l) => logPlatform === "all" || l.platform === logPlatform)
+                .map((l) => (
+                  <div key={l.id} className="card p-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                        l.platform === "instagram"
+                          ? "bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700"
+                          : "bg-sky-100 text-sky-700"
+                      }`}>
+                        {l.platform === "instagram" ? "IG" : "TG"}
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-xs ${
+                        l.action.includes("smart") ? "bg-emerald-100 text-emerald-700"
+                          : l.action.includes("template") ? "bg-indigo-100 text-indigo-700"
+                          : "bg-slate-100 text-slate-600"
+                      }`}>
+                        {l.action.includes("smart") ? "AI" : l.action.includes("template") ? "Шаблон" : "Фоллбэк"}
+                      </span>
+                      {l.product_name && (
+                        <span className="text-xs text-violet-600">{l.product_name}</span>
+                      )}
+                      {l.sender_username && (
+                        <span className="text-xs text-slate-400">@{l.sender_username}</span>
+                      )}
+                      {l.created_at && (
+                        <span className="text-xs text-slate-400 ml-auto">
+                          {new Date(l.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="bg-slate-50 rounded px-2 py-1.5">
+                        <p className="text-xs text-slate-400 mb-0.5">Комментарий</p>
+                        <p className="text-slate-700 line-clamp-2">{l.trigger_text}</p>
+                      </div>
+                      <div className="bg-indigo-50 rounded px-2 py-1.5">
+                        <p className="text-xs text-indigo-400 mb-0.5">Ответ</p>
+                        <p className="text-slate-700 line-clamp-2">{l.reply_text}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              {commentLogs.filter((l) => logPlatform === "all" || l.platform === logPlatform).length === 0 && (
+                <div className="card p-6 text-center text-slate-400 text-sm">
+                  Нет записей{logPlatform !== "all" ? ` для ${logPlatform === "telegram" ? "Telegram" : "Instagram"}` : ""}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 

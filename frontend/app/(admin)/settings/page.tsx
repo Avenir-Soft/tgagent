@@ -9,7 +9,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 const SECTIONS = [
   { id: "profile", label: "Профиль" },
   { id: "ai-agent", label: "AI Агент" },
-  { id: "order-policies", label: "Заказы" },
+  { id: "order-policies", label: "Бронирования" },
   { id: "conflicts", label: "Конфликты" },
   { id: "operator", label: "Оператор" },
   { id: "channel", label: "Канал" },
@@ -347,7 +347,7 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {([
                 {
-                  name: "Агрессивный продавец",
+                  name: "Агрессивный консультант",
                   desc: "Максимум автономии: AI сам отменяет, не ждёт оператора",
                   icon: "🔥",
                   color: "border-rose-200 hover:bg-rose-50",
@@ -383,8 +383,8 @@ export default function SettingsPage() {
                   },
                 },
                 {
-                  name: "Осторожный помощник",
-                  desc: "Минимум риска: всё через оператора, AI только консультирует",
+                  name: "Осторожный консультант",
+                  desc: "Минимум риска: всё через оператора, AI только информирует о турах",
                   icon: "🛡️",
                   color: "border-emerald-200 hover:bg-emerald-50",
                   values: {
@@ -439,20 +439,20 @@ export default function SettingsPage() {
                 description="AI отвечает на триггеры в комментариях канала"
                 checked={settings.allow_auto_comment_reply}
                 onChange={(v) => save({ allow_auto_comment_reply: v })}
-                tooltip="AI отвечает на вопросы о цене и наличии под постами канала, направляя покупателей в ЛС для заказа."
+                tooltip="AI отвечает на вопросы о цене и наличии мест под постами канала, направляя клиентов в ЛС для бронирования."
               />
               <Toggle
-                label="Handoff при неизвестном товаре"
-                description="Передать оператору если товар не найден в каталоге"
+                label="Handoff при неизвестном туре"
+                description="Передать оператору если тур не найден в каталоге"
                 checked={settings.require_handoff_for_unknown_product}
                 onChange={(v) => save({ require_handoff_for_unknown_product: v })}
-                tooltip="Если клиент спрашивает товар, которого нет в каталоге — AI сразу подключит оператора вместо ответа 'товар не найден'."
+                tooltip="Если клиент спрашивает тур, которого нет в каталоге — AI сразу подключит оператора вместо ответа 'тур не найден'."
               />
               <div className="py-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-slate-900">Макс. вариантов в ответе</p>
-                    <p className="text-xs text-slate-500">Сколько вариантов товара показывать за раз</p>
+                    <p className="text-xs text-slate-500">Сколько дат тура показывать за раз</p>
                   </div>
                   <select
                     value={settings.max_variants_in_reply}
@@ -476,7 +476,7 @@ export default function SettingsPage() {
                     onChange={(e) => save({ tone: e.target.value })}
                     className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
                   >
-                    <option value="friendly_sales">Дружелюбный продавец</option>
+                    <option value="friendly_sales">Дружелюбный консультант</option>
                     <option value="formal">Формальный</option>
                     <option value="casual">Неформальный</option>
                   </select>
@@ -487,16 +487,16 @@ export default function SettingsPage() {
 
           {/* Order Policies */}
           <div id="order-policies" className="card p-6 max-w-2xl mt-6 scroll-mt-24">
-            <h2 className="text-lg font-bold text-slate-900 mb-4">Политики заказов</h2>
+            <h2 className="text-lg font-bold text-slate-900 mb-4">Политики бронирований</h2>
             <div className="divide-y divide-slate-100">
-              <Toggle label="AI может отменять черновые заказы" description="Без участия оператора — только заказы в статусе 'Ожидает подтверждения'" checked={settings.allow_ai_cancel_draft} onChange={(v) => save({ allow_ai_cancel_draft: v })}
-                tooltip="Если клиент передумал — AI сам отменит заказ-черновик. Подтверждённые и обработанные заказы AI отменить не может." />
-              <Toggle label="Оператор для изменений" description="Всегда подключать оператора для редактирования заказа" checked={settings.require_operator_for_edit} onChange={(v) => save({ require_operator_for_edit: v })}
-                tooltip="Когда вкл — любая просьба изменить заказ создаёт handoff. Когда выкл — AI сам меняет черновые и подтверждённые заказы." />
-              <Toggle label="Оператор для возвратов" description="Всегда подключать оператора для возвратов и обменов" checked={settings.require_operator_for_returns} onChange={(v) => save({ require_operator_for_returns: v })}
-                tooltip="Возвраты — чувствительная тема. Рекомендуем оставить включённым, пока не наладите автоматический процесс." />
-              <Toggle label="Подтверждение перед заказом" description="AI запрашивает подтверждение перед созданием заказа" checked={settings.confirm_before_order} onChange={(v) => save({ confirm_before_order: v })}
-                tooltip="AI перечислит товары, цены и сумму, и спросит 'Всё верно?' перед созданием заказа. Снижает ошибки." />
+              <Toggle label="AI может отменять черновые брони" description="Без участия оператора — только брони в статусе 'Ожидает оплаты'" checked={settings.allow_ai_cancel_draft} onChange={(v) => save({ allow_ai_cancel_draft: v })}
+                tooltip="Если клиент передумал — AI сам отменит черновую бронь. Подтверждённые брони AI отменить не может." />
+              <Toggle label="Оператор для изменений" description="Всегда подключать оператора для редактирования бронирования" checked={settings.require_operator_for_edit} onChange={(v) => save({ require_operator_for_edit: v })}
+                tooltip="Когда вкл — любая просьба изменить бронь создаёт handoff. Когда выкл — AI сам меняет черновые брони." />
+              <Toggle label="Оператор для отмен" description="Всегда подключать оператора для отмены бронирований" checked={settings.require_operator_for_returns} onChange={(v) => save({ require_operator_for_returns: v })}
+                tooltip="Отмены бронирований — чувствительная тема. Рекомендуем оставить включённым для контроля." />
+              <Toggle label="Подтверждение перед бронированием" description="AI запрашивает подтверждение перед созданием брони" checked={settings.confirm_before_order} onChange={(v) => save({ confirm_before_order: v })}
+                tooltip="AI перечислит тур, дату, кол-во участников и сумму, и спросит 'Всё верно?' перед созданием брони. Снижает ошибки." />
             </div>
           </div>
 
@@ -532,7 +532,7 @@ export default function SettingsPage() {
                   <span className="flex items-center px-3 bg-slate-100 border border-slate-200 border-r-0 rounded-l-lg text-slate-500 text-sm">@</span>
                   <input
                     type="text"
-                    placeholder="oybeff"
+                    placeholder="osonturizm_admin"
                     value={settings.operator_telegram_username || ""}
                     onChange={(e) => setSettings({ ...settings, operator_telegram_username: e.target.value.replace(/[^a-zA-Z0-9_]/g, "") || null })}
                     onBlur={() => save({ operator_telegram_username: settings.operator_telegram_username })}
@@ -541,7 +541,7 @@ export default function SettingsPage() {
                     maxLength={32}
                   />
                 </div>
-                <p className="text-xs text-slate-400 mt-1">Без @. Убедитесь что оператор начал диалог с Telegram-аккаунтом магазина.</p>
+                <p className="text-xs text-slate-400 mt-1">Без @. Убедитесь что оператор начал диалог с Telegram-аккаунтом Easy Tour.</p>
               </div>
 
               {settings.operator_telegram_username && (
@@ -560,25 +560,25 @@ export default function SettingsPage() {
           {/* Channel Auto-Responses */}
           <div id="channel" className="card p-6 max-w-2xl mt-6 scroll-mt-24">
             <h2 className="text-lg font-bold text-slate-900 mb-1">Ответы в комментариях канала</h2>
-            <p className="text-xs text-slate-500 mb-4">AI автоматически отвечает на вопросы о цене, доставке и наличии в комментариях Telegram-канала.</p>
+            <p className="text-xs text-slate-500 mb-4">AI автоматически отвечает на вопросы о цене и наличии мест в комментариях Telegram-канала.</p>
             <div className="divide-y divide-slate-100">
-              <Toggle label="Умные ответы на вопросы" description="AI распознаёт вопросы о цене/доставке/наличии и отвечает с призывом написать в ЛС" checked={settings.channel_ai_replies_enabled} onChange={(v) => save({ channel_ai_replies_enabled: v })}
-                tooltip="AI мониторит комментарии под постами канала. Распознаёт вопросы о товаре и отвечает с CTA написать в ЛС." />
-              <Toggle label="Показывать цену в ответе" description="Если пост о конкретном товаре — AI укажет цену из каталога" checked={settings.channel_show_price} onChange={(v) => save({ channel_show_price: v })}
+              <Toggle label="Умные ответы на вопросы" description="AI распознаёт вопросы о цене/наличии мест и отвечает с призывом написать в ЛС" checked={settings.channel_ai_replies_enabled} onChange={(v) => save({ channel_ai_replies_enabled: v })}
+                tooltip="AI мониторит комментарии под постами канала. Распознаёт вопросы о туре и отвечает с CTA написать в ЛС." />
+              <Toggle label="Показывать цену в ответе" description="Если пост о конкретном туре — AI укажет цену из каталога" checked={settings.channel_show_price} onChange={(v) => save({ channel_show_price: v })}
                 tooltip="Если вкл — AI покажет диапазон цен прямо в комментарии. Если выкл — только предложит написать в ЛС для деталей." />
               <div className="py-3 space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">CTA — аккаунт для заказов</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">CTA — аккаунт для бронирований</label>
                   <input
                     type="text"
-                    placeholder="@myshop"
+                    placeholder="@osonturizm"
                     value={settings.channel_cta_handle || ""}
                     onChange={(e) => setSettings({ ...settings, channel_cta_handle: e.target.value || null })}
                     onBlur={() => save({ channel_cta_handle: settings.channel_cta_handle })}
                     className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
                     maxLength={64}
                   />
-                  <p className="text-xs text-slate-400 mt-1">Аккаунт или ссылка, куда отправлять покупателей. Например: @myshop или @myshop_bot</p>
+                  <p className="text-xs text-slate-400 mt-1">Аккаунт или ссылка, куда отправлять клиентов. Например: @osonturizm</p>
                 </div>
               </div>
             </div>

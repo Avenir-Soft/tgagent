@@ -48,6 +48,17 @@ const handoffStatusColors: Record<string, string> = {
   resolved: "bg-emerald-100 text-emerald-700",
 };
 
+const reasonLabels: Record<string, string> = {
+  receipt_verification: "Проверка чека",
+  receipt_amount_low: "Сумма чека занижена",
+  receipt_amount_over: "Сумма чека завышена",
+  operator_requested: "Запрос оператора",
+  negative_sentiment: "Негативный отзыв",
+  unknown_product: "Неизвестный тур",
+  order_edit: "Изменение бронирования",
+  complex_question: "Сложный вопрос",
+};
+
 const handoffStatusLabels: Record<string, string> = {
   pending: "Ожидает",
   assigned: "Назначен",
@@ -424,7 +435,7 @@ export default function HandoffsPage() {
                       {h.conversation_name}
                     </Link>
                   )}
-                  <p className="text-sm text-slate-700 mt-1">{h.reason}</p>
+                  <p className="text-sm text-slate-700 mt-1">{reasonLabels[h.reason] || h.reason}</p>
                 </div>
 
                 {/* Summary */}

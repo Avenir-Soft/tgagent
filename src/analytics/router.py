@@ -342,7 +342,7 @@ async def get_conversation_analytics(
                 SELECT DISTINCT l.telegram_user_id
                 FROM leads l JOIN orders o ON o.lead_id = l.id
                 WHERE l.tenant_id = :tid
-                  AND o.status IN ('confirmed','processing','shipped','delivered')
+                  AND o.status IN ('pending_payment','confirmed','completed')
             )
             SELECT COUNT(*)::int AS cnt FROM conversations c
             LEFT JOIN ordered_users ou ON ou.telegram_user_id = c.telegram_user_id
@@ -421,11 +421,11 @@ async def get_funnel(
                 (SELECT COUNT(*) FROM conversations WHERE tenant_id = :tid AND source_type = 'dm' AND created_at >= :since)::int AS visitors,
                 (SELECT COUNT(*) FROM leads WHERE tenant_id = :tid AND created_at >= :since)::int AS leads,
                 (SELECT COUNT(*) FROM conversations WHERE tenant_id = :tid AND source_type = 'dm' AND created_at >= :since
-                 AND state IN ('cart','checkout','post_order'))::int AS cart,
+                 AND state IN ('selection','booking','post_order'))::int AS interested,
                 (SELECT COUNT(*) FROM conversations WHERE tenant_id = :tid AND source_type = 'dm' AND created_at >= :since
-                 AND state IN ('checkout','post_order'))::int AS checkout,
+                 AND state IN ('booking','post_order'))::int AS booking,
                 (SELECT COUNT(*) FROM orders WHERE tenant_id = :tid AND created_at >= :since AND status NOT IN ('draft','cancelled'))::int AS orders,
-                (SELECT COUNT(*) FROM orders WHERE tenant_id = :tid AND created_at >= :since AND status = 'delivered')::int AS delivered
+                (SELECT COUNT(*) FROM orders WHERE tenant_id = :tid AND created_at >= :since AND status = 'completed')::int AS completed
         """),
         {"tid": tid, "since": since},
     )
@@ -433,16 +433,16 @@ async def get_funnel(
     visitors = row["visitors"] or 0
 
     labels = {
-        "visitors": "Посетители",
-        "leads": "Лиды",
-        "cart": "Корзина",
-        "checkout": "Оформление",
-        "orders": "Заказы",
-        "delivered": "Доставлено",
+        "visitors": "Tashrif buyuruvchilar",
+        "leads": "Lidlar",
+        "interested": "Qiziquvchilar",
+        "booking": "Buyurtma",
+        "orders": "Bronlar",
+        "completed": "Yakunlangan",
     }
 
     stages = []
-    for key in ["visitors", "leads", "cart", "checkout", "orders", "delivered"]:
+    for key in ["visitors", "leads", "interested", "booking", "orders", "completed"]:
         count = row[key] or 0
         pct = round(count / visitors * 100, 1) if visitors > 0 else None
         stages.append(FunnelStage(name=key, label=labels[key], count=count, pct=pct))

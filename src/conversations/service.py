@@ -25,6 +25,7 @@ async def list_conversations_enriched(
     limit: int,
     offset: int,
     db: AsyncSession,
+    source_platform: str | None = None,
 ) -> list[dict]:
     """List conversations with last message, unread count, and avatar — 4 queries total."""
     q = select(Conversation).where(Conversation.tenant_id == tenant_id)
@@ -32,6 +33,10 @@ async def list_conversations_enriched(
         q = q.where(Conversation.status == status)
     if source_type:
         q = q.where(Conversation.source_type == source_type)
+    if source_platform == "instagram":
+        q = q.where(Conversation.instagram_user_id.isnot(None))
+    elif source_platform == "telegram":
+        q = q.where(Conversation.instagram_user_id.is_(None))
     q = q.order_by(Conversation.last_message_at.desc().nullslast()).offset(offset).limit(limit)
     result = await db.execute(q)
     conversations = result.scalars().all()
@@ -96,6 +101,8 @@ async def list_conversations_enriched(
         data["last_message_sender_type"] = lm[1]
         data["unread_count"] = unread_map.get(c.id, 0)
         data["avatar_url"] = avatar_map.get(c.telegram_user_id)
+        # Derive platform from instagram_user_id presence
+        data["source_platform"] = "instagram" if c.instagram_user_id else "telegram"
         out.append(data)
     return out
 
@@ -348,24 +355,37 @@ async def bulk_delete_conversations(tenant_id: UUID, conv_ids: list[UUID], db: A
 async def send_operator_message(
     tenant_id: UUID, conv: Conversation, text: str, db: AsyncSession,
 ) -> tuple[Message, int | None]:
-    """Send operator message, optionally via Telegram. Returns (Message, tg_msg_id)."""
+    """Send operator message via Telegram or Instagram. Returns (Message, tg_msg_id)."""
     telegram_message_id = None
 
-    try:
-        from src.telegram.service import telegram_manager
-        client = telegram_manager.get_client(tenant_id)
-        if client:
-            try:
-                entity = await client.get_input_entity(conv.telegram_chat_id)
-            except ValueError:
-                if conv.telegram_username:
-                    entity = await client.get_input_entity(conv.telegram_username)
-                else:
-                    raise
-            sent = await client.send_message(entity, text)
-            telegram_message_id = sent.id
-    except Exception as e:
-        logger.warning("Failed to send Telegram message: %s", e)
+    # Route to correct platform
+    if conv.instagram_user_id:
+        # Instagram conversation — send via Instagram
+        try:
+            from src.instagram.service import instagram_manager
+            ig_client = instagram_manager._clients.get(tenant_id)
+            if ig_client:
+                await ig_client.send_text_message(conv.instagram_user_id, text)
+                logger.info("Operator message sent via Instagram to %s", conv.instagram_user_id)
+        except Exception as e:
+            logger.warning("Failed to send Instagram message: %s", e)
+    else:
+        # Telegram conversation
+        try:
+            from src.telegram.service import telegram_manager
+            client = telegram_manager.get_client(tenant_id)
+            if client:
+                try:
+                    entity = await client.get_input_entity(conv.telegram_chat_id)
+                except ValueError:
+                    if conv.telegram_username:
+                        entity = await client.get_input_entity(conv.telegram_username)
+                    else:
+                        raise
+                sent = await client.send_message(entity, text)
+                telegram_message_id = sent.id
+        except Exception as e:
+            logger.warning("Failed to send Telegram message: %s", e)
 
     msg = Message(
         tenant_id=tenant_id,

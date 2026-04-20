@@ -1,18 +1,10 @@
 """Forced response builder and context summary for AI orchestrator.
 
-Contains deterministic response generation for order modifications
+Contains deterministic response generation for tour bookings
 and the state_context summary builder used in the system prompt.
+
+Adapted for Easy Tour — tour booking context.
 """
-
-
-def _ru_plural(n, one: str, few: str, many: str) -> str:
-    """Russian plural: 1 товар, 2-4 товара, 5+ товаров."""
-    n = abs(int(n)) if n not in (None, "?") else 0
-    if n % 10 == 1 and n % 100 != 11:
-        return one
-    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
-        return few
-    return many
 
 
 _FORMAL_TONES = {"formal_business", "formal", "business"}
@@ -24,74 +16,26 @@ def _strip_emoji(text: str) -> str:
     return re.sub(r"[\U0001f300-\U0001f9ff\u2600-\u26ff\u2700-\u27bf]", "", text).replace("  ", " ").strip()
 
 
-def _build_order_modification_response(tool_name: str, result: dict, language: str = "ru", tone: str = "friendly_sales") -> str | None:
-    """Build a deterministic response for order modification tools.
+def _build_order_modification_response(tool_name: str, result: dict, language: str = "uz_latin", tone: str = "friendly_sales") -> str | None:
+    """Build a deterministic response for booking tools.
 
     Returns a ready-made response string, bypassing the LLM entirely.
-    This prevents the LLM from asking for address/checkout after modifying an existing order.
-    Language-aware: responds in the customer's language.
-    Tone-aware: strips emoji for formal tones.
+    Language-aware, tone-aware.
     """
-    title = result.get("item_title", "?")
-    order_num = result.get("order_number", "")
-    new_total = result.get("new_total", "?")
-    try:
-        total_fmt = f"{int(float(new_total)):,}".replace(",", " ")
-    except (ValueError, TypeError):
-        total_fmt = str(new_total)
-
-    if tool_name == "add_item_to_order" and result.get("success"):
-        if result.get("action") == "quantity_updated":
-            new_qty = result.get("new_qty", "?")
-            templates = {
-                "ru": f"Обновил количество {title} в заказе {order_num} — теперь {new_qty} шт. Общая сумма: {total_fmt} сум 👍 Ещё что-то нужно?",
-                "uz_cyrillic": f"{title} миқдори {order_num} буюртмада янгиланди — энди {new_qty} дона. Жами: {total_fmt} сўм 👍 Яна нима керак бўлса, ёзинг!",
-                "uz_latin": f"{title} miqdori {order_num} buyurtmada yangilandi — endi {new_qty} dona. Jami: {total_fmt} so'm 👍 Yana nima kerak bo'lsa, yozing!",
-                "en": f"Updated {title} quantity in order {order_num} — now {new_qty} pcs. Total: {total_fmt} UZS 👍 Let me know if you need anything else!",
-            }
-        else:
-            templates = {
-                "ru": f"Добавил {title} в заказ {order_num}! Общая сумма: {total_fmt} сум 👍 Ещё что-то нужно?",
-                "uz_cyrillic": f"{title} {order_num} буюртмага қўшилди! Жами: {total_fmt} сўм 👍 Яна нима керак бўлса, ёзинг!",
-                "uz_latin": f"{title} {order_num} buyurtmaga qo'shildi! Jami: {total_fmt} so'm 👍 Yana nima kerak bo'lsa, yozing!",
-                "en": f"Added {title} to order {order_num}! Total: {total_fmt} UZS 👍 Need anything else?",
-            }
-        resp = templates.get(language, templates["ru"])
-        return _strip_emoji(resp) if tone in _FORMAL_TONES else resp
-
-    if tool_name == "remove_item_from_order" and result.get("success"):
-        removed = result.get("removed_item", result.get("item_title", "?"))
-        remaining = result.get("remaining_items", "?")
-        if result.get("action") == "quantity_reduced":
-            rem_qty = result.get("remaining_qty", "?")
-            templates = {
-                "ru": f"Уменьшил количество {removed} в заказе {order_num} — осталось {rem_qty} шт. Сумма: {total_fmt} сум. Ещё что-то?",
-                "uz_cyrillic": f"{removed} миқдори {order_num} буюртмада камайтирилди — {rem_qty} дона қолди. Жами: {total_fmt} сўм. Яна нима керак?",
-                "uz_latin": f"{removed} miqdori {order_num} buyurtmada kamaytirildi — {rem_qty} dona qoldi. Jami: {total_fmt} so'm. Yana nima kerak?",
-                "en": f"Reduced {removed} quantity in order {order_num} — {rem_qty} left. Total: {total_fmt} UZS. Anything else?",
-            }
-        else:
-            templates = {
-                "ru": f"Убрал {removed} из заказа {order_num}. Осталось {remaining} {_ru_plural(remaining, 'товар', 'товара', 'товаров')}, сумма: {total_fmt} сум. Ещё что-то?",
-                "uz_cyrillic": f"{removed} {order_num} буюртмадан олиб ташланди. {remaining} та товар қолди, жами: {total_fmt} сўм. Яна нима керак?",
-                "uz_latin": f"{removed} {order_num} buyurtmadan olib tashlandi. {remaining} ta tovar qoldi, jami: {total_fmt} so'm. Yana nima kerak?",
-                "en": f"Removed {removed} from order {order_num}. {remaining} items left, total: {total_fmt} UZS. Anything else?",
-            }
-        resp = templates.get(language, templates["ru"])
-        return _strip_emoji(resp) if tone in _FORMAL_TONES else resp
-
-    # Forced response for create_order_draft — ALWAYS show order number + real items
+    # Forced response for create_order_draft — ALWAYS show booking number + tour details + payment instructions
     if tool_name == "create_order_draft" and result.get("order_id"):
         order_num = result.get("order_number", "?")
         items = result.get("items", [])
         total = result.get("total_amount", "?")
-        delivery = result.get("delivery_note", "")
-        eta = result.get("delivery_eta", "")
 
         try:
             total_fmt = f"{int(float(total)):,}".replace(",", " ")
         except (ValueError, TypeError):
             total_fmt = str(total)
+
+        # Language-specific labels for items
+        _qty_label = {"ru": "чел.", "en": "pax", "uz_cyrillic": "киши"}.get(language, "kishi")
+        _currency = {"ru": "сум", "en": "UZS", "uz_cyrillic": "сўм"}.get(language, "so'm")
 
         items_lines = []
         for item in items:
@@ -102,50 +46,46 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
             except (ValueError, TypeError):
                 iprice_fmt = str(iprice)
             qty = item.get("qty", 1)
-            qty_str = f" x{qty}" if qty > 1 else ""
-            items_lines.append(f"  - {ititle}{qty_str} — {iprice_fmt}")
+            qty_str = f" x{qty} {_qty_label}" if qty > 1 else ""
+            items_lines.append(f"  - {ititle}{qty_str} — {iprice_fmt} {_currency}")
 
         items_text = "\n".join(items_lines)
 
         if language == "en":
-            delivery_line = f"\n  - Delivery: {delivery}" if delivery else ""
-            eta_line = f"\nETA: {eta}" if eta else ""
             resp = (
-                f"Order confirmed! 🎉\n\n"
-                f"Order #{order_num}\n"
-                f"Items:\n{items_text}{delivery_line}\n\n"
-                f"Total: {total_fmt} UZS{eta_line}\n\n"
-                f"Thank you! Write if you need anything else."
+                f"Booking confirmed! 🎉\n\n"
+                f"Booking #{order_num}\n"
+                f"Tour:\n{items_text}\n\n"
+                f"Total: {total_fmt} UZS\n\n"
+                f"Please pay via Payme, Click, or cash, and send the receipt screenshot here. "
+                f"Our operator will confirm your booking."
             )
         elif language == "uz_cyrillic":
-            delivery_line = f"\n  - Етказиб бериш: {delivery}" if delivery else ""
-            eta_line = f"\nМуддати: {eta}" if eta else ""
             resp = (
                 f"Буюртмангиз расмийлаштирилди! 🎉\n\n"
                 f"Буюртма рақами: {order_num}\n"
-                f"Товарлар:\n{items_text}{delivery_line}\n\n"
-                f"Жами: {total_fmt} сўм{eta_line}\n\n"
-                f"Харидингиз учун раҳмат! Яна нимадир керак бўлса, ёзинг 😊"
+                f"Тур:\n{items_text}\n\n"
+                f"Жами: {total_fmt} сўм\n\n"
+                f"Тўловни амалга оширинг (Payme, Click ёки нақд) ва чекни шу ерга юборинг 📸\n"
+                f"Операторимиз буюртмангизни тасдиқлайди."
             )
-        elif language == "uz_latin":
-            delivery_line = f"\n  - Yetkazib berish: {delivery}" if delivery else ""
-            eta_line = f"\nMuddati: {eta}" if eta else ""
+        elif language == "ru":
+            resp = (
+                f"Бронирование оформлено! 🎉\n\n"
+                f"Номер бронирования: {order_num}\n"
+                f"Тур:\n{items_text}\n\n"
+                f"Итого: {total_fmt} сум\n\n"
+                f"Оплатите через Payme, Click или наличными и отправьте скриншот чека сюда 📸\n"
+                f"Оператор подтвердит бронирование."
+            )
+        else:  # uz_latin (default)
             resp = (
                 f"Buyurtmangiz rasmiylashtirildi! 🎉\n\n"
                 f"Buyurtma raqami: {order_num}\n"
-                f"Tovarlar:\n{items_text}{delivery_line}\n\n"
-                f"Jami: {total_fmt} so'm{eta_line}\n\n"
-                f"Xaridingiz uchun rahmat! Yana nimadir kerak bo'lsa, yozing 😊"
-            )
-        else:  # ru
-            delivery_line = f"\n  - Доставка: {delivery}" if delivery else ""
-            eta_line = f"\nСрок: {eta}" if eta else ""
-            resp = (
-                f"Заказ оформлен! 🎉\n\n"
-                f"Номер заказа: {order_num}\n"
-                f"Товары:\n{items_text}{delivery_line}\n\n"
-                f"Итого: {total_fmt} сум{eta_line}\n\n"
-                f"Спасибо за покупку! Если что еще надо пишите!"
+                f"Tur:\n{items_text}\n\n"
+                f"Jami: {total_fmt} so'm\n\n"
+                f"To'lovni amalga oshiring (Payme, Click yoki naqd) va chekni shu yerga yuboring 📸\n"
+                f"Operatorimiz buyurtmangizni tasdiqlaydi."
             )
         return _strip_emoji(resp) if tone in _FORMAL_TONES else resp
 
@@ -157,47 +97,34 @@ def _build_order_modification_response(tool_name: str, result: dict, language: s
             "uz_latin": "Operatorni chaqirdim. Iltimos, biroz kuting — tez orada javob beramiz. 🙏",
             "en": "I've connected you to an operator. Please wait a moment. 🙏",
         }
-        resp = templates.get(language, templates["ru"])
+        resp = templates.get(language, templates["uz_latin"])
         return _strip_emoji(resp) if tone in _FORMAL_TONES else resp
 
     return None
 
 
 def _build_context_summary(state_context: dict | None) -> str:
-    """Build a summary of known products/variants from state_context for the system prompt."""
+    """Build a summary of known tours/variants from state_context for the system prompt."""
     if not state_context:
         return ""
 
     parts = []
 
-    # Cart (most important — these will be ordered)
-    cart = state_context.get("cart", [])
-    if cart:
-        try:
-            total = sum(float(item.get("price", 0)) * int(item.get("qty", 1)) for item in cart)
-            total_fmt = f"{int(total):,}".replace(",", " ")
-        except (ValueError, TypeError):
-            total_fmt = "?"
-        parts.append("═══ РЕАЛЬНАЯ КОРЗИНА КЛИЕНТА (ТОЛЬКО ЭТИ ТОВАРЫ!) ═══")
-        parts.append(f"⚠️ ВАЖНО: В корзине ровно {len(cart)} товар(ов). НЕ добавляй другие товары в список при оформлении!")
-        for i, item in enumerate(cart, 1):
-            title = item.get("title", "?")
-            price = item.get("price", "?")
-            qty = item.get("qty", 1)
-            vid = item.get("variant_id", "?")
-            try:
-                price_fmt = f"{int(float(price)):,}".replace(",", " ")
-            except (ValueError, TypeError):
-                price_fmt = str(price)
-            parts.append(f"  {i}. {title} — {price_fmt} сум x{qty} (variant_id: {vid})")
-        parts.append(f"  Итого товаров: {total_fmt} сум")
-        parts.append("═══════════════════════════════════════════════")
+    # Booking info (if in booking flow)
+    booking = state_context.get("booking", {})
+    if booking:
+        parts.append("═══ JORIY BUYURTMA MA'LUMOTLARI ═══")
+        if booking.get("variant_id"):
+            parts.append(f"  Tanlangan sana variant_id: {booking['variant_id']}")
+        if booking.get("tour_name"):
+            parts.append(f"  Tur: {booking['tour_name']}")
+        parts.append("═══════════════════════════════════")
         parts.append("")
 
-    # Known products from search
+    # Known tours from search
     products = state_context.get("products", {})
     if products:
-        parts.append("Известные товары в этом диалоге:")
+        parts.append("Dialoqdagi ma'lum turlar:")
         for name, info in products.items():
             pid = info.get("product_id", "?")
             parts.append(f"  {name} (product_id: {pid})")
@@ -205,50 +132,18 @@ def _build_context_summary(state_context: dict | None) -> str:
                 vid = v.get("variant_id", "?")
                 title = v.get("title", "?")
                 price = v.get("price", "?")
-                stock = v.get("available_quantity", "?")
-                specs = v.get("specs")
-                spec_str = ""
-                if specs and isinstance(specs, dict):
-                    spec_parts = [f"{k}: {val}" for k, val in specs.items()]
-                    spec_str = f" | {', '.join(spec_parts)}"
-                parts.append(f"    {i}. {title} — {price} сум, {stock} шт (variant_id: {vid}){spec_str}")
+                seats = v.get("available_seats", v.get("available_quantity", "?"))
+                parts.append(f"    {i}. {title} — {price} so'm, {seats} ta joy (variant_id: {vid})")
 
-    # Proactive suggestion: products shown but not in cart
-    shown = state_context.get("shown_products", [])
-    if cart and shown:
-        cart_vids = {item.get("variant_id") for item in cart}
-        cart_pids = set()
-        for item in cart:
-            vid = item.get("variant_id")
-            for prod_info in state_context.get("products", {}).values():
-                for v in prod_info.get("variants", []):
-                    if v.get("variant_id") == vid:
-                        cart_pids.add(prod_info.get("product_id"))
-        not_carted = [s for s in shown if s.get("variant_id") not in cart_vids and s.get("product_id") not in cart_pids]
-        if not_carted:
-            parts.append("ТОВАРЫ КОТОРЫЕ КЛИЕНТ СМОТРЕЛ НО НЕ ДОБАВИЛ В КОРЗИНУ:")
-            for s in not_carted[-3:]:  # Last 3 at most
-                parts.append(f"  → {s.get('title', '?')} — {s.get('price', '?')} сум")
-            parts.append("  💡 Когда клиент переходит к оформлению — ОДИН раз спроси: 'Вы также смотрели [товар]. Добавить в заказ?' Если игнорирует — не повторяй.")
-            parts.append("")
-
-    # Previous orders
+    # Previous bookings
     orders = state_context.get("orders", [])
     if orders:
-        parts.append("\nЗаказы клиента:")
+        parts.append("\nMijoz buyurtmalari:")
         for o in orders:
-            parts.append(f"  {o.get('order_number', '?')} — {o.get('total_amount', '?')} сум")
+            parts.append(f"  {o.get('order_number', '?')} — {o.get('total_amount', '?')} so'm")
 
     customer = state_context.get("customer", {})
     if customer:
-        parts.append(f"\nДанные клиента: имя={customer.get('name','?')}, тел={customer.get('phone','?')}, город={customer.get('city','?')}, адрес={customer.get('address','?')}")
-
-    # Recent order modifications (what AI actually did)
-    mods = state_context.get("last_order_modifications", [])
-    if mods:
-        parts.append("\nПОСЛЕДНИЕ ИЗМЕНЕНИЯ ЗАКАЗОВ (ты это сделал!):")
-        for m in mods:
-            action = "Добавил" if m.get("action") == "added" else "Убрал"
-            parts.append(f"  ✓ {action} {m.get('item', '?')} в заказ {m.get('order', '?')}")
+        parts.append(f"\nMijoz ma'lumotlari: ism={customer.get('name','?')}, tel={customer.get('phone','?')}")
 
     return "\n".join(parts) if parts else ""

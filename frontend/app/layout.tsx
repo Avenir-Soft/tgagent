@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin", "cyrillic"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "AI Closer — Admin",
-  description: "AI Sales Closer for Telegram Stores",
+  title: "Easy Tour — Admin",
+  description: "Easy Tour — AI Agent for Tour Bookings",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

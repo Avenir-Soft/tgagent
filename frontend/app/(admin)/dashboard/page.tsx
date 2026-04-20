@@ -22,9 +22,9 @@ interface Stats {
 }
 interface LowStockItem { variant_id: string; product_id: string; title: string; available: number; reserved: number; total: number }
 
-const statusLabels: Record<string, string> = { draft: "Черновик", confirmed: "Подтверждён", processing: "В обработке", shipped: "Отправлен", delivered: "Доставлен", cancelled: "Отменён" };
-const statusColors: Record<string, string> = { draft: "bg-slate-400", confirmed: "bg-blue-500", processing: "bg-amber-500", shipped: "bg-violet-500", delivered: "bg-emerald-500", cancelled: "bg-rose-400" };
-const statusDots: Record<string, string> = { draft: "bg-slate-300", confirmed: "bg-blue-400", processing: "bg-amber-400", shipped: "bg-violet-400", delivered: "bg-emerald-400", cancelled: "bg-rose-300" };
+const statusLabels: Record<string, string> = { draft: "Черновик", pending_payment: "Ожидает оплаты", confirmed: "Подтверждён", completed: "Завершён", cancelled: "Отменён" };
+const statusColors: Record<string, string> = { draft: "bg-slate-400", pending_payment: "bg-amber-500", confirmed: "bg-blue-500", completed: "bg-emerald-500", cancelled: "bg-rose-400" };
+const statusDots: Record<string, string> = { draft: "bg-slate-300", pending_payment: "bg-amber-400", confirmed: "bg-blue-400", completed: "bg-emerald-400", cancelled: "bg-rose-300" };
 const leadLabels: Record<string, string> = { new: "Новые", contacted: "Связались", qualified: "Квалиф.", converted: "Конверт.", lost: "Потерян" };
 
 function fmtPrice(val: number) { return val.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "."); }
@@ -175,7 +175,7 @@ function MiniBarChart({ data, lineData, height = 120 }: { data: DailyCount[]; li
       <div className="flex items-center gap-3 mt-1 justify-center text-[10px] text-slate-400">
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-2 rounded-sm bg-indigo-400 inline-block" />
-          Заказы
+          Бронирования
         </span>
         {hasLine && (
           <span className="flex items-center gap-1.5">
@@ -197,7 +197,7 @@ function MiniBarChart({ data, lineData, height = 120 }: { data: DailyCount[]; li
 /* ── Status Bar ────────────────────────────────── */
 function StatusBar({ data }: { data: Record<string, { count: number; revenue: number }> }) {
   const total = Object.values(data).reduce((s, v) => s + v.count, 0) || 1;
-  const order = ["confirmed", "processing", "shipped", "delivered", "draft", "cancelled"];
+  const order = ["pending_payment", "confirmed", "completed", "draft", "cancelled"];
   return (
     <div className="space-y-3">
       <div className="h-2 rounded-full overflow-hidden flex bg-slate-100">
@@ -303,7 +303,7 @@ const icons = {
   messages: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>,
   active: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>,
   handoff: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>,
-  cart: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>,
+  cart: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
   anomaly: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0-10.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>,
 };
 
@@ -346,7 +346,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Дашборд</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Обзор вашего магазина</p>
+          <p className="text-sm text-slate-400 mt-0.5">Обзор Easy Tour</p>
         </div>
         <SSEStatusBadge status={sseStatus} />
       </div>
@@ -354,7 +354,7 @@ export default function DashboardPage() {
       {/* Row 1: Today stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <TodayCard
-          label="Заказов сегодня"
+          label="Бронирований сегодня"
           value={stats.today_orders}
           trend={<TrendBadge current={stats.today_orders} previous={stats.yesterday_orders} />}
           icon={icons.orders}
@@ -392,7 +392,7 @@ export default function DashboardPage() {
             <p className="text-3xl font-bold tracking-tight">{fmtPrice(stats.total_revenue)} <span className="text-lg font-normal text-slate-500">UZS</span></p>
             <div className="flex gap-8 mt-5">
               {[
-                { v: stats.total_orders, l: "заказов" },
+                { v: stats.total_orders, l: "бронирований" },
                 { v: stats.dm_conversations, l: "диалогов" },
                 { v: stats.total_leads > 0 ? `${stats.conversion_rate_pct}%` : "N/A", l: "конверсия" },
               ].map(({ v, l }) => (
@@ -425,7 +425,7 @@ export default function DashboardPage() {
         {/* Orders chart */}
         <div className="card p-5">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-slate-700">Заказы</p>
+            <p className="text-sm font-semibold text-slate-700">Бронирования</p>
             <PeriodSelector value={chartDays} onChange={handlePeriodChange} />
           </div>
           <MiniBarChart data={stats.orders_daily} lineData={stats.leads_daily} height={120} />
@@ -435,24 +435,24 @@ export default function DashboardPage() {
       {/* Row 3: Alerts */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <AlertCard href="/handoffs" count={stats.pending_handoffs} label="Ожидают оператора" color="orange" icon={icons.handoff} />
-        <AlertCard href="/broadcast" count={stats.abandoned_carts} label="Брошенных корзин" color="purple" icon={icons.cart} />
+        <AlertCard href="/broadcast" count={stats.abandoned_carts} label="Незавершённых бронирований" color="purple" icon={icons.cart} />
         <AlertCard href="/training" count={stats.anomaly_conversations_7d} label="Аномалий AI (7д)" color="red" icon={icons.anomaly} />
       </div>
 
       {/* Row 4: Order status + Recent orders */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="card p-6">
-          <h2 className="text-sm font-semibold text-slate-700 mb-4">Заказы по статусам</h2>
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">Бронирования по статусам</h2>
           <StatusBar data={stats.orders_by_status} />
         </div>
 
         <div className="card overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700">Последние заказы</h2>
-            <Link href="/orders" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Все заказы →</Link>
+            <h2 className="text-sm font-semibold text-slate-700">Последние бронирования</h2>
+            <Link href="/orders" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Все бронирования →</Link>
           </div>
           {stats.recent_orders.length === 0 ? (
-            <div className="px-6 py-8 text-center text-slate-300 text-sm">Нет заказов</div>
+            <div className="px-6 py-8 text-center text-slate-300 text-sm">Нет бронирований</div>
           ) : (
             <div className="divide-y divide-slate-100">
               {stats.recent_orders.map((o) => (
@@ -476,7 +476,7 @@ export default function DashboardPage() {
       {lowStock.length > 0 && (
         <div className="card overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700">Заканчивается на складе <span className="ml-1.5 text-xs font-normal bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{lowStock.length}</span></h2>
+            <h2 className="text-sm font-semibold text-slate-700">Мало мест <span className="ml-1.5 text-xs font-normal bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{lowStock.length}</span></h2>
             <Link href="/products" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Управление →</Link>
           </div>
           <div className="divide-y divide-slate-100">
@@ -486,7 +486,7 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3 text-xs">
                   {item.reserved > 0 && <span className="text-amber-600">{item.reserved} резерв</span>}
                   <span className={`font-semibold px-2.5 py-1 rounded-md ${item.available <= 0 ? "bg-rose-50 text-rose-600" : "bg-amber-50 text-amber-600"}`}>
-                    {item.available <= 0 ? "Нет в наличии" : `${item.available} шт`}
+                    {item.available <= 0 ? "Мест нет" : `${item.available} мест`}
                   </span>
                 </div>
               </div>

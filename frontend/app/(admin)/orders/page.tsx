@@ -38,32 +38,29 @@ interface Order {
 }
 
 const statusLabels: Record<string, string> = {
-  draft: "Черновик", confirmed: "Подтверждён", processing: "В обработке",
-  shipped: "Отправлен", delivered: "Доставлен", cancelled: "Отменён", returned: "Возврат",
+  draft: "Черновик", pending_payment: "Ожидает оплаты", confirmed: "Подтверждён",
+  completed: "Завершён", cancelled: "Отменён",
 };
 
 const statusColors: Record<string, string> = {
-  draft: "bg-slate-100 text-slate-700", confirmed: "bg-blue-50 text-blue-700",
-  processing: "bg-amber-50 text-amber-700", shipped: "bg-violet-50 text-violet-700",
-  delivered: "bg-emerald-50 text-emerald-700", cancelled: "bg-rose-50 text-rose-700",
-  returned: "bg-orange-50 text-orange-700",
+  draft: "bg-slate-100 text-slate-700", pending_payment: "bg-amber-50 text-amber-700",
+  confirmed: "bg-blue-50 text-blue-700",
+  completed: "bg-emerald-50 text-emerald-700", cancelled: "bg-rose-50 text-rose-700",
 };
 
 const validTransitions: Record<string, string[]> = {
-  draft: ["confirmed", "processing", "cancelled"],
-  confirmed: ["processing", "shipped", "cancelled"],
-  processing: ["shipped", "delivered", "cancelled"],
-  shipped: ["delivered"],
-  delivered: ["returned"], cancelled: [],
+  draft: ["pending_payment", "confirmed", "cancelled"],
+  pending_payment: ["confirmed", "cancelled"],
+  confirmed: ["completed", "cancelled"],
+  completed: [], cancelled: [],
 };
 
 const orderFilters = [
   { value: "all", label: "Все" },
   { value: "draft", label: "Черновик" },
+  { value: "pending_payment", label: "Ожидает оплаты" },
   { value: "confirmed", label: "Подтверждён" },
-  { value: "processing", label: "В обработке" },
-  { value: "shipped", label: "Отправлен" },
-  { value: "delivered", label: "Доставлен" },
+  { value: "completed", label: "Завершён" },
   { value: "cancelled", label: "Отменён" },
 ];
 
@@ -177,13 +174,13 @@ export default function OrdersPage() {
     () => filtered.reduce((s, o) => s + (o.status !== "cancelled" ? Number(o.total_amount) : 0), 0),
     [filtered]
   );
-  const activeCount = filtered.filter((o) => !["cancelled", "delivered"].includes(o.status)).length;
+  const activeCount = filtered.filter((o) => !["cancelled", "completed"].includes(o.status)).length;
 
   // CSV export
   const exportCSV = () => {
-    const header = "Номер;Клиент;Телефон;Город;Статус;Сумма (сум);Товаров;Дата\n";
+    const header = "Номер;Клиент;Телефон;Статус;Сумма (сум);Туров;Дата\n";
     const rows = sorted.map((o) =>
-      `${o.order_number};${o.customer_name};${o.phone};${o.city || ""};${statusLabels[o.status] || o.status};${o.total_amount};${o.items.length};${new Date(o.created_at).toLocaleDateString("ru")}`
+      `${o.order_number};${o.customer_name};${o.phone};${statusLabels[o.status] || o.status};${o.total_amount};${o.items.length};${new Date(o.created_at).toLocaleDateString("ru")}`
     ).join("\n");
     const blob = new Blob(["\uFEFF" + header + rows], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -197,14 +194,14 @@ export default function OrdersPage() {
 
   const toggle = (id: string) => setExpandedId(expandedId === id ? null : id);
 
-  const cancelledCount = orders.filter((o) => o.status === "cancelled" || o.status === "returned").length;
+  const cancelledCount = orders.filter((o) => o.status === "cancelled").length;
 
   const deleteCancelled = async () => {
     setDeleting(true);
     try {
       const res = await api.delete<{ deleted: number }>("/orders");
-      toast(`Удалено ${res.deleted} заказов`, "success");
-      setOrders((prev) => prev.filter((o) => o.status !== "cancelled" && o.status !== "returned"));
+      toast(`Удалено ${res.deleted} бронирований`, "success");
+      setOrders((prev) => prev.filter((o) => o.status !== "cancelled"));
     } catch {
       toast("Ошибка при удалении", "error");
     } finally {
@@ -214,7 +211,7 @@ export default function OrdersPage() {
 
   return (
     <div>
-      <PageHeader title={`Заказы (${orders.length})`} action={{ label: "Экспорт CSV", onClick: exportCSV }} />
+      <PageHeader title={`Бронирования (${orders.length})`} action={{ label: "Экспорт CSV", onClick: exportCSV }} />
 
       {/* Search + stats */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 md:gap-5 mb-3">
@@ -298,8 +295,8 @@ export default function OrdersPage() {
           <CardSkeleton count={6} />
         ) : paginated.length === 0 ? (
           <EmptyState
-            message={search ? "Ничего не найдено" : "Нет заказов"}
-            description={search ? undefined : "Заказы появятся когда AI оформит первую продажу через Telegram"}
+            message={search ? "Ничего не найдено" : "Нет бронирований"}
+            description={search ? undefined : "Бронирования появятся когда AI оформит первую бронь через Telegram"}
           />
         ) : (
           paginated.map((o) => (
@@ -324,7 +321,7 @@ export default function OrdersPage() {
                     ) : (
                       <span className={`px-2 py-0.5 rounded text-xs ${statusColors[o.status] || "bg-slate-100"}`}>{statusLabels[o.status]}</span>
                     )}
-                    <span className="text-xs text-slate-400">{plural(o.items.length, "товар", "товара", "товаров")}</span>
+                    <span className="text-xs text-slate-400">{plural(o.items.length, "тур", "тура", "туров")}</span>
                   </div>
                   <div className="text-sm text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{o.customer_name}</span>
@@ -344,12 +341,12 @@ export default function OrdersPage() {
               {expandedId === o.id && (
                 <div className="border-t border-slate-100 px-5 py-4 bg-slate-50/50">
                   <div className="mb-4">
-                    <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Товары</h3>
+                    <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Туры</h3>
                     <div className="space-y-2">
                       {o.items.map((item) => (
                         <div key={item.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-2.5 border border-slate-100">
                           <div>
-                            <p className="font-medium text-sm text-slate-900">{item.variant_title || item.product_name || "Товар"}</p>
+                            <p className="font-medium text-sm text-slate-900">{item.variant_title || item.product_name || "Тур"}</p>
                             {item.product_name && item.variant_title && (
                               <p className="text-xs text-slate-400">{item.product_name}</p>
                             )}
@@ -366,21 +363,7 @@ export default function OrdersPage() {
                     </div>
                   </div>
 
-                  {(o.address || o.delivery_type) && (
-                    <div className="mb-3">
-                      <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Доставка</h3>
-                      <div className="text-sm space-y-0.5">
-                        {o.delivery_type && (
-                          <span className="px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700">
-                            {o.delivery_type === "courier" || o.delivery_type?.toLowerCase().includes("кур") || o.delivery_type === "Kuryer orqali"
-                              ? "Курьер" : o.delivery_type === "pickup" || o.delivery_type?.toLowerCase().includes("само")
-                              ? "Самовывоз" : o.delivery_type}
-                          </span>
-                        )}
-                        {o.city && <p className="font-medium mt-1 text-slate-700">{o.city}{o.address && `, ${o.address}`}</p>}
-                      </div>
-                    </div>
-                  )}
+                  {/* Delivery section hidden for tour bookings */}
 
                   <div className="flex justify-between items-center pt-3 border-t border-slate-100">
                     <div className="flex items-center gap-3">
@@ -435,8 +418,8 @@ export default function OrdersPage() {
 
       <ConfirmDialog
         open={confirmDelete}
-        title="Удалить отменённые заказы"
-        message={`Удалить ${cancelledCount} отменённых/возвращённых заказов? Это действие нельзя отменить.`}
+        title="Удалить отменённые бронирования"
+        message={`Удалить ${cancelledCount} отменённых бронирований? Это действие нельзя отменить.`}
         confirmText="Удалить"
         variant="danger"
         loading={deleting}

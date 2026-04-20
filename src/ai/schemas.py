@@ -25,6 +25,9 @@ class AiSettingsCreate(BaseModel):
     channel_cta_handle: str | None = None
     channel_ai_replies_enabled: bool = True
     channel_show_price: bool = True
+    # Instagram auto-reply settings
+    allow_auto_instagram_dm_reply: bool = True
+    allow_auto_instagram_comment_reply: bool = True
     # Store-level settings
     timezone: str = "Asia/Tashkent"
     currency: str = "UZS"
@@ -55,6 +58,9 @@ class AiSettingsOut(BaseModel):
     channel_cta_handle: str | None = None
     channel_ai_replies_enabled: bool = True
     channel_show_price: bool = True
+    # Instagram auto-reply settings
+    allow_auto_instagram_dm_reply: bool = True
+    allow_auto_instagram_comment_reply: bool = True
     # Store-level settings
     timezone: str = "Asia/Tashkent"
     currency: str = "UZS"

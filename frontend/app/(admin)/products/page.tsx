@@ -50,17 +50,17 @@ function fmtPrice(val: string | null): string {
 }
 
 function priceRange(p: Product): string {
-  if (!p.min_price) return "Нет вариантов";
+  if (!p.min_price) return "Нет дат";
   if (p.min_price === p.max_price) return `${fmtPrice(p.min_price)} сум`;
   return `${fmtPrice(p.min_price)} — ${fmtPrice(p.max_price)} сум`;
 }
 
 function stockBadge(stock: number) {
   if (stock <= 0)
-    return <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-rose-50 text-rose-600">Нет в наличии</span>;
-  if (stock <= 3)
-    return <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-600">{stock} шт</span>;
-  return <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-600">{stock} шт</span>;
+    return <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-rose-50 text-rose-600">Мест нет</span>;
+  if (stock <= 5)
+    return <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-600">{stock} мест</span>;
+  return <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-600">{stock} мест</span>;
 }
 
 export default function ProductsPage() {
@@ -82,7 +82,7 @@ export default function ProductsPage() {
   const { toast } = useToast();
 
   const load = useCallback(() => {
-    api.get<Product[]>("/products?limit=500").then((data) => { setProducts(data); setLoading(false); }).catch(() => { toast("Не удалось загрузить товары", "error"); setLoading(false); });
+    api.get<Product[]>("/products?limit=500").then((data) => { setProducts(data); setLoading(false); }).catch(() => { toast("Не удалось загрузить туры", "error"); setLoading(false); });
     api.get<Category[]>("/categories").then(setCategories).catch(() => toast("Не удалось загрузить категории", "error"));
   }, []);
   useEffect(() => {
@@ -115,9 +115,9 @@ export default function ProductsPage() {
     try {
       await api.patch(`/products/${p.id}`, { is_active: !p.is_active });
       setProducts((prev) => prev.map((x) => x.id === p.id ? { ...x, is_active: !x.is_active } : x));
-      toast(p.is_active ? "Товар скрыт" : "Товар активирован", "success");
+      toast(p.is_active ? "Тур скрыт" : "Тур активирован", "success");
     } catch {
-      toast("Ошибка при изменении статуса", "error");
+      toast("Ошибка при изменении", "error");
     }
   };
 
@@ -143,7 +143,7 @@ export default function ProductsPage() {
         await Promise.all(ids.slice(i, i + BATCH).map((id) => api.patch(`/products/${id}`, { is_active: active })));
       }
       setProducts((prev) => prev.map((p) => selected.has(p.id) ? { ...p, is_active: active } : p));
-      toast(`${selected.size} ${plural(selected.size, "товар", "товара", "товаров")} ${active ? "активировано" : "скрыто"}`, "success");
+      toast(`${selected.size} ${plural(selected.size, "тур", "тура", "туров")} ${active ? "активировано" : "скрыто"}`, "success");
       setSelected(new Set());
     } catch {
       toast("Ошибка массового обновления", "error");
@@ -151,7 +151,7 @@ export default function ProductsPage() {
   };
 
   const exportCSV = () => {
-    const header = "Название;Бренд;Модель;Категория;Мин. цена;Макс. цена;Остаток;Статус;Вариантов\n";
+    const header = "Название;Сложность;Длительность;Категория;Мин. цена;Макс. цена;Мест;Статус;Дат\n";
     const rows = filtered.map((p) =>
       `${p.name};${p.brand || ""};${p.model || ""};${p.category_name || ""};${p.min_price || ""};${p.max_price || ""};${p.total_stock};${p.is_active ? "Активен" : "Скрыт"};${p.variants.length}`
     ).join("\n");
@@ -203,10 +203,10 @@ export default function ProductsPage() {
         variants,
       });
       setShowCreate(false);
-      toast(`Товар создан${variants ? ` с ${variants.length} вариант${variants.length === 1 ? "ом" : "ами"}` : ""}`, "success");
+      toast(`Тур создан${variants ? ` с ${variants.length} дат${variants.length === 1 ? "ой" : "ами"}` : ""}`, "success");
       load();
     } catch {
-      toast("Ошибка при создании товара", "error");
+      toast("Ошибка при создании тура", "error");
     } finally {
       setCreating(false);
     }
@@ -216,8 +216,8 @@ export default function ProductsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Товары ({products.length})</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Управление каталогом товаров</p>
+          <h1 className="text-2xl font-bold text-slate-900">Туры ({products.length})</h1>
+          <p className="text-sm text-slate-400 mt-0.5">Управление каталогом туров</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={exportCSV} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg px-3 py-2 text-sm font-medium transition-colors">
@@ -251,15 +251,15 @@ export default function ProductsPage() {
             {/* Header with steps */}
             <div className="px-6 py-4 border-b border-slate-100">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold text-slate-900">Новый товар</h3>
+                <h3 className="text-lg font-bold text-slate-900">Новый тур</h3>
                 <button type="button" onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-slate-600 transition-colors" aria-label="Закрыть">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
               <div className="flex items-center gap-2">
                 {[
-                  { n: 1, label: "Товар" },
-                  { n: 2, label: "Варианты" },
+                  { n: 1, label: "Тур" },
+                  { n: 2, label: "Даты" },
                   { n: 3, label: "Обзор" },
                 ].map((s, i) => (
                   <div key={s.n} className="flex items-center gap-2 flex-1">
@@ -292,7 +292,7 @@ export default function ProductsPage() {
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
                       className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                      minLength={2} maxLength={200} placeholder="iPhone 17 Pro" autoFocus
+                      minLength={2} maxLength={200} placeholder="Paltau sharshara" autoFocus
                     />
                   </div>
                   <div>
@@ -305,17 +305,17 @@ export default function ProductsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Бренд</label>
-                      <input type="text" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="Apple" maxLength={100} />
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Сложность</label>
+                      <input type="text" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="Лёгкий" maxLength={100} />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Модель</label>
-                      <input type="text" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="A3104" maxLength={100} />
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Длительность</label>
+                      <input type="text" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="1 день" maxLength={100} />
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">Описание</label>
-                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="Краткое описание товара" maxLength={1000} />
+                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="Краткое описание тура" maxLength={1000} />
                   </div>
                 </div>
               )}
@@ -324,7 +324,7 @@ export default function ProductsPage() {
               {wizardStep === 2 && (
                 <div className="space-y-4">
                   <p className="text-sm text-slate-500">
-                    Добавьте варианты товара — например, разные цвета, объёмы памяти или размеры. Можно пропустить и добавить позже.
+                    Добавьте даты отправления для этого тура. Можно пропустить и добавить позже.
                   </p>
 
                   {/* Added variants list */}
@@ -350,23 +350,23 @@ export default function ProductsPage() {
 
                   {/* Add variant form */}
                   <div className="border border-dashed border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/50">
-                    <p className="text-xs font-medium text-slate-600">Добавить вариант</p>
+                    <p className="text-xs font-medium text-slate-600">Добавить дату</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <input type="text" placeholder="Название *" value={variantDraft.title} onChange={(e) => setVariantDraft({ ...variantDraft, title: e.target.value })}
+                      <input type="text" placeholder="Название (напр: 19-апрель) *" value={variantDraft.title} onChange={(e) => setVariantDraft({ ...variantDraft, title: e.target.value })}
                         className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none col-span-2"
                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addVariantFromDraft(); } }} />
-                      <input type="text" placeholder="Цвет" value={variantDraft.color} onChange={(e) => setVariantDraft({ ...variantDraft, color: e.target.value })}
+                      <input type="text" placeholder="Дата (19.04.2026)" value={variantDraft.color} onChange={(e) => setVariantDraft({ ...variantDraft, color: e.target.value })}
                         className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                      <input type="text" placeholder="Память (256GB)" value={variantDraft.storage} onChange={(e) => setVariantDraft({ ...variantDraft, storage: e.target.value })}
+                      <input type="text" placeholder="Время (08:00)" value={variantDraft.storage} onChange={(e) => setVariantDraft({ ...variantDraft, storage: e.target.value })}
                         className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                      <input type="text" placeholder="RAM (8GB)" value={variantDraft.ram} onChange={(e) => setVariantDraft({ ...variantDraft, ram: e.target.value })}
+                      <input type="text" placeholder="Доп. инфо" value={variantDraft.ram} onChange={(e) => setVariantDraft({ ...variantDraft, ram: e.target.value })}
                         className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                       <input type="number" placeholder="Цена *" value={variantDraft.price} onChange={(e) => setVariantDraft({ ...variantDraft, price: e.target.value })}
                         className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" min={1} />
                     </div>
                     <button type="button" onClick={addVariantFromDraft} disabled={!variantDraft.title.trim() || !variantDraft.price}
                       className="w-full py-2 bg-white border border-slate-200 rounded-lg text-sm text-indigo-600 font-medium hover:bg-indigo-50 disabled:opacity-40 disabled:hover:bg-white transition-colors">
-                      + Добавить вариант
+                      + Добавить дату
                     </button>
                   </div>
                 </div>
@@ -389,7 +389,7 @@ export default function ProductsPage() {
 
                   {wizardVariants.length > 0 ? (
                     <div>
-                      <p className="text-xs font-medium text-slate-500 mb-2">{wizardVariants.length} {plural(wizardVariants.length, "вариант", "варианта", "вариантов")}</p>
+                      <p className="text-xs font-medium text-slate-500 mb-2">{wizardVariants.length} {plural(wizardVariants.length, "дата", "даты", "дат")}</p>
                       <div className="space-y-1.5">
                         {wizardVariants.map((v, i) => (
                           <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-2.5">
@@ -408,7 +408,7 @@ export default function ProductsPage() {
                     </div>
                   ) : (
                     <div className="text-center py-4 bg-amber-50/50 rounded-xl">
-                      <p className="text-sm text-amber-600">Без вариантов — можно добавить позже на странице товара</p>
+                      <p className="text-sm text-amber-600">Без дат отправления — можно добавить позже на странице тура</p>
                     </div>
                   )}
                 </div>
@@ -468,7 +468,7 @@ export default function ProductsPage() {
 
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-3 mb-3">
-        <input type="text" placeholder="Поиск по названию или бренду..." value={search} onChange={(e) => setSearch(e.target.value)}
+        <input type="text" placeholder="Поиск по названию тура..." value={search} onChange={(e) => setSearch(e.target.value)}
           className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" />
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
           className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" aria-label="Фильтр по категории">
@@ -481,7 +481,7 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <span>Сортировка:</span>
-          {([["name", "по названию"], ["price", "по цене"], ["stock", "по наличию"]] as const).map(([key, label]) => (
+          {([["name", "по названию"], ["price", "по цене"], ["stock", "по местам"]] as const).map(([key, label]) => (
             <button key={key} type="button" onClick={() => setSortBy(key)}
               className={`px-2 py-1 rounded transition-colors ${sortBy === key ? "bg-indigo-100 text-indigo-700 font-medium" : "hover:bg-slate-100"}`}>
               {label}
@@ -502,9 +502,9 @@ export default function ProductsPage() {
         <TableSkeleton rows={6} cols={7} />
       ) : paginated.length === 0 ? (
         <EmptyState
-          message={search ? "Ничего не найдено" : "Нет товаров"}
-          description={search ? undefined : "Добавьте товары чтобы AI мог предлагать их клиентам"}
-          action={search ? undefined : { label: "AI Создать товар", onClick: () => setShowSmartCreate(true) }}
+          message={search ? "Ничего не найдено" : "Нет туров"}
+          description={search ? undefined : "Добавьте туры чтобы AI мог предлагать их клиентам"}
+          action={search ? undefined : { label: "AI Создать тур", onClick: () => setShowSmartCreate(true) }}
         />
       ) : (
       <>
@@ -545,11 +545,11 @@ export default function ProductsPage() {
                 <th className="pl-4 py-3 w-8">
                   <input type="checkbox" checked={selected.size === paginated.length && paginated.length > 0} onChange={toggleSelectAll} className="rounded" />
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Товар</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Тур</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Категория</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Цена</th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Наличие</th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Варианты</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Места</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Даты</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Статус</th>
               </tr>
             </thead>

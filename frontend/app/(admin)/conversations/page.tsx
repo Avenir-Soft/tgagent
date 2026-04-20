@@ -21,6 +21,7 @@ interface Conversation {
   telegram_username: string | null;
   telegram_first_name: string | null;
   source_type: string;
+  source_platform: string;
   status: string;
   state: string;
   state_context: Record<string, any> | null;
@@ -31,6 +32,7 @@ interface Conversation {
   last_message_sender_type: string | null;
   unread_count: number;
   avatar_url: string | null;
+  instagram_user_id: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -49,9 +51,9 @@ const stateLabels: Record<string, string> = {
   idle: "Ожидание",
   browsing: "Просматривает",
   selection: "Выбирает",
-  cart: "Корзина",
-  checkout: "Оформление",
-  post_order: "Заказ",
+  booking: "Бронирование",
+  pending_payment: "Ожидает оплаты",
+  post_booking: "Забронировано",
   handoff: "Оператор",
 };
 
@@ -59,9 +61,9 @@ const stateColors: Record<string, string> = {
   idle: "bg-slate-100 text-slate-400",
   browsing: "bg-blue-50 text-blue-600",
   selection: "bg-indigo-50 text-indigo-600",
-  cart: "bg-violet-50 text-violet-700",
-  checkout: "bg-amber-50 text-amber-700",
-  post_order: "bg-emerald-50 text-emerald-700",
+  booking: "bg-violet-50 text-violet-700",
+  pending_payment: "bg-amber-50 text-amber-700",
+  post_booking: "bg-emerald-50 text-emerald-700",
   handoff: "bg-amber-50 text-amber-600",
 };
 
@@ -83,6 +85,7 @@ const sourceFilters = [
   { value: "all", label: "Все" },
   { value: "dm", label: "Личные" },
   { value: "comment_thread", label: "Комменты" },
+  { value: "instagram", label: "Instagram" },
 ];
 
 interface CommentInteraction {
@@ -184,7 +187,8 @@ export default function ConversationsPage() {
       params.set("limit", String(PAGE_SIZE));
       if (!reset) params.set("offset", String((pageRef.current + 1) * PAGE_SIZE));
       if (statusFilter !== "all") params.set("status", statusFilter);
-      if (sourceFilter !== "all") params.set("source_type", sourceFilter);
+      if (sourceFilter !== "all" && sourceFilter !== "instagram") params.set("source_type", sourceFilter);
+      if (sourceFilter === "instagram") params.set("source_platform", "instagram");
 
       try {
         const data = await api.get<Conversation[]>(`/conversations?${params}`);
@@ -535,8 +539,10 @@ export default function ConversationsPage() {
                     <Avatar
                       src={c.avatar_url}
                       name={c.telegram_first_name}
-                      fallback={c.source_type === "dm" ? "D" : "C"}
-                      colors={c.source_type === "dm"
+                      fallback={c.source_platform === "instagram" ? "IG" : c.source_type === "dm" ? "D" : "C"}
+                      colors={c.source_platform === "instagram"
+                        ? { bg: "bg-gradient-to-br from-purple-50 to-pink-50", text: "text-pink-600" }
+                        : c.source_type === "dm"
                         ? { bg: "bg-indigo-50", text: "text-indigo-600" }
                         : { bg: "bg-violet-50", text: "text-violet-600" }
                       }
@@ -552,8 +558,16 @@ export default function ConversationsPage() {
                   <div className="flex-1 min-w-0">
                     {/* First line: name + badges */}
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* Platform badge */}
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        c.source_platform === "instagram"
+                          ? "bg-gradient-to-r from-purple-100 to-pink-100 text-pink-700"
+                          : "bg-sky-50 text-sky-600"
+                      }`}>
+                        {c.source_platform === "instagram" ? "IG" : "TG"}
+                      </span>
                       <span className={`font-medium text-sm ${unread > 0 ? "text-slate-900" : "text-slate-700"}`}>
-                        {c.telegram_first_name || (c.source_type === "dm" ? "Личное сообщение" : "Комментарий")}
+                        {c.telegram_first_name || (c.source_platform === "instagram" ? "Instagram DM" : c.source_type === "dm" ? "Личное сообщение" : "Комментарий")}
                       </span>
                       {c.telegram_username && (
                         <span className="text-xs text-indigo-500">@{c.telegram_username}</span>

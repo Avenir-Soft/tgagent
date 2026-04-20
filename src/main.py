@@ -22,6 +22,7 @@ from src.telegram.router import router as telegram_router
 from src.tenants.router import router as tenants_router
 from src.analytics.router import router as analytics_router
 from src.sse.router import router as sse_router
+from src.instagram.router import router as instagram_router
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -35,6 +36,9 @@ async def _run_startup_migrations():
     from sqlalchemy import text as _sql
     async with engine.begin() as conn:
         stmts = [
+            # Tour booking: update order status constraint
+            "ALTER TABLE orders DROP CONSTRAINT IF EXISTS ck_orders_status",
+            "ALTER TABLE orders ADD CONSTRAINT ck_orders_status CHECK (status IN ('draft', 'pending_payment', 'confirmed', 'completed', 'cancelled'))",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS training_label VARCHAR(20)",
             "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_training_candidate BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
@@ -43,6 +47,7 @@ async def _run_startup_migrations():
             "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS channel_cta_handle VARCHAR(100)",
             "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS channel_ai_replies_enabled BOOLEAN NOT NULL DEFAULT TRUE",
             "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS channel_show_price BOOLEAN NOT NULL DEFAULT TRUE",
+            "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS tour_group_link VARCHAR(255)",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_settings_tenant ON ai_settings (tenant_id)",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_tenant_variant ON inventory (tenant_id, variant_id)",
             "CREATE INDEX IF NOT EXISTS ix_conversations_last_msg ON conversations (last_message_at DESC NULLS LAST)",
@@ -139,6 +144,45 @@ async def _run_startup_migrations():
             "CREATE INDEX IF NOT EXISTS ix_ai_trace_logs_tenant ON ai_trace_logs (tenant_id, created_at DESC)",
             "ALTER TABLE ai_trace_logs ADD COLUMN IF NOT EXISTS prompt_tokens INT NOT NULL DEFAULT 0",
             "ALTER TABLE ai_trace_logs ADD COLUMN IF NOT EXISTS completion_tokens INT NOT NULL DEFAULT 0",
+            # Instagram integration
+            """CREATE TABLE IF NOT EXISTS instagram_accounts (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                instagram_user_id VARCHAR(50) NOT NULL,
+                instagram_username VARCHAR(100),
+                display_name VARCHAR(255),
+                facebook_page_id VARCHAR(50),
+                access_token TEXT,
+                token_expires_at TIMESTAMPTZ,
+                status VARCHAR(20) NOT NULL DEFAULT 'disconnected',
+                is_primary BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_instagram_accounts_tenant_user ON instagram_accounts (tenant_id, instagram_user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_tenant ON instagram_accounts (tenant_id)",
+            "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS instagram_user_id VARCHAR(255)",
+            "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS instagram_thread_id VARCHAR(255)",
+            "CREATE INDEX IF NOT EXISTS ix_conversations_ig_user ON conversations (instagram_user_id) WHERE instagram_user_id IS NOT NULL",
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_user_id VARCHAR(255)",
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_username VARCHAR(255)",
+            # Update leads source constraint to include Instagram
+            "ALTER TABLE leads DROP CONSTRAINT IF EXISTS ck_leads_source",
+            "ALTER TABLE leads ADD CONSTRAINT ck_leads_source CHECK (source IN ('dm', 'comment', 'manual', 'instagram_dm', 'instagram_comment'))",
+            # AI settings for Instagram
+            "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS allow_auto_instagram_dm_reply BOOLEAN NOT NULL DEFAULT TRUE",
+            "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS allow_auto_instagram_comment_reply BOOLEAN NOT NULL DEFAULT TRUE",
+            # Template platform selector
+            "ALTER TABLE comment_templates ADD COLUMN IF NOT EXISTS platform VARCHAR(20) NOT NULL DEFAULT 'all'",
+            # Category translations
+            "ALTER TABLE categories ADD COLUMN IF NOT EXISTS name_ru VARCHAR(200)",
+            "ALTER TABLE categories ADD COLUMN IF NOT EXISTS name_uz_cyr VARCHAR(200)",
+            "ALTER TABLE categories ADD COLUMN IF NOT EXISTS name_en VARCHAR(200)",
+            # Product translations
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS name_ru VARCHAR(500)",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS name_uz_cyr VARCHAR(500)",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS name_en VARCHAR(500)",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS description_ru TEXT",
         ]
         for stmt in stmts:
             try:
@@ -160,6 +204,7 @@ async def _run_startup_migrations():
             "ai_settings", "ai_trace_logs", "orders",
             "comment_templates", "conversations", "messages",
             "broadcast_history",
+            "instagram_accounts",
         ]
         for tbl in _rls_tables:
             for rls_stmt in [
@@ -298,6 +343,56 @@ async def _execute_due_broadcasts():
                 await db.commit()
 
 
+async def _refresh_instagram_tokens():
+    """Refresh Instagram tokens expiring within 7 days."""
+    from src.core.database import async_session_factory
+    from src.instagram.models import InstagramAccount
+    from src.instagram.client import InstagramApiClient
+    from src.instagram.service import instagram_manager
+    from sqlalchemy import select
+    from datetime import datetime, timedelta, timezone
+
+    threshold = datetime.now(timezone.utc) + timedelta(days=7)
+
+    async with async_session_factory() as db:
+        result = await db.execute(
+            select(InstagramAccount).where(
+                InstagramAccount.status == "connected",
+                InstagramAccount.access_token.isnot(None),
+                InstagramAccount.token_expires_at < threshold,
+            )
+        )
+        accounts = result.scalars().all()
+
+        for acc in accounts:
+            try:
+                refreshed = await InstagramApiClient.refresh_long_lived_token(acc.access_token)
+                if refreshed:
+                    acc.access_token = refreshed["access_token"]
+                    acc.token_expires_at = InstagramApiClient.token_expiry_from_seconds(
+                        refreshed.get("expires_in", 5184000)
+                    )
+                    logger.info("Refreshed IG token for tenant=%s @%s", acc.tenant_id, acc.instagram_username)
+                    # Restart client with new token
+                    await instagram_manager.stop_client(acc.tenant_id)
+                    await instagram_manager.start_client(acc)
+                else:
+                    acc.status = "token_expired"
+                    logger.warning("IG token refresh failed for tenant=%s", acc.tenant_id)
+                    # Notify via SSE
+                    try:
+                        from src.sse.event_bus import publish_event
+                        await publish_event(acc.tenant_id, "instagram_token_expired", {
+                            "username": acc.instagram_username,
+                        })
+                    except Exception:
+                        pass
+            except Exception:
+                logger.exception("Error refreshing IG token for %s", acc.tenant_id)
+
+        await db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -326,6 +421,60 @@ async def lifespan(app: FastAPI):
         logger.info("Telegram clients started")
     except Exception:
         logger.exception("Failed to start Telegram clients (non-fatal on dev)")
+
+    # Start Instagram clients
+    try:
+        from src.instagram.service import instagram_manager as _ig_mgr
+
+        # Mode 1: instagrapi (demo) — if username/password configured
+        if settings.instagram_username and (settings.instagram_password or settings.instagram_session_id):
+            # Need a tenant_id — use first tenant from DB
+            from src.core.database import async_session_factory as _asf
+            from sqlalchemy import select as _sel, text as _txt
+            async with _asf() as _ig_db:
+                # Use Easy Tour tenant (not TechnoUz)
+                _tenant_row = (await _ig_db.execute(
+                    _txt("SELECT id FROM tenants WHERE name ILIKE '%easy%tour%' LIMIT 1")
+                )).first()
+                if not _tenant_row:
+                    _tenant_row = (await _ig_db.execute(
+                        _txt("SELECT id FROM tenants ORDER BY created_at DESC LIMIT 1")
+                    )).first()
+                if _tenant_row:
+                    _ig_tenant_id = _tenant_row[0]
+                    await _ig_mgr.start_instagrapi(
+                        _ig_tenant_id,
+                        settings.instagram_username,
+                        password=settings.instagram_password,
+                        session_id=settings.instagram_session_id,
+                        proxy=settings.instagram_proxy,
+                    )
+                    logger.info("Instagram (instagrapi) started for tenant=%s", _ig_tenant_id)
+                else:
+                    logger.warning("No tenants found — skipping Instagram startup")
+
+        # Mode 2: official Meta API — if accounts in DB with access_token
+        else:
+            try:
+                from src.instagram.models import InstagramAccount as _IgAcct
+                from src.core.database import async_session_factory as _asf
+                from sqlalchemy import select as _sel
+                async with _asf() as _ig_db:
+                    _ig_result = await _ig_db.execute(
+                        _sel(_IgAcct).where(
+                            _IgAcct.status == "connected",
+                            _IgAcct.access_token.isnot(None),
+                        )
+                    )
+                    _ig_accounts = _ig_result.scalars().all()
+                    for _ig_acc in _ig_accounts:
+                        await _ig_mgr.start_client(_ig_acc)
+                    if _ig_accounts:
+                        logger.info("Instagram (official) started: %d account(s)", len(_ig_accounts))
+            except Exception:
+                logger.info("Instagram official API: no accounts configured (table may not exist yet)")
+    except Exception:
+        logger.exception("Failed to start Instagram clients (non-fatal)")
 
     # Recover any message buffers lost during a previous crash
     try:
@@ -363,14 +512,44 @@ async def lifespan(app: FastAPI):
 
     scheduler_task = asyncio.create_task(_check_scheduled_broadcasts())
 
+    # Instagram token refresh (every 12 hours, refresh if <7 days left)
+    async def _ig_token_refresh():
+        while True:
+            try:
+                await asyncio.sleep(43200)  # 12 hours
+                await _refresh_instagram_tokens()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Instagram token refresh error")
+
+    ig_refresh_task = asyncio.create_task(_ig_token_refresh())
+
+    # Instagram periodic cleanup (every hour)
+    async def _ig_cleanup():
+        while True:
+            try:
+                await asyncio.sleep(3600)
+                from src.instagram.service import instagram_manager as _ig
+                await _ig.periodic_cleanup()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Instagram cleanup error")
+
+    ig_cleanup_task = asyncio.create_task(_ig_cleanup())
+
     yield
 
     # Shutdown
+    ig_refresh_task.cancel()
+    ig_cleanup_task.cancel()
     scheduler_task.cancel()
-    try:
-        await scheduler_task
-    except asyncio.CancelledError:
-        pass
+    for _task in [scheduler_task, ig_refresh_task, ig_cleanup_task]:
+        try:
+            await _task
+        except asyncio.CancelledError:
+            pass
     logger.info("Shutting down AI Closer...")
     try:
         from src.sse.event_bus import close_event_bus
@@ -459,6 +638,7 @@ app.include_router(ai_router)
 app.include_router(training_router)
 app.include_router(analytics_router)
 app.include_router(sse_router)
+app.include_router(instagram_router)
 
 
 @app.get("/health")

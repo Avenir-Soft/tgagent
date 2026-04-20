@@ -1,0 +1,1 @@
+- [Superpowers](~/.claude/skills/superpowers/skills/using-superpowers/SKILL.md)

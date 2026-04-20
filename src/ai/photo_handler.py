@@ -14,8 +14,10 @@ logger = logging.getLogger(__name__)
 
 # Keywords indicating user wants to see photos
 _PHOTO_KEYWORDS = {
-    "фото", "фотк", "фотог", "фоточ", "покажи", "photo", "picture",
+    "фото", "фотк", "фотог", "фоточ", "покажи", "покажите", "photo", "picture",
     "pic", "image", "show me", "расм", "rasm", "сурат", "увидеть",
+    "скинь", "скинуть", "скиньте", "скидывай", "отправь", "отправьте",
+    "пришли", "пришлите", "картинк", "показать",
     # Uzbek: "show" / "send" / "photo"
     "курсат", "кўрсат", "курсатинг", "кўрсатинг", "ko'rsat", "ko'rsating",
     "korsat", "korsating", "юбор", "жўнат", "jo'nat", "jonat",
@@ -24,14 +26,14 @@ _PHOTO_KEYWORDS = {
 
 # Patterns to strip from AI text when photos are attached
 _PHOTO_LIST_PATTERN = re.compile(
-    r'(?:\n\s*\d+\.\s*(?:iPhone|Samsung|Apple|Sony|MacBook|iPad|AirPods|Anker|Xiaomi)'
-    r'\s[^\n]*(?:Photo|Фото|фото)?\s*\d*\s*)+'
+    r'(?:\n\s*\d+\.\s*(?:iPhone|Samsung|Apple|Sony|MacBook|iPad|AirPods|Anker|Xiaomi|Paltau|Chimgan|Bungee|Zipline|Tuzkon|Nefrit|Xiva)'
+    r'\s[^\n]*(?:Photo|Фото|фото|rasm|surat)?\s*\d*\s*)+'
 )
 _PHOTO_LIST_DASH = re.compile(
-    r'(?:\n\s*[-•]\s*(?:iPhone|Samsung|Apple|Sony|MacBook|iPad|AirPods|Anker|Xiaomi)'
-    r'\s[^\n]*(?:Photo|Фото|фото)?\s*\d*\s*)+'
+    r'(?:\n\s*[-•]\s*(?:iPhone|Samsung|Apple|Sony|MacBook|iPad|AirPods|Anker|Xiaomi|Paltau|Chimgan|Bungee|Zipline|Tuzkon|Nefrit|Xiva)'
+    r'\s[^\n]*(?:Photo|Фото|фото|rasm|surat)?\s*\d*\s*)+'
 )
-_PHOTO_HEADER = re.compile(r'[Вв]от\s+фото(?:графи[яи])?\s+(?:устройства|товара)\s*:\s*\n?')
+_PHOTO_HEADER = re.compile(r'[Вв]от\s+фото(?:графи[яи])?\s+(?:устройства|товара|тура)\s*:\s*\n?')
 _PHOTO_DENY_PATTERNS = [
     re.compile(
         r'[Кк]\s*сожалени\w*[,.]?\s*(?:не удалось|не могу|нет возможности)'
@@ -275,13 +277,17 @@ async def force_fetch_photos(
     # Strip photo-related words to get clean product search query
     # "скинь фотки айфона" → "айфона", "покажи фото iphone" → "iphone"
     clean_query = user_message.lower()
-    for noise in ("скинь", "покажи", "пришли", "отправь", "кинь", "дай", "хочу", "можно",
+    for noise in ("скинь", "скинуть", "покажи", "показать", "пришли", "отправь", "кинь", "дай", "хочу", "можно",
+                   "можете", "могу", "можешь", "отправить", "отправите",
+                   "скиньте", "покажите", "присылайте", "присылать",
                    "фотки", "фоток", "фото", "фотографии", "фотку", "фоточки",
                    "фотографию", "фотографий", "картинки", "картинку", "фоточку",
                    "photo", "photos", "picture", "pictures", "pic", "pics",
                    "image", "images", "show", "send", "see", "want", "wanna",
                    "can", "give", "look", "loook", "okay", "ok",
                    "me", "it", "you", "please", "пж", "пожалуйста",
+                   "у", "вас", "есть", "ваш", "ваши", "мне", "нам", "их", "а", "и", "на",
+                   "the", "a", "an", "of", "for", "your", "their", "some", "any",
                    # Uzbek noise words
                    "курсат", "кўрсат", "курсатинг", "кўрсатинг", "юбор", "жўнат",
                    "ko'rsat", "ko'rsating", "korsat", "jonat", "jo'nat",
@@ -369,15 +375,35 @@ async def force_fetch_photos(
         return []
 
 
+_FAKE_PHOTO_TEXT = re.compile(
+    r'\n?\s*(?:📸\s*)?(?:\[?[Ff]otosuratlar\]?|Фотосуратлар|фотографии|photos?)\s*'
+    r'(?:yuboriladi|yuborilmoqda|quyida|ниже|below|отправлю|отправляю)?'
+    r'[:.!]?\s*(?:\n|$)',
+    re.IGNORECASE | re.MULTILINE,
+)
+# Catch "Mana tur suratlari:", "Mana tafsilotlar:", "Вот фото тура:", "Mana fotosuratlar:" standalone lines
+_FAKE_PHOTO_LINE = re.compile(
+    r'\n?\s*(?:Mana\s+(?:tur\s+)?(?:suratlari|fotosuratlar|tafsilotlar)|Вот\s+фото(?:графии)?\s+тура)\s*[:.!]?\s*(?:\n|$)',
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
 def clean_photo_text(final_text: str, has_photos: bool) -> str:
     """Clean AI text that contradicts photo sending or lists individual photos.
 
-    Only called when photos are actually being sent.
+    Always strips fake photo promises. Deep cleaning only when photos are attached.
     """
-    if not has_photos or not final_text:
+    if not final_text:
         return final_text
 
-    cleaned = final_text
+    # Always strip fake "photos will be sent" text (longer patterns first)
+    cleaned = _FAKE_PHOTO_LINE.sub('', final_text)
+    cleaned = _FAKE_PHOTO_TEXT.sub('', cleaned).strip()
+
+    if not has_photos:
+        return cleaned
+
+    # Deep clean when photos are attached (keep fake-text stripping from above)
     cleaned = _PHOTO_LIST_PATTERN.sub('', cleaned)
     cleaned = _PHOTO_LIST_DASH.sub('', cleaned)
     cleaned = _PHOTO_HEADER.sub('', cleaned)
@@ -388,4 +414,4 @@ def clean_photo_text(final_text: str, has_photos: bool) -> str:
     cleaned = cleaned.strip()
     if cleaned and len(cleaned) > 5:
         return cleaned
-    return "Вот фотографии товара:"
+    return "Mana tur suratlari:"

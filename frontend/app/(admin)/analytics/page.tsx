@@ -174,7 +174,7 @@ const tabs = [
   { key: "customers", label: "Клиенты" },
   { key: "conversations", label: "Диалоги" },
   { key: "funnel", label: "Воронка" },
-  { key: "stock", label: "Склад" },
+  { key: "stock", label: "Места" },
   { key: "competitors", label: "Конкуренты" },
 ];
 
@@ -441,7 +441,7 @@ export default function AnalyticsPage() {
           </div>
           <h3 className="text-lg font-semibold text-slate-900 mb-2">AI анализ вашего бизнеса</h3>
           <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
-            AI проанализирует выручку, конверсию, сегменты клиентов, остатки товаров и причины handoff — и даст конкретные рекомендации
+            AI проанализирует выручку, конверсию, сегменты клиентов, наличие мест и причины handoff — и даст конкретные рекомендации
           </p>
           <button
             type="button"
@@ -641,7 +641,7 @@ export default function AnalyticsPage() {
         return (
           <div className="card p-5">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-900">Предупреждения по складу</h3>
+              <h3 className="text-sm font-bold text-slate-900">Предупреждения по местам</h3>
               {alertItems.length > 5 && (
                 <button
                   onClick={() => setShowAllAlerts(!showAllAlerts)}
@@ -984,7 +984,7 @@ export default function AnalyticsPage() {
         <table className="w-full text-sm min-w-[700px]">
           <thead className="bg-slate-50 text-left">
             <tr>
-              <th className="px-4 py-3 text-slate-500 font-medium">Товар</th>
+              <th className="px-4 py-3 text-slate-500 font-medium">Тур</th>
               <th className="px-4 py-3 text-slate-500 font-medium">Вариант</th>
               {[
                 { col: "available_stock", label: "Остаток" },
@@ -1203,7 +1203,7 @@ export default function AnalyticsPage() {
           <thead className="bg-slate-50 text-left">
             <tr>
               <th className="px-4 py-3 text-slate-500 font-medium">Конкурент</th>
-              <th className="px-4 py-3 text-slate-500 font-medium">Товар</th>
+              <th className="px-4 py-3 text-slate-500 font-medium">Тур</th>
               <th className="px-4 py-3 text-slate-500 font-medium">Их цена</th>
               <th className="px-4 py-3 text-slate-500 font-medium">Наша цена</th>
               <th className="px-4 py-3 text-slate-500 font-medium">Кто выгоднее</th>
@@ -1267,7 +1267,7 @@ export default function AnalyticsPage() {
 
   const exportStock = () => {
     if (!stock) return;
-    exportCSV("stock.csv", ["Товар", "Вариант", "Остаток", "Продаж/день", "До стокаута", "Прогноз", "Риск"],
+    exportCSV("stock.csv", ["Тур", "Дата", "Мест", "Броней/день", "До заполнения", "Прогноз", "Риск"],
       stock.items.map((i) => [i.product_name, i.variant_title, String(i.available_stock), String(i.avg_daily_sales), String(i.days_until_stockout ?? ""), String(i.forecasted_demand), i.risk]));
   };
 
@@ -1282,7 +1282,7 @@ export default function AnalyticsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Аналитика</h1>
-          <p className="text-sm text-slate-500 mt-1">Клиенты, конверсия, склад и конкуренты</p>
+          <p className="text-sm text-slate-500 mt-1">Клиенты, конверсия, места и конкуренты</p>
         </div>
         {/* Date range picker */}
         <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">

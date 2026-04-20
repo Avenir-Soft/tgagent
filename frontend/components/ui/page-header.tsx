@@ -6,17 +6,21 @@ import { ReactNode } from "react";
 
 interface PageHeaderProps {
   title: string;
+  subtitle?: string;
   badge?: number;
   action?: { label: string; onClick: () => void };
   /** Slot for additional content on the right side (e.g., filter bar) */
   children?: ReactNode;
 }
 
-export function PageHeader({ title, badge, action, children }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, badge, action, children }: PageHeaderProps) {
   return (
     <div className="flex items-center justify-between mb-6">
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-bold">{title}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{title}</h1>
+          {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
+        </div>
         {badge !== undefined && badge > 0 && (
           <span className="bg-rose-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
             {badge}

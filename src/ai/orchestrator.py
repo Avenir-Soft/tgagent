@@ -95,6 +95,37 @@ def invalidate_ai_settings_cache(tenant_id) -> None:
     _ai_settings_cache.pop(str(tenant_id), None)
 
 
+def _fix_mixed_script_currency(text: str, detected_lang: str) -> str:
+    """Fix mixed-script currency 'со'm' → correct form per language."""
+    if "со'm" not in text and "со\u2019m" not in text:
+        return text
+    mapping = {"ru": "сум", "uz_cyrillic": "сўм", "en": "UZS"}
+    replacement = mapping.get(detected_lang, "so'm")
+    return text.replace("со'm", replacement).replace("со\u2019m", replacement)
+
+
+def _fix_russian_words_in_uzbek(text: str, detected_lang: str) -> str:
+    """Replace Russian words that slip into Uzbek responses."""
+    if detected_lang not in ("uz_latin", "uz_cyrillic"):
+        return text
+    # Common Russian words that GPT mixes into Uzbek
+    replacements = {
+        "Poludnya": "Yarim kun",
+        "poludnya": "yarim kun",
+        "Полудня": "Ярим кун",
+        "полудня": "ярим кун",
+        "Полдня": "Ярим кун",
+        "полдня": "ярим кун",
+        "включено": "kiritilgan" if detected_lang == "uz_latin" else "киритилган",
+        "Включено": "Kiritilgan" if detected_lang == "uz_latin" else "Киритилган",
+        "бесплатно": "bepul" if detected_lang == "uz_latin" else "бепул",
+    }
+    for ru_word, uz_word in replacements.items():
+        if ru_word in text:
+            text = text.replace(ru_word, uz_word)
+    return text
+
+
 async def _openai_with_retry(client, **kwargs):
     """Call OpenAI completions.create with retry + circuit breaker.
 
@@ -121,29 +152,34 @@ async def _openai_with_retry(client, **kwargs):
 # ──────────────────────────────────────────────
 # Checkout triggers for proactive suggestion
 # ──────────────────────────────────────────────
-_CHECKOUT_TRIGGERS = {
-    "оформляем", "оформить", "оформи", "го", "давай", "всё", "вроде все",
-    "вроде всё", "хватит", "больше ничего", "заказать", "заказ",
-    "да", "ок", "окей", "ага", "угу", "конечно", "ладно", "хорошо",
-    "yes", "yeah", "yep", "sure", "ok", "okay", "done",
-    "ха", "хоп", "хўп", "майли", "шундай", "ha", "hop", "xop", "mayli",
-    "checkout", "check out", "proceed", "order", "that's all", "thats all",
-    "nothing else", "go checkout", "go to checkout", "place order",
-    "rasmiylashtiramiz", "buyurtma", "расмийлаштирамиз", "буюртма",
-    "тамом", "бас", "бўлди", "tamom", "bas", "boldi",
+_BOOKING_TRIGGERS = {
+    # Uzbek Latin
+    "bron", "bron qil", "bron qilish", "buyurtma", "buyurtma ber",
+    "joy band qil", "joy band", "rasmiylashtiramiz", "rasmiylashtir",
+    "tamom", "bas", "boldi", "bo'ldi", "ha", "hop", "xop", "mayli",
+    "shu", "shuni", "kerak", "olaман", "olaman", "boramiz", "boraman",
+    # Uzbek Cyrillic
+    "брон", "буюртма", "жой банд", "расмийлаштирамиз",
+    "тамом", "бас", "бўлди", "ха", "хоп", "хўп", "майли",
+    # Russian
+    "бронь", "забронировать", "забронируй", "оформить", "оформляем",
+    "да", "ок", "окей", "конечно", "ладно", "хорошо", "давай",
+    # English
+    "book", "booking", "reserve", "yes", "yeah", "sure", "ok", "okay", "done",
 }
 
-# Confirm words for select_for_cart guard
+# Confirm words for booking guard
 _CONFIRM_WORDS = {
-    "да", "yes", "yea", "sure", "давай", "конечно", "го", "ок", "ok",
-    "ofc", "ладно", "хорошо", "добавь", "добавьте", "беру", "берём", "ха", "хоп",
+    "ha", "hop", "xop", "mayli", "kerak", "bron", "olaman", "boraman", "boramiz",
+    "да", "ха", "хоп", "хўп", "майли",
+    "yes", "yea", "sure", "ok", "okay", "давай", "конечно", "ладно", "хорошо",
 }
 
 _PROACTIVE_SUGGESTIONS = {
-    "ru": "Кстати, вы ещё интересовались {items} — добавить в заказ? Если не нужно, скажите и оформляем 👍",
-    "uz_cyrillic": "Айтганча, сиз {items} ҳам кўрган эдингиз — буюртмага қўшайми? Керак бўлмаса, айтинг, расмийлаштирамиз 👍",
-    "uz_latin": "Aytgancha, siz {items} ham ko'rgan edingiz — buyurtmaga qo'shaymi? Kerak bo'lmasa, ayting, rasmiylashtiramiz 👍",
-    "en": "By the way, you were also looking at {items} — want to add it to your order? If not, just say and we'll proceed 👍",
+    "ru": "Кстати, вы ещё интересовались {items} — хотите забронировать? 👍",
+    "uz_cyrillic": "Айтганча, сиз {items} ҳам кўрган эдингиз — бронлашни хоҳлайсизми? 👍",
+    "uz_latin": "Aytgancha, siz {items} ham ko'rgan edingiz — bronlashni xohlaysizmi? 👍",
+    "en": "By the way, you were also looking at {items} — would you like to book? 👍",
 }
 
 # Language switch patterns
@@ -179,6 +215,7 @@ async def process_dm_message(
     user_message: str,
     db: AsyncSession,
     comment_hint: dict | None = None,
+    customer_photo_path: str | None = None,
 ) -> dict | None:
     """Process an incoming DM and generate AI response.
 
@@ -215,8 +252,12 @@ async def process_dm_message(
         # --- Step 3: Language detection ---
         default_lang = ai_settings.language if ai_settings else "ru"
         current_lang = state_context.get("language", default_lang)
-        detected_lang = _detect_language(user_message, current_lang)
-        detected_lang = _check_language_switch(user_message, detected_lang)
+        # Don't re-detect language for photo placeholders — keep current language
+        if "[Клиент отправил фото]" in user_message or (customer_photo_path and len(user_message.strip()) < 5):
+            detected_lang = current_lang
+        else:
+            detected_lang = _detect_language(user_message, current_lang)
+            detected_lang = _check_language_switch(user_message, detected_lang)
         # Backward compat: old "uz" value
         if detected_lang == "uz":
             detected_lang = "uz_cyrillic"
@@ -252,10 +293,31 @@ async def process_dm_message(
             await finish_trace(tenant_id, trace, db)
             return {"text": proactive, "image_urls": []}
 
+        # --- Step 5.5: Customer photo analysis (GPT-4o Vision) ---
+        # Trigger on: no-caption photos ("[Клиент отправил фото]") OR any photo with caption during pending_payment
+        if customer_photo_path and (
+            "[Клиент отправил фото]" in user_message
+            or (conversation.state or "") in ("pending_payment", "post_order", "checkout")
+        ):
+            photo_analysis = await _analyze_customer_photo(
+                client, customer_photo_path, conversation, state_context, detected_lang,
+                tenant_id, ai_settings, db,
+            )
+            if photo_analysis:
+                conversation.state_context = state_context
+                flag_modified(conversation, "state_context")
+                await db.flush()
+                trace.add_step("photo", "Customer photo → Vision", photo_analysis["text"][:100])
+                trace.final_response = photo_analysis["text"]
+                trace.total_duration_ms = int((time.monotonic() - t0) * 1000)
+                await finish_trace(tenant_id, trace, db)
+                return photo_analysis
+
         # --- Step 6: Order pre-processing ---
         t_pre = time.monotonic()
         order_precheck = await preprocess_order_request(
-            tenant_id, conversation, user_message, state_context, db, ai_settings=ai_settings,
+            tenant_id, conversation, user_message, state_context, db,
+            ai_settings=ai_settings, detected_lang=detected_lang,
         )
         pre_ms = int((time.monotonic() - t_pre) * 1000)
         if order_precheck.get("forced_response"):
@@ -300,7 +362,7 @@ async def process_dm_message(
         trace.add_step("info", "History", f"{len(messages) - 2} messages loaded")
 
         # --- Step 10: Multi-round tool calling ---
-        cart_before_ai = [item.get("title", "") for item in state_context.get("cart", [])]
+        booking_before_ai = state_context.get("booking", {}).copy()
         final_text, collected_image_urls, tools_called, current_state, variant_images_map = await _run_tool_loop(
             client, messages, tenant_id, conversation, state_context,
             current_state, detected_lang, ai_settings, db, trace,
@@ -310,9 +372,11 @@ async def process_dm_message(
         # --- Step 11: Post-processing ---
         if final_text:
             final_text = strip_markdown_links(final_text)
+            final_text = _fix_mixed_script_currency(final_text, detected_lang)
+            final_text = _fix_russian_words_in_uzbek(final_text, detected_lang)
             correction = detect_hallucinations(
                 final_text, tools_called, state_context,
-                cart_before_ai, detected_lang,
+                booking_before_ai, detected_lang,
             )
             if correction:
                 trace.add_step("guard", "Hallucination correction", f"original truncated: {final_text[:100]}...")
@@ -331,9 +395,9 @@ async def process_dm_message(
         # --- Step 13: Persist state + anomaly detection ---
         cleanup_state_context(state_context)
 
-        cart_save = state_context.get("cart", [])
-        if cart_save:
-            logger.info("Saving state_context: cart=%s, state=%s", [i.get("title", "?") for i in cart_save], current_state)
+        booking_save = state_context.get("booking", {})
+        if booking_save:
+            logger.info("Saving state_context: booking=%s, state=%s", booking_save, current_state)
 
         try:
             from src.ai.anomaly import _detect_anomalies
@@ -393,34 +457,49 @@ def _check_language_switch(user_message: str, detected_lang: str) -> str:
 def _check_proactive_suggestion(
     user_message: str, state_context: dict, current_state: str, detected_lang: str,
 ) -> str | None:
-    """Check if we should suggest unseen products at checkout."""
-    cart = state_context.get("cart", [])
-    shown = state_context.get("shown_products", [])
+    """Check if we should suggest other tours the user looked at."""
+    # For tours: no cart. Only suggest if user browsed multiple tours
+    # and is now in selection state with a booking trigger
+    products = state_context.get("products", {})
     msg_stripped = user_message.strip().lower().rstrip("!?.,")
 
-    is_trigger = current_state == "cart" and any(t in msg_stripped for t in _CHECKOUT_TRIGGERS)
-    if not (is_trigger and cart and shown):
+    # NEVER trigger on confirmations — they're answering a question, not browsing
+    msg_words = set(msg_stripped.replace(",", " ").replace(".", " ").split())
+    if msg_words & _CONFIRM_WORDS:
         return None
 
-    # Build sets of what's in cart
-    cart_vids = {item.get("variant_id") for item in cart}
-    cart_pids: set = set()
-    for item in cart:
-        vid = item.get("variant_id")
-        for prod_info in state_context.get("products", {}).values():
-            for v in prod_info.get("variants", []):
-                if v.get("variant_id") == vid:
-                    cart_pids.add(prod_info.get("product_id"))
+    # NEVER trigger if booking context exists (user is mid-booking)
+    if state_context.get("booking"):
+        return None
 
-    not_added = [
-        s for s in shown
-        if s.get("variant_id") not in cart_vids and s.get("product_id") not in cart_pids
+    # NEVER trigger if user message contains booking details (name, phone, participant count)
+    # This means user is trying to BOOK, not browsing
+    import re as _re
+    has_phone = bool(_re.search(r'\d{7,}', msg_stripped))
+    has_kishi = bool(_re.search(r'\d+\s*(?:kishi|kishilik|нафар|человек|чел)', msg_stripped))
+    has_name_and_book = any(w in msg_stripped for w in ("bron qil", "бронируй", "забронируй", "book")) and len(msg_stripped) > 20
+    if has_phone or has_kishi or has_name_and_book:
+        return None
+
+    is_trigger = current_state == "selection" and any(t in msg_stripped for t in _BOOKING_TRIGGERS)
+    if not (is_trigger and len(products) > 1):
+        return None
+
+    if state_context.get("_proactive_suggested", False):
+        return None
+
+    # Show other tours they browsed but haven't selected
+    booking = state_context.get("booking", {})
+    selected_pid = booking.get("product_id")
+    other_tours = [
+        name for name, info in products.items()
+        if info.get("product_id") != selected_pid and info.get("in_stock", True)
     ]
 
-    if not_added and not state_context.get("_proactive_suggested", False):
+    if other_tours:
         state_context["_proactive_suggested"] = True
-        items_text = ", ".join(s.get("title", "?") for s in not_added[:2])
-        template = _PROACTIVE_SUGGESTIONS.get(detected_lang, _PROACTIVE_SUGGESTIONS["ru"])
+        items_text = ", ".join(other_tours[:2])
+        template = _PROACTIVE_SUGGESTIONS.get(detected_lang, _PROACTIVE_SUGGESTIONS["uz_latin"])
         return template.format(items=items_text)
 
     return None
@@ -457,28 +536,366 @@ async def _handle_profanity(tenant_id, conversation_id, conversation, state_cont
     except Exception:
         pass
 
-    # Send Telegram notification to operator
-    if ai_settings.operator_telegram_username:
-        try:
-            from src.telegram.service import telegram_manager
-            tg_client = telegram_manager.get_client(tenant_id)
-            if tg_client:
-                frontend_url = "http://127.0.0.1:3000"
-                notify_text = (
-                    "⚠️ Обнаружена нецензурная лексика\n\n"
-                    f"Диалог передан оператору (handoff создан).\n"
-                    f"👉 {frontend_url}/conversations/{conversation_id}"
-                )
-                try:
-                    entity = await tg_client.get_input_entity(ai_settings.operator_telegram_username)
-                except ValueError:
-                    entity = await tg_client.get_input_entity(ai_settings.operator_telegram_username)
-                await tg_client.send_message(entity, notify_text)
-                logger.info("Operator notified about profanity: %s", ai_settings.operator_telegram_username)
-        except Exception:
-            logger.warning("Failed to notify operator about profanity (non-fatal)", exc_info=True)
+    # Notify operator
+    await _notify_operator_handoff(
+        tenant_id, conversation_id,
+        "⚠️ Обнаружена нецензурная лексика\n\nДиалог передан оператору.",
+        ai_settings,
+    )
 
     return {"text": _PROFANITY_RESPONSES.get(detected_lang, _PROFANITY_RESPONSES["ru"]), "image_urls": []}
+
+
+async def _analyze_customer_photo(client, photo_path, conversation, state_context, detected_lang, tenant_id, ai_settings, db):
+    """Analyze a customer-sent photo using GPT-4o Vision.
+
+    If payment receipt detected during pending_payment:
+    1. Extract amount from receipt via Vision
+    2. Compare with order total
+    3. If matches → auto-confirm order + create/find tour group + invite customer
+    4. If doesn't match → tell customer the amount is wrong
+    """
+    import base64
+    import os
+
+    try:
+        with open(photo_path, "rb") as f:
+            photo_b64 = base64.b64encode(f.read()).decode()
+    except Exception:
+        logger.debug("Could not read customer photo: %s", photo_path, exc_info=True)
+        return None
+    finally:
+        try:
+            os.unlink(photo_path)
+        except Exception:
+            pass
+
+    conv_state = conversation.state or "idle"
+    has_pending_order = conv_state in ("pending_payment", "post_order", "checkout")
+
+    # Ask Vision to classify the photo AND extract amount
+    vision_prompt = (
+        "Analyze this image. Is it a payment receipt/check (to'lov cheki, квитанция, скриншот оплаты, bank transfer)? "
+        "If yes, extract the payment amount (number only, no currency). "
+        "Reply ONLY with JSON: {\"is_receipt\": true/false, \"amount\": 0, \"description_uz\": \"...\", \"description_ru\": \"...\"}"
+    )
+
+    try:
+        vision_response = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": vision_prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}", "detail": "low"}},
+                ],
+            }],
+            max_tokens=200,
+            temperature=0.1,
+        )
+        vision_text = vision_response.choices[0].message.content or ""
+        logger.info("Vision analysis: %s", vision_text[:200])
+    except Exception:
+        logger.warning("Vision API failed for customer photo", exc_info=True)
+        return None
+
+    # Parse response
+    import re
+    is_receipt = False
+    receipt_amount = 0
+    try:
+        json_match = re.search(r'\{[^}]+\}', vision_text)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            is_receipt = parsed.get("is_receipt", False)
+            receipt_amount = int(float(parsed.get("amount", 0)))
+    except Exception:
+        is_receipt = "true" in vision_text.lower() and "is_receipt" in vision_text.lower()
+
+    if is_receipt and has_pending_order:
+        return await _handle_payment_receipt(
+            tenant_id, conversation, state_context, detected_lang,
+            receipt_amount, ai_settings, db,
+        )
+
+    # Not a receipt or not in payment state — let normal AI flow continue
+    if not is_receipt:
+        desc = ""
+        try:
+            parsed = json.loads(re.search(r'\{[^}]+\}', vision_text).group())
+            desc = parsed.get(f"description_{'ru' if detected_lang == 'ru' else 'uz'}", "")
+        except Exception:
+            pass
+        if desc:
+            state_context["_customer_photo_description"] = desc
+    return None
+
+
+async def _handle_payment_receipt(tenant_id, conversation, state_context, detected_lang, receipt_amount, ai_settings, db):
+    """Handle payment receipt: verify amount, confirm order, create group, invite customer."""
+    from src.orders.models import Order
+    from sqlalchemy.orm import selectinload
+
+    # Find the pending order for this conversation (newest first)
+    orders_in_ctx = state_context.get("orders", [])
+    order = None
+    for o_ctx in reversed(orders_in_ctx):
+        oid = o_ctx.get("order_id")
+        if oid:
+            order = await db.get(Order, UUID(oid), options=[selectinload(Order.items)])
+            if order and order.status == "pending_payment":
+                break
+            order = None
+
+    # Fallback: find any pending_payment order for this tenant+conversation
+    if not order:
+        from src.leads.models import Lead
+        result = await db.execute(
+            select(Order)
+            .join(Lead, Lead.id == Order.lead_id, isouter=True)
+            .where(
+                Order.tenant_id == tenant_id,
+                Order.status == "pending_payment",
+                Lead.telegram_user_id == conversation.telegram_user_id,
+            )
+            .options(selectinload(Order.items))
+            .order_by(Order.created_at.desc())
+            .limit(1)
+        )
+        order = result.scalar_one_or_none()
+
+    if not order:
+        msgs = {
+            "uz_latin": "Chekingiz qabul qilindi, lekin to'lov kutayotgan buyurtma topilmadi. Avval tur bron qiling!",
+            "uz_cyrillic": "Чекингиз қабул қилинди, лекин тўлов кутаётган буюртма топилмади. Аввал тур брон қилинг!",
+            "ru": "Чек получен, но заказ на оплату не найден. Сначала забронируйте тур!",
+            "en": "Receipt received, but no pending order found. Please book a tour first!",
+        }
+        return {"text": msgs.get(detected_lang, msgs["uz_latin"]), "image_urls": []}
+
+    # Compare receipt amount with order total
+    order_total = int(order.total_amount)
+    total_fmt = f"{order_total:,}".replace(",", " ")
+    receipt_fmt = f"{receipt_amount:,}".replace(",", " ") if receipt_amount > 0 else "?"
+
+    if receipt_amount > 0:
+        logger.info("Receipt amount: %d, Order total: %d", receipt_amount, order_total)
+
+    # --- ALL receipts go to operator for verification (no auto-confirm) ---
+    from src.handoffs.models import Handoff
+
+    if receipt_amount > 0 and receipt_amount < order_total * 0.90:
+        # Clearly too little — tell customer, but still notify operator
+        reason = "receipt_amount_low"
+        summary = (f"Chek summasi kam: {receipt_fmt} so'm (buyurtma: {total_fmt} so'm). "
+                   f"Mijozga to'g'ri summa yuborishni ayting.")
+        operator_msg = (
+            f"⚠️ Chek summasi kam\n\nBuyurtma: {order.order_number}\n"
+            f"Buyurtma summasi: {total_fmt} so'm\nChek summasi: {receipt_fmt} so'm\n"
+            f"Mijoz: {conversation.telegram_first_name}"
+        )
+        customer_msgs = {
+            "uz_latin": f"Chekdagi summa ({receipt_fmt} so'm) buyurtma summasi ({total_fmt} so'm) dan kam. To'g'ri summadagi chekni yuboring!",
+            "uz_cyrillic": f"Чекдаги сумма ({receipt_fmt} сўм) буюртма суммаси ({total_fmt} сўм) дан кам. Тўғри суммадаги чекни юборинг!",
+            "ru": f"Сумма в чеке ({receipt_fmt} сум) меньше суммы заказа ({total_fmt} сум). Отправьте чек с правильной суммой!",
+            "en": f"Receipt amount ({receipt_fmt} UZS) is less than order total ({total_fmt} UZS). Please send the correct receipt!",
+        }
+    elif receipt_amount > 0 and receipt_amount > order_total * 1.10:
+        # Much more than order — possible bank commission or wrong transfer
+        diff_fmt = f"{receipt_amount - order_total:,}".replace(",", " ")
+        reason = "receipt_amount_over"
+        summary = (f"Chek summasi ko'p: {receipt_fmt} so'm (buyurtma: {total_fmt} so'm, farq: +{diff_fmt}). "
+                   f"Bank komissiyasi bo'lishi mumkin. Tekshiring.")
+        operator_msg = (
+            f"⚠️ Chek summasi farqi\n\nBuyurtma: {order.order_number}\n"
+            f"Buyurtma summasi: {total_fmt} so'm\nChek summasi: {receipt_fmt} so'm\n"
+            f"Farq: +{diff_fmt} so'm\nMijoz: {conversation.telegram_first_name}\n\n"
+            f"Bank komissiyasi bo'lishi mumkin. Tekshiring!"
+        )
+        customer_msgs = {
+            "uz_latin": f"Chekingiz qabul qilindi! Operator tekshirib, tez orada tasdiqlaydi. Buyurtma: {order.order_number}",
+            "uz_cyrillic": f"Чекингиз қабул қилинди! Оператор текшириб, тез орада тасдиқлайди. Буюртма: {order.order_number}",
+            "ru": f"Чек получен! Оператор проверит и подтвердит. Заказ: {order.order_number}",
+            "en": f"Receipt received! Operator will verify and confirm. Order: {order.order_number}",
+        }
+    else:
+        # Amount matches (or couldn't extract) — still goes to operator
+        reason = "receipt_verification"
+        summary = (f"Chek qabul qilindi. Buyurtma: {order.order_number}, "
+                   f"summa: {total_fmt} so'm, chek: {receipt_fmt} so'm. Tasdiqlang.")
+        operator_msg = (
+            f"📸 Chek keldi — tasdiqlash kerak!\n\nBuyurtma: {order.order_number}\n"
+            f"Buyurtma summasi: {total_fmt} so'm\nChek summasi: {receipt_fmt} so'm\n"
+            f"Mijoz: {conversation.telegram_first_name}\n\n"
+            f"Tekshirib, buyurtmani tasdiqlang!"
+        )
+        customer_msgs = {
+            "uz_latin": f"Chekingiz qabul qilindi! Operator tekshirib, tez orada tasdiqlaydi. Buyurtma: {order.order_number}",
+            "uz_cyrillic": f"Чекингиз қабул қилинди! Оператор текшириб, тез орада тасдиқлайди. Буюртма: {order.order_number}",
+            "ru": f"Чек получен! Оператор проверит и подтвердит. Заказ: {order.order_number}",
+            "en": f"Receipt received! Operator will verify and confirm. Order: {order.order_number}",
+        }
+
+    # Create handoff for operator
+    handoff = Handoff(
+        tenant_id=tenant_id,
+        conversation_id=conversation.id,
+        reason=reason,
+        summary=summary,
+    )
+    db.add(handoff)
+    await db.flush()
+    logger.info("Receipt handoff created for order %s (reason=%s)", order.order_number, reason)
+
+    # Notify operator via Telegram
+    await _notify_operator_handoff(tenant_id, conversation.id, operator_msg, ai_settings)
+
+    return {"text": customer_msgs.get(detected_lang, customer_msgs["uz_latin"]), "image_urls": []}
+
+
+async def _find_or_create_tour_group(tenant_id, conversation, tour_name, tour_date, detected_lang) -> str | None:
+    """Find existing or create new Telegram group for this tour+date, invite customer.
+
+    Group name format: "Easy Tour | {tour_name} | {tour_date}"
+    """
+    try:
+        from src.telegram.service import telegram_manager
+        tg_client = telegram_manager.get_client(tenant_id)
+        if not tg_client:
+            logger.warning("No Telegram client for group operations")
+            return None
+
+        chat_id = conversation.telegram_chat_id
+        if not chat_id:
+            return None
+
+        group_title = f"Easy Tour | {tour_name}"
+        if tour_date:
+            group_title += f" | {tour_date}"
+
+        # --- Search for existing group with this name ---
+        from telethon.tl.functions.messages import GetDialogsRequest
+        from telethon.tl.types import InputPeerEmpty
+
+        existing_group = None
+        invite_link = None
+
+        try:
+            dialogs = await tg_client.get_dialogs(limit=100)
+            for d in dialogs:
+                if d.is_group and d.title == group_title:
+                    existing_group = d.entity
+                    logger.info("Found existing tour group: %s (id=%s)", group_title, d.id)
+                    break
+        except Exception:
+            logger.warning("Could not search dialogs for group", exc_info=True)
+
+        # --- Create group if not found ---
+        if not existing_group:
+            try:
+                from telethon.tl.functions.messages import CreateChatRequest
+                # Create with just ourselves first
+                result = await tg_client(CreateChatRequest(
+                    users=["me"],
+                    title=group_title,
+                ))
+                # Get the created chat from result
+                chats = getattr(result, 'chats', []) or []
+                if chats:
+                    existing_group = chats[0]
+                    logger.info("Created new tour group: %s (id=%s)", group_title, existing_group.id)
+            except Exception:
+                logger.warning("Could not create tour group", exc_info=True)
+                return None
+
+        if not existing_group:
+            return None
+
+        # --- Get invite link ---
+        try:
+            from telethon.tl.functions.messages import ExportChatInviteRequest
+            invite_result = await tg_client(ExportChatInviteRequest(peer=existing_group))
+            invite_link = invite_result.link
+        except Exception:
+            logger.warning("Could not get invite link", exc_info=True)
+
+        # --- Try to add customer to group ---
+        added = False
+        try:
+            user_entity = await tg_client.get_input_entity(int(chat_id))
+            from telethon.tl.functions.messages import AddChatUserRequest
+            from telethon.tl.functions.channels import InviteToChannelRequest
+
+            # Try channel-style first (supergroup), fallback to chat-style
+            try:
+                await tg_client(InviteToChannelRequest(
+                    channel=existing_group,
+                    users=[user_entity],
+                ))
+                added = True
+            except Exception:
+                try:
+                    group_id = existing_group.id if hasattr(existing_group, 'id') else existing_group
+                    await tg_client(AddChatUserRequest(
+                        chat_id=group_id,
+                        user_id=user_entity,
+                        fwd_limit=0,
+                    ))
+                    added = True
+                except Exception as e:
+                    logger.warning("Could not add user to group: %s", e)
+        except Exception:
+            logger.warning("Could not resolve user entity for group invite", exc_info=True)
+
+        # --- Build response ---
+        return _group_link_message(invite_link or "", group_title, detected_lang, added=added)
+
+    except Exception:
+        logger.warning("Tour group operations failed (non-fatal)", exc_info=True)
+        return None
+
+
+async def _notify_operator_handoff(tenant_id, conversation_id, message_text, ai_settings):
+    """Send Telegram notification to operator about a handoff."""
+    if not (ai_settings and ai_settings.operator_telegram_username):
+        return
+    try:
+        from src.telegram.service import telegram_manager
+        tg_client = telegram_manager.get_client(tenant_id)
+        if tg_client:
+            frontend_url = "http://127.0.0.1:3001"
+            notify_text = (
+                f"{message_text}\n\n"
+                f"Диалог передан оператору.\n"
+                f"👉 {frontend_url}/conversations/{conversation_id}"
+            )
+            try:
+                entity = await tg_client.get_input_entity(ai_settings.operator_telegram_username)
+            except ValueError:
+                entity = await tg_client.get_input_entity(ai_settings.operator_telegram_username)
+            await tg_client.send_message(entity, notify_text)
+            logger.info("Operator notified about handoff: %s", ai_settings.operator_telegram_username)
+    except Exception:
+        logger.warning("Failed to notify operator about handoff (non-fatal)", exc_info=True)
+
+
+def _group_link_message(link: str, group_name: str, lang: str, added: bool) -> str:
+    """Build localized message about group invite."""
+    if added:
+        msgs = {
+            "uz_latin": f"Sizni \"{group_name}\" guruhiga qo'shdik!\nGuruh havolasi: {link}",
+            "uz_cyrillic": f"Сизни \"{group_name}\" гуруҳига қўшдик!\nГуруҳ ҳаволаси: {link}",
+            "ru": f"Мы добавили вас в группу \"{group_name}\"!\nСсылка на группу: {link}",
+            "en": f"You've been added to \"{group_name}\" group!\nGroup link: {link}",
+        }
+    else:
+        msgs = {
+            "uz_latin": f"Iltimos, \"{group_name}\" guruhiga qo'shiling — barcha muhim ma'lumotlar shu yerda!\n{link}",
+            "uz_cyrillic": f"Илтимос, \"{group_name}\" гуруҳига қўшилинг — барча муҳим маълумотлар шу ерда!\n{link}",
+            "ru": f"Пожалуйста, присоединитесь к группе \"{group_name}\" — вся важная информация там!\n{link}",
+            "en": f"Please join \"{group_name}\" group — all important info is there!\n{link}",
+        }
+    return msgs.get(lang, msgs["uz_latin"])
 
 
 async def _build_messages(conversation_id, system_content, user_message, comment_hint, db):
@@ -500,12 +917,11 @@ async def _build_messages(conversation_id, system_content, user_message, comment
 
     if comment_hint:
         hint_text = (
-            f"[КОНТЕКСТ: Этот клиент только что спрашивал в комментариях канала "
-            f"про {comment_hint.get('product_name', 'товар')}. "
+            f"[KONTEKST: Bu mijoz kanalda {comment_hint.get('product_name', 'tur')} haqida so'ragan. "
         )
         if comment_hint.get("variants_summary"):
-            hint_text += f"Доступные варианты: {comment_hint['variants_summary']}. "
-        hint_text += "Клиент пришёл из канала — помоги с этим товаром. Если клиент спрашивает про этот товар, покажи варианты и цены через tools.]"
+            hint_text += f"Mavjud variantlar: {comment_hint['variants_summary']}. "
+        hint_text += "Mijoz kanaldan keldi — shu tur bilan yordam ber. Agar mijoz shu tur haqida so'rasa, sanalar va narxlarni tools orqali ko'rsat.]"
         messages.append({"role": "system", "content": hint_text})
 
     messages.append({"role": "user", "content": user_message})
@@ -561,13 +977,14 @@ async def _run_tool_loop(
             tools_called.add(tool_call.function.name)
             tool_args = json.loads(tool_call.function.arguments)
 
-            # Guard: block select_for_cart in same round as get_variant_candidates
-            if tool_call.function.name == "select_for_cart" and "get_variant_candidates" in round_tool_names:
-                msg_lower = messages[-1]["content"].lower().strip() if messages else ""
+            # Guard: block create_order_draft in same round as get_variant_candidates
+            # (must show dates to customer first before booking)
+            if tool_call.function.name == "create_order_draft" and "get_variant_candidates" in round_tool_names:
+                msg_lower = (messages[-1].get("content") or "").lower().strip() if messages else ""
                 is_short_confirm = len(msg_lower.split()) <= 5 and any(w in msg_lower.split() for w in _CONFIRM_WORDS)
                 if not is_short_confirm:
-                    logger.warning("BLOCKED select_for_cart in same round as get_variant_candidates")
-                    result = {"error": "Сначала покажи варианты клиенту и дождись его выбора. Нельзя добавлять в корзину автоматически."}
+                    logger.warning("BLOCKED create_order_draft in same round as get_variant_candidates")
+                    result = {"error": "Avval sanalarni mijozga ko'rsat va tanlovini kut. Avtomatik buyurtma yaratish mumkin emas."}
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": json.dumps(result, ensure_ascii=False)})
                     if trace:
                         trace.add_step("guard", f"BLOCKED {tool_call.function.name}", "blocked in same round as get_variant_candidates")
@@ -617,10 +1034,16 @@ async def _run_tool_loop(
                     tone=ai_settings.tone if ai_settings else "friendly_sales",
                 )
 
+            # Transliterate tool results to Cyrillic when user writes in Cyrillic
+            tool_result_for_llm = result
+            if detected_lang == "uz_cyrillic" and isinstance(result, dict):
+                from src.ai.truth_tools import transliterate_tool_result
+                tool_result_for_llm = transliterate_tool_result(result, "cyrillic")
+
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
-                "content": json.dumps(result, ensure_ascii=False, default=str),
+                "content": json.dumps(tool_result_for_llm, ensure_ascii=False, default=str),
             })
 
         if forced_response:
@@ -667,9 +1090,8 @@ async def _finalize_photos(final_text, collected_image_urls, user_message, varia
     if wants and not collected_image_urls:
         collected_image_urls = await force_fetch_photos(tenant_id, user_message, state_context, db)
 
-    # Clean AI text that contradicts photo sending
-    if collected_image_urls:
-        final_text = clean_photo_text(final_text, bool(collected_image_urls))
+    # Clean AI text — always strip fake photo promises, deep clean when photos present
+    final_text = clean_photo_text(final_text, bool(collected_image_urls))
 
     return final_text, collected_image_urls
 
@@ -691,7 +1113,7 @@ async def _handle_fallback(tenant_id, conversation_id, user_message, exc, db):
                 fb_response = await fb_client.chat.completions.create(
                     model=settings.openai_model_fallback,
                     messages=[
-                        {"role": "system", "content": "Ты помощник магазина. Основная модель временно недоступна. Ответь кратко и предложи подождать или написать позже."},
+                        {"role": "system", "content": "Sen Easy Tour yordamchisisan. Asosiy tizim vaqtincha ishlamayapti. Qisqacha javob ber va keyinroq yozishni taklif qil."},
                         {"role": "user", "content": user_message},
                     ],
                     max_tokens=300,
@@ -715,7 +1137,7 @@ async def _handle_fallback(tenant_id, conversation_id, user_message, exc, db):
             )
             db.add(handoff)
             await db.flush()
-            return {"text": "Подключаю оператора, подождите немного \U0001f64f", "image_urls": []}
+            return {"text": "Operatorni chaqiraman, biroz kuting \U0001f64f", "image_urls": []}
 
     except Exception:
         logger.exception("Fallback handler also failed for tenant %s", tenant_id)

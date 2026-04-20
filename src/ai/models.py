@@ -60,6 +60,11 @@ class AiSettings(PkMixin, TenantMixin, UpdatableMixin, Base):
         String(100), nullable=True
     )
 
+    # Tour group for adding customers after payment
+    tour_group_link: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )  # Telegram group link (t.me/+xxx or @groupname)
+
     # Channel comment auto-responses
     channel_cta_handle: Mapped[str | None] = mapped_column(
         String(100), nullable=True
@@ -68,6 +73,14 @@ class AiSettings(PkMixin, TenantMixin, UpdatableMixin, Base):
         Boolean, nullable=False, server_default=text("true")
     )
     channel_show_price: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+
+    # Instagram auto-reply settings
+    allow_auto_instagram_dm_reply: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    allow_auto_instagram_comment_reply: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )
 

@@ -34,6 +34,7 @@ class VariantBriefOut(BaseModel):
     storage: str | None
     ram: str | None
     size: str | None
+    attributes_json: dict | None = None
     price: Decimal
     currency: str
     is_active: bool

@@ -106,8 +106,8 @@ async def delete_order(
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status not in ("cancelled", "returned"):
-        raise HTTPException(status_code=400, detail="Можно удалить только отменённые/возвращённые заказы")
+    if order.status not in ("cancelled", "completed"):
+        raise HTTPException(status_code=400, detail="Можно удалить только отменённые/завершённые бронирования")
     await db.execute(delete(OrderItem).where(OrderItem.order_id == order.id))
     await db.delete(order)
     await db.flush()
@@ -121,7 +121,7 @@ async def delete_cancelled_orders(
     user: User = Depends(require_store_owner),
 ):
     result = await db.execute(
-        select(Order).where(Order.tenant_id == user.tenant_id, Order.status.in_(["cancelled", "returned"]))
+        select(Order).where(Order.tenant_id == user.tenant_id, Order.status.in_(["cancelled", "completed"]))
     )
     orders = result.scalars().all()
     count = len(orders)

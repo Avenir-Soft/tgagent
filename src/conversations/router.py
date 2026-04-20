@@ -49,6 +49,7 @@ async def create_template(
         trigger_patterns=body.trigger_patterns,
         language=body.language,
         template_text=body.template_text,
+        platform=body.platform,
     )
     db.add(tpl)
     await db.flush()
@@ -181,8 +182,11 @@ async def list_comment_interactions(
         select(AuditLog)
         .where(
             AuditLog.tenant_id == user.tenant_id,
-            AuditLog.entity_type == "comment",
-            AuditLog.action.in_(["comment_smart_reply", "comment_template_reply"]),
+            AuditLog.entity_type.in_(["comment", "instagram_comment"]),
+            AuditLog.action.in_([
+                "comment_smart_reply", "comment_template_reply",
+                "ig_comment_smart_reply", "ig_comment_template_reply", "ig_comment_fallback_reply",
+            ]),
         )
         .order_by(AuditLog.created_at.desc())
         .offset(offset)
@@ -193,10 +197,11 @@ async def list_comment_interactions(
         {
             "id": str(log.id),
             "action": log.action,
+            "platform": "instagram" if log.entity_type == "instagram_comment" else "telegram",
             "trigger_text": (log.meta_json or {}).get("trigger_text", ""),
             "reply_text": (log.meta_json or {}).get("reply_text", ""),
-            "sender_name": (log.meta_json or {}).get("sender_name"),
-            "sender_username": (log.meta_json or {}).get("sender_username"),
+            "sender_name": (log.meta_json or {}).get("sender_name") or (log.meta_json or {}).get("commenter_username"),
+            "sender_username": (log.meta_json or {}).get("sender_username") or (log.meta_json or {}).get("commenter_username"),
             "chat_title": (log.meta_json or {}).get("chat_title"),
             "product_name": (log.meta_json or {}).get("product_name"),
             "created_at": log.created_at.isoformat() if log.created_at else None,
@@ -212,12 +217,13 @@ async def list_comment_interactions(
 async def list_conversations(
     status: str | None = None,
     source_type: str | None = None,
+    source_platform: str | None = None,
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return await list_conversations_enriched(user.tenant_id, status, source_type, limit, offset, db)
+    return await list_conversations_enriched(user.tenant_id, status, source_type, limit, offset, db, source_platform=source_platform)
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationOut)
@@ -234,7 +240,9 @@ async def get_conversation(
     conv = result.scalar_one_or_none()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    return ConversationOut.model_validate(conv)
+    out = ConversationOut.model_validate(conv)
+    out.source_platform = "instagram" if conv.instagram_user_id else "telegram"
+    return out
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageOut])

@@ -64,7 +64,8 @@ def _build_product_detail(product: Product) -> ProductDetailOut:
         vd = {
             "id": v.id, "title": v.title, "sku": v.sku,
             "color": v.color, "storage": v.storage, "ram": v.ram,
-            "size": v.size, "price": v.price, "currency": v.currency,
+            "size": v.size, "attributes_json": v.attributes_json,
+            "price": v.price, "currency": v.currency,
             "is_active": v.is_active, "stock": stock, "reserved": reserved,
         }
         variant_list.append(vd)
@@ -254,11 +255,154 @@ async def update_variant(
     variant = result.scalar_one_or_none()
     if not variant:
         raise HTTPException(status_code=404, detail="Variant not found")
+
+    # Save old attributes for change detection
+    old_attrs = dict(variant.attributes_json or {})
+
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(variant, field, value)
     await db.flush()
     await invalidate_catalog_cache(user.tenant_id)
+
+    # Detect attributes_json changes → notify affected customers
+    new_attrs = dict(variant.attributes_json or {})
+    if old_attrs != new_attrs:
+        import asyncio
+        asyncio.create_task(_notify_variant_change(
+            tenant_id=user.tenant_id,
+            variant_id=variant_id,
+            variant_title=variant.title,
+            product_id=variant.product_id,
+            old_attrs=old_attrs,
+            new_attrs=new_attrs,
+        ))
+
     return VariantOut.model_validate(variant)
+
+
+async def _notify_variant_change(
+    tenant_id: UUID,
+    variant_id: UUID,
+    variant_title: str,
+    product_id: UUID,
+    old_attrs: dict,
+    new_attrs: dict,
+):
+    """Background task: notify affected customers when variant attributes change.
+
+    Sends Telegram DM to customers with confirmed/pending_payment orders for this variant,
+    and posts to the tour group if it exists.
+    """
+    import asyncio
+    import logging
+    logger = logging.getLogger("catalog.notify")
+
+    try:
+        from src.telegram.service import telegram_manager
+        client = telegram_manager.get_client(tenant_id)
+        if not client:
+            logger.warning("No Telegram client — skipping variant change notifications")
+            return
+
+        from src.core.database import async_session_factory
+        async with async_session_factory() as db:
+            # Get product (tour) name
+            prod_result = await db.execute(
+                select(Product.name).where(Product.id == product_id)
+            )
+            product_name = prod_result.scalar_one_or_none() or "Tur"
+
+            # Build notification text from changed fields
+            changes = []
+            old_mp = old_attrs.get("meeting_point", "")
+            new_mp = new_attrs.get("meeting_point", "")
+            if old_mp != new_mp and new_mp:
+                changes.append(f"📍 Yangi yig'ilish joyi: {new_mp}")
+
+            old_time = old_attrs.get("departure_time") or old_attrs.get("time", "")
+            new_time = new_attrs.get("departure_time") or new_attrs.get("time", "")
+            if old_time != new_time and new_time:
+                changes.append(f"⏰ Yangi vaqt: {new_time}")
+
+            _ATTR_LABELS = {
+                "included": "🎒 Kiradi",
+                "what_to_bring": "📋 Olib kelish kerak",
+            }
+            for key in sorted(set(list(old_attrs.keys()) + list(new_attrs.keys()))):
+                if key in ("meeting_point", "departure_time", "time"):
+                    continue
+                if old_attrs.get(key) != new_attrs.get(key) and new_attrs.get(key):
+                    label = _ATTR_LABELS.get(key, key)
+                    changes.append(f"{label}: {new_attrs[key]}")
+
+            if not changes:
+                return
+
+            dm_msg = (
+                f"⚠️ Muhim o'zgarish!\n\n"
+                f"{product_name} — {variant_title}\n\n"
+                + "\n".join(changes)
+                + "\n\nNoqulaylik uchun uzr so'raymiz!"
+            )
+
+            # Find customers who booked this variant (confirmed or pending_payment)
+            from src.orders.models import Order, OrderItem
+            from src.leads.models import Lead
+
+            order_result = await db.execute(
+                select(Order.lead_id).distinct()
+                .join(OrderItem, Order.id == OrderItem.order_id)
+                .where(
+                    Order.tenant_id == tenant_id,
+                    Order.status.in_(["confirmed", "pending_payment"]),
+                    OrderItem.product_variant_id == variant_id,
+                )
+            )
+            lead_ids = [r[0] for r in order_result.fetchall() if r[0]]
+
+            if not lead_ids:
+                logger.info("No affected customers for variant %s change", variant_id)
+                return
+
+            lead_result = await db.execute(
+                select(Lead.telegram_user_id).where(
+                    Lead.id.in_(lead_ids),
+                    Lead.telegram_user_id.isnot(None),
+                )
+            )
+            user_ids = [r[0] for r in lead_result.fetchall()]
+
+            # Send DM to each affected customer
+            sent = 0
+            for tg_user_id in user_ids:
+                try:
+                    entity = await client.get_input_entity(tg_user_id)
+                    await client.send_message(entity, dm_msg)
+                    sent += 1
+                    await asyncio.sleep(0.5)  # avoid flood
+                except Exception as e:
+                    logger.warning("Failed to notify user %s: %s", tg_user_id, e)
+
+            logger.info("Notified %d/%d customers about variant %s change", sent, len(user_ids), variant_id)
+
+            # Send to tour group (search by title pattern)
+            group_prefix = f"Easy Tour | {product_name}"
+            try:
+                dialogs = await client.get_dialogs(limit=100)
+                for d in dialogs:
+                    if d.is_group and d.title and d.title.startswith(group_prefix):
+                        group_msg = (
+                            f"📢 O'zgarish!\n\n"
+                            f"{variant_title} sanasi uchun:\n\n"
+                            + "\n".join(changes)
+                        )
+                        await client.send_message(d.entity, group_msg)
+                        logger.info("Sent group notification to: %s", d.title)
+            except Exception:
+                logger.warning("Failed to send group notification", exc_info=True)
+
+    except Exception:
+        logger.exception("Variant change notification failed (non-fatal)")
 
 
 @router.delete("/variants/{variant_id}", status_code=204)

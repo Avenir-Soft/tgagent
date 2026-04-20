@@ -1,6 +1,7 @@
 """Tool executor — dispatches AI tool calls to truth_tools and handles guards.
 
 Each tool gets validated inputs, guard checks, and enriched results.
+Adapted for Easy Tour — tour booking tools.
 """
 
 import logging
@@ -20,7 +21,6 @@ from src.ai.truth_tools import (
     list_categories,
     get_product_candidates,
     get_variant_candidates,
-    get_delivery_options,
     create_lead,
     create_order_draft,
 )
@@ -49,18 +49,6 @@ async def execute_tool(
     elif name == "get_variant_candidates":
         return await _handle_variant_candidates(tenant_id, args, db, ai_settings)
 
-    elif name == "get_delivery_options":
-        return await get_delivery_options(tenant_id, args["city"], db)
-
-    elif name == "create_lead":
-        return await _handle_create_lead(tenant_id, args, conversation, db)
-
-    elif name == "select_for_cart":
-        return await _handle_select_for_cart(tenant_id, args, state_context, db)
-
-    elif name == "remove_from_cart":
-        return _handle_remove_from_cart(args, state_context)
-
     elif name == "create_order_draft":
         return await _handle_create_order_draft(tenant_id, args, conversation, state_context, db)
 
@@ -68,7 +56,7 @@ async def execute_tool(
         return await _handle_customer_history(tenant_id, conversation, state_context, db)
 
     elif name == "check_order_status":
-        return await _handle_check_order_status(tenant_id, args, conversation, db, ai_settings)
+        return await _handle_check_order_status(tenant_id, args, conversation, state_context, db, ai_settings)
 
     elif name == "cancel_order":
         from src.ai.truth_tools import cancel_order_by_number
@@ -76,21 +64,29 @@ async def execute_tool(
             tenant_id, conversation.id, args["order_number"], db, ai_settings=ai_settings,
         )
 
-    elif name == "add_item_to_order":
-        return await _handle_add_item_to_order(tenant_id, args, conversation, db)
-
-    elif name == "remove_item_from_order":
-        return await _handle_remove_item_from_order(tenant_id, args, conversation, db)
-
-    elif name == "request_return":
-        from src.ai.truth_tools import request_return
-        return await request_return(
-            tenant_id, conversation.id, args["order_number"],
-            args.get("reason", "Не указана"), db, ai_settings=ai_settings,
-        )
-
     elif name == "request_handoff":
         return await _handle_request_handoff(tenant_id, args, conversation, state_context, db, ai_settings)
+
+    # Legacy tool names — return helpful error
+    elif name in ("get_delivery_options", "select_for_cart", "remove_from_cart",
+                   "add_item_to_order", "remove_item_from_order", "request_return"):
+        return {"error": f"Tool '{name}' is not available for tour bookings."}
+
+    elif name == "get_variant_price":
+        from src.ai.truth_tools import get_variant_price
+        try:
+            vid = UUID(args["variant_id"])
+        except (ValueError, AttributeError):
+            return {"error": "Invalid variant_id"}
+        return await get_variant_price(tenant_id, vid, db)
+
+    elif name == "get_variant_stock":
+        from src.ai.truth_tools import get_variant_stock
+        try:
+            vid = UUID(args["variant_id"])
+        except (ValueError, AttributeError):
+            return {"error": "Invalid variant_id"}
+        return await get_variant_stock(tenant_id, vid, db)
 
     else:
         return {"error": f"Unknown tool: {name}"}
@@ -105,7 +101,7 @@ async def _handle_product_candidates(tenant_id, args, db, ai_settings):
     result = await get_product_candidates(tenant_id, args["query"], db)
     if ai_settings and ai_settings.require_handoff_for_unknown_product:
         if not result.get("found"):
-            result["_handoff_hint"] = "Товар не найден в каталоге. Подключи оператора через request_handoff — он поможет клиенту."
+            result["_handoff_hint"] = "Tur topilmadi. request_handoff orqali operatorni chaqir."
     return result
 
 
@@ -113,7 +109,7 @@ async def _handle_variant_candidates(tenant_id, args, db, ai_settings):
     try:
         pid = UUID(args["product_id"])
     except (ValueError, AttributeError):
-        return {"error": f"Invalid product_id '{args.get('product_id')}'. Use get_product_candidates first to get valid product UUIDs."}
+        return {"error": f"Invalid product_id '{args.get('product_id')}'. Use get_product_candidates first."}
     result = await get_variant_candidates(tenant_id, pid, db)
     if ai_settings and result.get("found") and result.get("variants"):
         max_v = ai_settings.max_variants_in_reply or 5
@@ -122,96 +118,8 @@ async def _handle_variant_candidates(tenant_id, args, db, ai_settings):
             result["variants"] = variants[:max_v]
             result["total_variants"] = len(variants)
             result["showing"] = max_v
-            result["note"] = f"Показано {max_v} из {len(variants)} вариантов. Спроси клиента если нужны другие."
+            result["note"] = f"{max_v} ta sanadan {len(variants)} ta ko'rsatildi."
     return result
-
-
-async def _handle_create_lead(tenant_id, args, conversation, db):
-    try:
-        pid = UUID(args["product_id"]) if args.get("product_id") else None
-        vid = UUID(args["variant_id"]) if args.get("variant_id") else None
-    except (ValueError, AttributeError):
-        return {"error": "Invalid UUID. Use get_product_candidates / get_variant_candidates first."}
-    return await create_lead(tenant_id, conversation.id, pid, vid, db)
-
-
-async def _handle_select_for_cart(tenant_id, args, state_context, db):
-    vid_str = args.get("variant_id", "")
-    try:
-        vid = UUID(vid_str)
-    except (ValueError, AttributeError):
-        return {"error": f"Invalid variant_id '{vid_str}'. Use variant_id from state_context."}
-    qty = int(args.get("qty", 1))
-
-    # GUARD: variant_id must exist in state_context (from get_variant_candidates)
-    known_variant_ids = set()
-    for prod_info in state_context.get("products", {}).values():
-        for v in prod_info.get("variants", []):
-            known_variant_ids.add(v.get("variant_id", ""))
-    if vid_str not in known_variant_ids:
-        return {
-            "error": f"variant_id '{vid_str}' не найден. Сначала вызови get_variant_candidates для этого товара, потом используй variant_id из результата.",
-            "hint": "Call get_variant_candidates first to get valid variant_ids",
-        }
-
-    # Verify variant exists and has stock
-    from src.ai.truth_tools import get_variant_stock as _get_stock
-    stock_info = await _get_stock(tenant_id, vid, db)
-    if stock_info.get("error"):
-        return stock_info
-    avail = stock_info.get("available_quantity", 0)
-    if avail < qty:
-        return {"error": f"Недостаточно товара. Доступно: {avail} шт.", "available": avail}
-
-    # Get variant title and price for cart display
-    from src.ai.truth_tools import get_variant_price as _get_price
-    price_info = await _get_price(tenant_id, vid, db)
-
-    cart = state_context.setdefault("cart", [])
-    for item in cart:
-        if item["variant_id"] == vid_str:
-            item["qty"] += qty
-            return {"status": "updated", "cart": cart, "message": f"Количество обновлено: {item['qty']} шт"}
-
-    cart.append({
-        "variant_id": vid_str,
-        "title": price_info.get("title", stock_info.get("title", "?")),
-        "price": price_info.get("price", 0),
-        "qty": qty,
-    })
-    n = len(cart)
-    w = "товар" if n % 10 == 1 and n % 100 != 11 else "товара" if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else "товаров"
-    return {"status": "added", "cart": cart, "message": f"Добавлено в корзину ({n} {w})"}
-
-
-def _handle_remove_from_cart(args, state_context):
-    vid_str = args.get("variant_id", "")
-    cart = state_context.get("cart", [])
-
-    if vid_str == "all":
-        state_context["cart"] = []
-        return {"status": "cleared", "cart": [], "message": "Корзина очищена"}
-
-    new_cart = []
-    removed = None
-    for item in cart:
-        if item["variant_id"] == vid_str:
-            removed = item
-        else:
-            new_cart.append(item)
-
-    if not removed:
-        keyword = vid_str.lower()
-        for item in cart:
-            if keyword in item.get("title", "").lower():
-                removed = item
-                new_cart = [i for i in cart if i is not removed]
-                break
-
-    state_context["cart"] = new_cart
-    if removed:
-        return {"status": "removed", "removed": removed["title"], "cart": new_cart}
-    return {"status": "not_found", "cart": new_cart, "message": "Товар не найден в корзине"}
 
 
 async def _handle_create_order_draft(tenant_id, args, conversation, state_context, db):
@@ -219,7 +127,7 @@ async def _handle_create_order_draft(tenant_id, args, conversation, state_contex
     phone = (args.get("phone") or "").strip()
     phone_digits = "".join(c for c in phone if c.isdigit())
     if len(phone_digits) < 9 or "XXXX" in phone.upper() or phone_digits == "0" * len(phone_digits):
-        return {"error": "Номер телефона обязателен! Спроси у клиента реальный номер телефона. Не придумывай номер."}
+        return {"error": "Telefon raqami kerak! Mijozdan haqiqiy telefon raqamini so'rang."}
 
     # Normalize phone to +998XXXXXXXXX format
     if phone_digits.startswith("998") and len(phone_digits) == 12:
@@ -235,43 +143,40 @@ async def _handle_create_order_draft(tenant_id, args, conversation, state_contex
     # Validate customer name
     customer_name = (args.get("customer_name") or "").strip()
     if len(customer_name) < 2:
-        return {"error": "Имя клиента обязательно! Спроси имя."}
+        return {"error": "Ism kerak! Mijozdan ismini so'rang."}
     customer_name = " ".join(w.capitalize() for w in customer_name.split())
     args["customer_name"] = customer_name
 
-    # Validate city
-    city = (args.get("city") or "").strip()
-    if not city:
-        return {"error": "Город не указан! Спроси у клиента город доставки. Доступные города: Ташкент, Самарканд, Бухара, Фергана, Наманган, Андижан, Нукус, Карши, Навои, Джизак, Ургенч, Термез."}
+    # Get selected tour variant from state_context
+    # For tours: one booking = one tour date, qty = num_participants
+    num_participants = int(args.get("num_participants", 1))
+    if num_participants < 1:
+        num_participants = 1
 
-    # Check delivery options — if multiple, delivery_type is required
-    delivery_type = (args.get("delivery_type") or "").strip()
-    if city and not delivery_type:
-        del_check = await get_delivery_options(tenant_id, city, db)
-        if del_check.get("found") and len(del_check.get("options", [])) > 1:
-            opts = [f"{o['delivery_type']} — {o['price']} {o.get('currency','UZS')}, {o['eta']}" for o in del_check["options"]]
-            return {
-                "error": f"Для города {city} доступно несколько вариантов доставки. Спроси у клиента какой выбирает: {'; '.join(opts)}. Передай delivery_type в create_order_draft.",
-                "delivery_options": del_check["options"],
-            }
+    # 1. Use variant_id from LLM args (preferred — LLM picks the right one)
+    variant_id = args.get("variant_id")
 
-    # Get items from cart
-    cart = state_context.get("cart", [])
-    logger.info("create_order_draft: cart has %d items: %s", len(cart), [i.get("title", "?") for i in cart])
-    if not cart:
-        return {"error": "Корзина пуста. Сначала добавьте товары через select_for_cart."}
+    # 2. Fallback: booking context
+    if not variant_id:
+        booking = state_context.get("booking", {})
+        if booking.get("variant_id"):
+            variant_id = booking["variant_id"]
 
-    variant_ids = []
-    quantities = []
-    for item in cart:
-        try:
-            variant_ids.append(UUID(item["variant_id"]))
-            quantities.append(item.get("qty", 1))
-        except (ValueError, AttributeError):
-            continue
+    # 3. Last fallback: first variant from state_context products
+    if not variant_id:
+        products = state_context.get("products", {})
+        for prod_info in products.values():
+            for v in prod_info.get("variants", []):
+                variant_id = v.get("variant_id")
+                break
+            if variant_id:
+                break
 
-    if not variant_ids:
-        return {"error": "Нет валидных товаров в корзине."}
+    if not variant_id:
+        return {"error": "Tur sanasi tanlanmagan. Avval get_variant_candidates chaqirib, mijozga sanalarni ko'rsating."}
+
+    variant_ids = [UUID(variant_id)]
+    quantities = [num_participants]
 
     # Auto-create lead
     lead_result = await create_lead(tenant_id, conversation.id, None, variant_ids[0], db)
@@ -287,23 +192,20 @@ async def _handle_create_order_draft(tenant_id, args, conversation, state_contex
             lead_obj.customer_name = args["customer_name"]
         if args.get("phone"):
             lead_obj.phone = args["phone"]
-        if args.get("city"):
-            lead_obj.city = args["city"]
         lead_obj.status = "converted"
 
     result = await create_order_draft(
         tenant_id, lead_id, variant_ids, quantities,
         args.get("customer_name", ""),
         args.get("phone", ""),
-        args.get("city"),
-        args.get("address"),
+        None,  # no city for tours
+        None,  # no address for tours
         db,
-        delivery_type=args.get("delivery_type"),
     )
 
-    # Clear cart and reset proactive suggestion on success
+    # Clear booking context on success
     if result.get("order_id"):
-        state_context["cart"] = []
+        state_context.pop("booking", None)
         state_context.pop("_proactive_suggested", None)
 
     return result
@@ -316,16 +218,15 @@ async def _handle_customer_history(tenant_id, conversation, state_context, db):
         state_context["customer"] = {
             "name": result.get("customer_name"),
             "phone": result.get("phone"),
-            "city": result.get("city"),
-            "address": result.get("address"),
         }
     return result
 
 
-async def _handle_check_order_status(tenant_id, args, conversation, db, ai_settings):
+async def _handle_check_order_status(tenant_id, args, conversation, state_context, db, ai_settings):
     from src.ai.truth_tools import check_order_status
     result = await check_order_status(
         tenant_id, conversation.id, args.get("order_number"), db,
+        state_context=state_context,
     )
     if result.get("found"):
         if result.get("status"):
@@ -340,30 +241,6 @@ async def _handle_check_order_status(tenant_id, args, conversation, db, ai_setti
     return result
 
 
-async def _handle_add_item_to_order(tenant_id, args, conversation, db):
-    from src.ai.truth_tools import add_item_to_order
-    try:
-        vid = UUID(args["variant_id"])
-    except (ValueError, AttributeError):
-        return {"error": "Invalid variant_id. Use get_variant_candidates first."}
-    return await add_item_to_order(
-        tenant_id, conversation.id, args["order_number"],
-        vid, int(args.get("qty", 1)), db,
-    )
-
-
-async def _handle_remove_item_from_order(tenant_id, args, conversation, db):
-    from src.ai.truth_tools import remove_item_from_order
-    try:
-        vid = UUID(args["variant_id"])
-    except (ValueError, AttributeError):
-        return {"error": "Invalid variant_id. Use check_order_status to see order items."}
-    return await remove_item_from_order(
-        tenant_id, conversation.id, args["order_number"],
-        vid, int(args["qty"]) if args.get("qty") else None, db,
-    )
-
-
 async def _handle_request_handoff(tenant_id, args, conversation, state_context, db, ai_settings):
     import re as _re
     from src.handoffs.models import Handoff
@@ -372,15 +249,15 @@ async def _handle_request_handoff(tenant_id, args, conversation, state_context, 
     reason = args.get("reason", "").lower()
     linked_order_num = args.get("linked_order_number")
 
-    # Try to detect order number from reason
+    # Try to detect booking number from reason
     order_to_check = linked_order_num
     if not order_to_check:
-        ord_match = _re.search(r'(?:ORD[- ]?)?([A-Fa-f0-9]{8})', reason)
+        ord_match = _re.search(r'(?:BK[- ]?)?([A-Fa-f0-9]{8})', reason)
         if ord_match:
             order_to_check = ord_match.group(0)
 
-    # Guard: check if handoff is actually needed for order-related reasons
-    if order_to_check and any(kw in reason for kw in ["изменить", "изменен", "edit", "добавить", "убрать", "удалить", "отменить", "cancel"]):
+    # Guard: check if handoff is actually needed for booking-related reasons
+    if order_to_check and any(kw in reason for kw in ["изменить", "edit", "отменить", "cancel", "o'zgartir", "bekor"]):
         from src.orders.models import Order as _Order
         ord_result = await db.execute(
             select(_Order).where(
@@ -391,26 +268,19 @@ async def _handle_request_handoff(tenant_id, args, conversation, state_context, 
         order = ord_result.scalar_one_or_none()
         if order:
             if order.status in AI_EDITABLE_STATUSES:
-                needs_operator = ai_settings and ai_settings.require_operator_for_edit
-                is_cancel = any(kw in reason for kw in ["отменить", "cancel"])
-                if is_cancel and order.status == "draft" and ai_settings and not ai_settings.allow_ai_cancel_draft:
-                    needs_operator = True
-                if not needs_operator:
+                is_cancel = any(kw in reason for kw in ["отменить", "cancel", "bekor"])
+                if is_cancel:
                     return {
                         "status": "handoff_rejected",
-                        "reason": f'Заказ {order.order_number} в статусе "{order.status}" — ты можешь изменить его сам! Используй add_item_to_order или remove_item_from_order. НЕ вызывай request_handoff для этого заказа.',
-                        "order_number": order.order_number,
-                        "order_status": order.status,
-                        "use_tools": ["add_item_to_order", "remove_item_from_order", "cancel_order"],
+                        "reason": f"Buyurtma {order.order_number} bekor qilish mumkin. cancel_order chaqir!",
+                        "use_tools": ["cancel_order"],
                     }
             if order.status in LOCKED_STATUSES:
-                from src.ai.policies import STATUS_LABELS_RU
-                status_label = STATUS_LABELS_RU.get(order.status, order.status)
+                from src.ai.policies import STATUS_LABELS
+                status_label = STATUS_LABELS.get(order.status, order.status)
                 return {
                     "status": "handoff_rejected",
-                    "reason": f'Заказ {order.order_number} в статусе "{status_label}" — изменения невозможны. Оператор тоже не может помочь. Просто скажи клиенту что изменить нельзя.',
-                    "order_number": order.order_number,
-                    "order_status": order.status,
+                    "reason": f'Buyurtma {order.order_number} "{status_label}" holatida — o\'zgartirish mumkin emas.',
                 }
 
     # Find linked order if provided
@@ -427,28 +297,45 @@ async def _handle_request_handoff(tenant_id, args, conversation, state_context, 
         if order:
             linked_order_id = order.id
 
-    # Build summary from recent context
+    # Build summary
     summary_parts = []
-    cart = state_context.get("cart", [])
-    if cart:
-        n = len(cart)
-        w = "товар" if n % 10 == 1 and n % 100 != 11 else "товара" if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else "товаров"
-        summary_parts.append(f"Корзина: {n} {w}")
     orders = state_context.get("orders", [])
     if orders:
-        summary_parts.append(f"Заказы: {', '.join(o.get('order_number', '?') for o in orders)}")
-    summary = "; ".join(summary_parts) if summary_parts else None
+        summary_parts.append(f"Buyurtmalar: {', '.join(o.get('order_number', '?') for o in orders)}")
 
     handoff = Handoff(
         tenant_id=tenant_id,
         conversation_id=conversation.id,
         reason=args.get("reason", "AI requested handoff"),
         priority=args.get("priority", "normal"),
-        summary=summary,
+        summary="; ".join(summary_parts) if summary_parts else None,
         linked_order_id=linked_order_id,
     )
     db.add(handoff)
     conversation.status = "handoff"
     conversation.ai_enabled = False
     await db.flush()
+
+    # Notify operator via Telegram
+    try:
+        from src.ai.orchestrator import _notify_operator_handoff
+        reason_text = args.get("reason", "Handoff")
+        customer = conversation.telegram_first_name or "Mijoz"
+        notify_msg = f"🔔 Handoff: {customer}\n\n{reason_text}"
+        await _notify_operator_handoff(tenant_id, conversation.id, notify_msg, ai_settings)
+    except Exception:
+        pass  # non-fatal
+
+    # SSE notification for frontend
+    try:
+        from src.sse.event_bus import publish_event
+        await publish_event(f"sse:{tenant_id}:tenant", {
+            "event": "conversation_updated",
+            "conversation_id": str(conversation.id),
+            "state": "handoff",
+            "reason": args.get("reason", ""),
+        })
+    except Exception:
+        pass
+
     return {"status": "handoff_created", "reason": args.get("reason")}

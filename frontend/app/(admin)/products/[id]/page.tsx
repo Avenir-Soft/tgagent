@@ -9,6 +9,12 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import { formatPrice } from "@/lib/utils";
 
+interface VariantAttributes {
+  meeting_point?: string;
+  included?: string;
+  what_to_bring?: string;
+}
+
 interface Variant {
   id: string;
   title: string;
@@ -17,6 +23,7 @@ interface Variant {
   storage: string | null;
   ram: string | null;
   size: string | null;
+  attributes_json: VariantAttributes | null;
   price: string;
   currency: string;
   is_active: boolean;
@@ -77,13 +84,13 @@ function fmt(val: string | number): string {
 }
 
 const statusLabels: Record<string, string> = {
-  draft: "Черновик", confirmed: "Подтверждён", processing: "В обработке",
-  shipped: "Отправлен", delivered: "Доставлен", cancelled: "Отменён",
+  draft: "Черновик", pending_payment: "Ожидает оплаты", confirmed: "Подтверждён",
+  completed: "Завершён", cancelled: "Отменён",
 };
 
 const statusColors: Record<string, string> = {
-  delivered: "bg-emerald-100 text-emerald-700", cancelled: "bg-rose-100 text-rose-600",
-  shipped: "bg-indigo-100 text-indigo-600",
+  completed: "bg-emerald-100 text-emerald-700", cancelled: "bg-rose-100 text-rose-600",
+  confirmed: "bg-blue-100 text-blue-600", pending_payment: "bg-amber-100 text-amber-600",
 };
 
 export default function ProductDetailPage() {
@@ -104,9 +111,13 @@ export default function ProductDetailPage() {
   // Variant editing
   const [editingVariant, setEditingVariant] = useState<string | null>(null);
   const [variantPrice, setVariantPrice] = useState("");
+  // Attributes editing
+  const [editingAttr, setEditingAttr] = useState<string | null>(null); // variant id being edited
+  const [attrForm, setAttrForm] = useState<VariantAttributes>({});
+  const [savingAttr, setSavingAttr] = useState(false);
   // New variant form
   const [showAddVariant, setShowAddVariant] = useState(false);
-  const [variantForm, setVariantForm] = useState({ title: "", color: "", storage: "", ram: "", price: "" });
+  const [variantForm, setVariantForm] = useState({ title: "", color: "", storage: "", price: "" });
   // Media
   const [mediaList, setMediaList] = useState<Media[]>([]);
   const [newMediaUrl, setNewMediaUrl] = useState("");
@@ -120,7 +131,7 @@ export default function ProductDetailPage() {
 
   const load = useCallback(() => {
     if (!id) return;
-    api.get<Product>(`/products/${id}`).then(setProduct).catch(() => toast("Не удалось загрузить товар", "error")).finally(() => setLoading(false));
+    api.get<Product>(`/products/${id}`).then(setProduct).catch(() => toast("Не удалось загрузить тур", "error")).finally(() => setLoading(false));
     api.get<Media[]>(`/products/${id}/media`).then(setMediaList).catch(() => {});
   }, [id]);
 
@@ -149,7 +160,7 @@ export default function ProductDetailPage() {
     setSaving((prev) => new Set(prev).add(vid));
     try {
       await api.put(`/inventory/${vid}`, { quantity: edit.quantity, reserved_quantity: edit.reserved });
-      toast("Остаток обновлён", "success");
+      toast("Места обновлены", "success");
       cancelEdit(vid);
       load();
     } catch { toast("Ошибка сохранения", "error"); }
@@ -169,7 +180,7 @@ export default function ProductDetailPage() {
     setSavingProduct(true);
     try {
       await api.patch(`/products/${id}`, { name: productForm.name.trim(), brand: productForm.brand.trim() || null, model: productForm.model.trim() || null, description: productForm.description.trim() || null });
-      toast("Товар обновлён", "success");
+      toast("Тур обновлён", "success");
       setEditProduct(false);
       load();
     } catch { toast("Ошибка сохранения", "error"); }
@@ -206,6 +217,30 @@ export default function ProductDetailPage() {
     } catch { toast("Ошибка обновления цены", "error"); }
   };
 
+  // Attributes editing
+  const startAttrEdit = (v: Variant) => {
+    setEditingAttr(v.id);
+    setAttrForm({
+      meeting_point: v.attributes_json?.meeting_point || "",
+      included: v.attributes_json?.included || "",
+      what_to_bring: v.attributes_json?.what_to_bring || "",
+    });
+  };
+  const saveAttributes = async (vid: string) => {
+    setSavingAttr(true);
+    try {
+      const cleaned: VariantAttributes = {};
+      if (attrForm.meeting_point?.trim()) cleaned.meeting_point = attrForm.meeting_point.trim();
+      if (attrForm.included?.trim()) cleaned.included = attrForm.included.trim();
+      if (attrForm.what_to_bring?.trim()) cleaned.what_to_bring = attrForm.what_to_bring.trim();
+      await api.patch(`/variants/${vid}`, { attributes_json: Object.keys(cleaned).length > 0 ? cleaned : null });
+      toast("Tafsilotlar saqlandi", "success");
+      setEditingAttr(null);
+      load();
+    } catch { toast("Xatolik saqlashda", "error"); }
+    finally { setSavingAttr(false); }
+  };
+
   // Add variant
   const addVariant = async () => {
     if (!variantForm.title.trim() || !variantForm.price) return;
@@ -214,21 +249,20 @@ export default function ProductDetailPage() {
         title: variantForm.title.trim(),
         color: variantForm.color.trim() || null,
         storage: variantForm.storage.trim() || null,
-        ram: variantForm.ram.trim() || null,
         price: Number(variantForm.price),
       });
-      toast("Вариант добавлен", "success");
+      toast("Дата добавлена", "success");
       setShowAddVariant(false);
-      setVariantForm({ title: "", color: "", storage: "", ram: "", price: "" });
+      setVariantForm({ title: "", color: "", storage: "", price: "" });
       load();
-    } catch { toast("Ошибка добавления варианта", "error"); }
+    } catch { toast("Ошибка добавления даты", "error"); }
   };
 
   // Delete variant
   const deleteVariant = async (vid: string) => {
     try {
       await api.delete(`/variants/${vid}`);
-      toast("Вариант удалён", "success");
+      toast("Дата удалена", "success");
       load();
     } catch { toast("Ошибка удаления", "error"); }
   };
@@ -257,7 +291,7 @@ export default function ProductDetailPage() {
     try {
       await api.post(`/products/${id}/media`, { url, media_type: "photo", variant_id: variantId });
       setVariantMediaInput((prev) => ({ ...prev, [variantId]: "" }));
-      toast("Фото варианта добавлено", "success");
+      toast("Фото даты добавлено", "success");
       load();
     } catch { toast("Ошибка добавления", "error"); }
   };
@@ -354,10 +388,10 @@ export default function ProductDetailPage() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
         </svg>
       </div>
-      <h2 className="text-lg font-semibold text-slate-900 mb-1">Товар не найден</h2>
+      <h2 className="text-lg font-semibold text-slate-900 mb-1">Тур не найден</h2>
       <p className="text-sm text-slate-400 mb-4">Возможно, он был удалён или ссылка неверна</p>
       <button type="button" onClick={() => router.push("/products")} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
-        Назад к товарам
+        Назад к турам
       </button>
     </div>
   );
@@ -368,7 +402,7 @@ export default function ProductDetailPage() {
       <div className="flex items-start justify-between">
         <div>
           <Breadcrumb items={[
-            { label: "Товары", href: "/products" },
+            { label: "Туры", href: "/products" },
             { label: product?.name || "..." },
           ]} />
           {editProduct ? (
@@ -377,9 +411,9 @@ export default function ProductDetailPage() {
                 className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-lg font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="Название" required />
               <div className="flex gap-2">
                 <input type="text" value={productForm.brand} onChange={(e) => setProductForm({ ...productForm, brand: e.target.value })}
-                  className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="Бренд" />
+                  className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="Сложность" />
                 <input type="text" value={productForm.model} onChange={(e) => setProductForm({ ...productForm, model: e.target.value })}
-                  className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="Модель" />
+                  className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="Длительность" />
               </div>
               <textarea value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
                 className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="Описание" />
@@ -393,7 +427,7 @@ export default function ProductDetailPage() {
             <>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold text-slate-900">{product.name}</h1>
-                <button type="button" onClick={startProductEdit} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Редактировать" aria-label="Редактировать товар">
+                <button type="button" onClick={startProductEdit} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Редактировать" aria-label="Редактировать тур">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                 </button>
               </div>
@@ -409,8 +443,8 @@ export default function ProductDetailPage() {
           )}
         </div>
         <div className="text-right">
-          <div className="text-sm text-slate-500">Доступно к продаже</div>
-          <div className="text-2xl font-bold text-slate-900">{product.total_stock} шт</div>
+          <div className="text-sm text-slate-500">Свободно</div>
+          <div className="text-2xl font-bold text-slate-900">{product.total_stock} мест</div>
           {product.variants.reduce((s, v) => s + v.reserved, 0) > 0 && (
             <div className="text-xs text-amber-600 mt-0.5">+ {product.variants.reduce((s, v) => s + v.reserved, 0)} в резерве</div>
           )}
@@ -419,8 +453,8 @@ export default function ProductDetailPage() {
 
       {/* Photos (product-level) */}
       <div className="card p-4">
-        <h2 className="font-semibold text-slate-900 mb-1">Фото товара ({productLevelMedia.length})</h2>
-        <p className="text-xs text-slate-400 mb-3">Общие фото товара. Фото вариантов добавляются в таблице ниже.</p>
+        <h2 className="font-semibold text-slate-900 mb-1">Фото тура ({productLevelMedia.length})</h2>
+        <p className="text-xs text-slate-400 mb-3">Общие фото тура. Фото дат добавляются в таблице ниже.</p>
         <div className="flex gap-3 flex-wrap mb-3">
           {productLevelMedia.map((m) => (
             <div key={m.id} className="relative group w-20 h-20 rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
@@ -451,24 +485,22 @@ export default function ProductDetailPage() {
       {/* Variants */}
       <div className="card overflow-x-auto">
         <div className="px-4 py-3 border-b border-slate-200/60 bg-slate-50/50 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900">Варианты ({product.variants.length})</h2>
+          <h2 className="font-semibold text-slate-900">Даты отправления ({product.variants.length})</h2>
           <button type="button" onClick={() => setShowAddVariant(!showAddVariant)}
             className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors">
-            + Вариант
+            + Дата
           </button>
         </div>
 
         {/* Add variant form */}
         {showAddVariant && (
           <div className="px-4 py-3 bg-indigo-50/50 border-b border-slate-200/60">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
               <input type="text" placeholder="Название *" value={variantForm.title} onChange={(e) => setVariantForm({ ...variantForm, title: e.target.value })}
                 className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" required />
-              <input type="text" placeholder="Цвет" value={variantForm.color} onChange={(e) => setVariantForm({ ...variantForm, color: e.target.value })}
+              <input type="text" placeholder="Дата (2026-04-19)" value={variantForm.color} onChange={(e) => setVariantForm({ ...variantForm, color: e.target.value })}
                 className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-              <input type="text" placeholder="Память" value={variantForm.storage} onChange={(e) => setVariantForm({ ...variantForm, storage: e.target.value })}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-              <input type="text" placeholder="RAM" value={variantForm.ram} onChange={(e) => setVariantForm({ ...variantForm, ram: e.target.value })}
+              <input type="text" placeholder="Время (08:00)" value={variantForm.storage} onChange={(e) => setVariantForm({ ...variantForm, storage: e.target.value })}
                 className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
               <input type="number" placeholder="Цена *" value={variantForm.price} onChange={(e) => setVariantForm({ ...variantForm, price: e.target.value })}
                 className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" required min={1} />
@@ -483,7 +515,7 @@ export default function ProductDetailPage() {
         )}
 
         {product.variants.length === 0 ? (
-          <div className="px-4 py-8 text-center text-slate-400">Нет вариантов</div>
+          <div className="px-4 py-8 text-center text-slate-400">Нет дат отправления</div>
         ) : (
           <>
             {/* Mobile variant cards */}
@@ -508,13 +540,60 @@ export default function ProductDetailPage() {
                       </span>
                     </div>
                     {/* Specs tags */}
-                    {(v.color || v.storage || v.ram || v.size) && (
+                    {(v.color || v.storage) && (
                       <div className="flex flex-wrap gap-1.5 mb-3">
                         {v.color && <span className="px-2.5 py-1 rounded-lg bg-slate-50 text-slate-700 text-xs font-medium border border-slate-100">{v.color}</span>}
                         {v.storage && <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-medium border border-indigo-100">{v.storage}</span>}
-                        {v.ram && <span className="px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 text-xs font-medium border border-violet-100">{v.ram}</span>}
-                        {v.size && <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 text-xs font-medium border border-amber-100">{v.size}</span>}
                       </div>
+                    )}
+                    {/* Attributes (Tafsilotlar) */}
+                    {editingAttr === v.id ? (
+                      <div className="mb-3 bg-white rounded-lg p-3 border border-slate-200 space-y-2">
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-0.5">Yig&apos;ilish joyi</label>
+                          <input type="text" value={attrForm.meeting_point || ""} onChange={(e) => setAttrForm({ ...attrForm, meeting_point: e.target.value })}
+                            placeholder="Masalan: Chorsu metro"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-0.5">Kiradi</label>
+                          <input type="text" value={attrForm.included || ""} onChange={(e) => setAttrForm({ ...attrForm, included: e.target.value })}
+                            placeholder="Masalan: Transport, gid, tushlik"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-0.5">Olib kelish</label>
+                          <input type="text" value={attrForm.what_to_bring || ""} onChange={(e) => setAttrForm({ ...attrForm, what_to_bring: e.target.value })}
+                            placeholder="Masalan: Qulay kiyim, suv"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
+                        </div>
+                        <div className="flex gap-1.5">
+                          <button type="button" disabled={savingAttr} onClick={() => saveAttributes(v.id)}
+                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">{savingAttr ? "..." : "Saqlash"}</button>
+                          <button type="button" onClick={() => setEditingAttr(null)}
+                            className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition-colors">Bekor</button>
+                        </div>
+                      </div>
+                    ) : v.attributes_json && (v.attributes_json.meeting_point || v.attributes_json.included || v.attributes_json.what_to_bring) ? (
+                      <button type="button" onClick={() => startAttrEdit(v)} className="mb-3 w-full text-left group">
+                        <div className="rounded-lg bg-indigo-50/50 border border-indigo-100 px-3 py-2 space-y-0.5 text-xs">
+                          {v.attributes_json.meeting_point && (
+                            <div className="text-slate-600"><span className="text-indigo-400 font-medium">Joyi:</span> {v.attributes_json.meeting_point}</div>
+                          )}
+                          {v.attributes_json.included && (
+                            <div className="text-slate-600"><span className="text-indigo-400 font-medium">Kiradi:</span> {v.attributes_json.included}</div>
+                          )}
+                          {v.attributes_json.what_to_bring && (
+                            <div className="text-slate-600"><span className="text-indigo-400 font-medium">Olib kelish:</span> {v.attributes_json.what_to_bring}</div>
+                          )}
+                          <svg className="w-3 h-3 text-slate-300 group-hover:text-indigo-500 transition-colors inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        </div>
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => startAttrEdit(v)} className="mb-3 text-xs text-slate-300 hover:text-indigo-500 transition-colors inline-flex items-center gap-1">
+                        + Tafsilot qo&apos;shish
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      </button>
                     )}
                     {/* Price + stock row */}
                     <div className="flex items-center justify-between mb-3 py-2 px-3 rounded-lg bg-slate-50/80">
@@ -535,7 +614,7 @@ export default function ProductDetailPage() {
                         )}
                       </div>
                       <div className="text-right">
-                        <span className={`font-semibold text-sm ${v.stock > 0 ? "text-emerald-600" : "text-rose-600"}`}>{v.stock} своб</span>
+                        <span className={`font-semibold text-sm ${v.stock > 0 ? "text-emerald-600" : "text-rose-600"}`}>{v.stock} мест</span>
                         {v.reserved > 0 && <span className="text-xs text-amber-600 ml-1.5 font-medium">+{v.reserved} рез</span>}
                       </div>
                     </div>
@@ -569,7 +648,7 @@ export default function ProductDetailPage() {
                             {vMedia.length > 0 ? `${vMedia.length} фото` : "Фото"}
                           </button>
                           <button type="button" onClick={() => startEdit(v)}
-                            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-indigo-600">Склад</button>
+                            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-indigo-600">Места</button>
                           <button type="button" onClick={() => setDeleteVariantId(v.id)}
                             className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-rose-500">&times;</button>
                         </>
@@ -604,13 +683,11 @@ export default function ProductDetailPage() {
               <thead className="bg-slate-50/50 text-left">
                 <tr>
                   <th className="px-4 py-2 text-slate-500 font-medium">Название</th>
-                  <th className="px-4 py-2 text-slate-500 font-medium">Цвет</th>
-                  <th className="px-4 py-2 text-slate-500 font-medium">Память</th>
-                  <th className="px-4 py-2 text-slate-500 font-medium">RAM</th>
+                  <th className="px-4 py-2 text-slate-500 font-medium">Tafsilotlar</th>
                   <th className="px-4 py-2 text-slate-500 font-medium">Цена</th>
-                  <th className="px-4 py-2 text-slate-500 font-medium">Остаток</th>
+                  <th className="px-4 py-2 text-slate-500 font-medium">Места</th>
                   <th className="px-4 py-2 text-slate-500 font-medium">Статус</th>
-                  <th className="px-4 py-2 w-28"></th>
+                  <th className="px-4 py-2 w-20"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -626,13 +703,65 @@ export default function ProductDetailPage() {
                     <tr className={`hover:bg-slate-50/50 transition-colors ${isEditing ? "bg-indigo-50/40" : ""}`}>
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-900">{v.title}</div>
-                        {v.sku && <div className="text-xs text-slate-400">SKU: {v.sku}</div>}
+                        {(v.color || v.storage) && (
+                          <div className="flex gap-1.5 mt-0.5">
+                            {v.color && <span className="px-1.5 py-0.5 rounded bg-slate-100 text-[11px] text-slate-500">{v.color}</span>}
+                            {v.storage && <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-[11px] text-indigo-500">{v.storage}</span>}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
-                        {v.color ? <span className="px-2 py-0.5 rounded bg-slate-100 text-xs text-slate-700">{v.color}</span> : <span className="text-slate-300">&mdash;</span>}
+                        {editingAttr === v.id ? (
+                          <div className="space-y-1.5 min-w-[220px]">
+                            <div>
+                              <label className="text-[10px] text-slate-400 block">Yig&apos;ilish joyi</label>
+                              <input type="text" value={attrForm.meeting_point || ""} onChange={(e) => setAttrForm({ ...attrForm, meeting_point: e.target.value })}
+                                placeholder="Masalan: Chorsu metro"
+                                className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-400 block">Kiradi</label>
+                              <input type="text" value={attrForm.included || ""} onChange={(e) => setAttrForm({ ...attrForm, included: e.target.value })}
+                                placeholder="Masalan: Transport, gid, tushlik"
+                                className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-400 block">Olib kelish</label>
+                              <input type="text" value={attrForm.what_to_bring || ""} onChange={(e) => setAttrForm({ ...attrForm, what_to_bring: e.target.value })}
+                                placeholder="Masalan: Qulay kiyim, suv"
+                                className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                            </div>
+                            <div className="flex gap-1 pt-0.5">
+                              <button type="button" disabled={savingAttr} onClick={() => saveAttributes(v.id)}
+                                className="px-2 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">{savingAttr ? "..." : "Saqlash"}</button>
+                              <button type="button" onClick={() => setEditingAttr(null)}
+                                className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-500 hover:bg-slate-50 transition-colors">Bekor</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => startAttrEdit(v)} className="group text-left w-full" title="Bosing — tahrirlash">
+                            {v.attributes_json && (v.attributes_json.meeting_point || v.attributes_json.included || v.attributes_json.what_to_bring) ? (
+                              <div className="space-y-0.5 text-xs">
+                                {v.attributes_json.meeting_point && (
+                                  <div className="text-slate-600"><span className="text-slate-400">Joyi:</span> {v.attributes_json.meeting_point}</div>
+                                )}
+                                {v.attributes_json.included && (
+                                  <div className="text-slate-600"><span className="text-slate-400">Kiradi:</span> {v.attributes_json.included}</div>
+                                )}
+                                {v.attributes_json.what_to_bring && (
+                                  <div className="text-slate-600"><span className="text-slate-400">Olib kelish:</span> {v.attributes_json.what_to_bring}</div>
+                                )}
+                                <svg className="w-3 h-3 text-slate-300 group-hover:text-indigo-500 transition-colors inline mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                              </div>
+                            ) : (
+                              <span className="text-slate-300 group-hover:text-indigo-500 transition-colors inline-flex items-center gap-1 text-xs">
+                                + Tafsilot
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                              </span>
+                            )}
+                          </button>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{v.storage || "\u2014"}</td>
-                      <td className="px-4 py-3 text-slate-700">{v.ram || "\u2014"}</td>
                       <td className="px-4 py-3 font-medium whitespace-nowrap text-slate-900">
                         {isPriceEditing ? (
                           <div className="flex items-center gap-1">
@@ -662,11 +791,11 @@ export default function ProductDetailPage() {
                               <input type="number" min={0} max={edit.quantity} value={edit.reserved} onChange={(e) => updateEditField(v.id, "reserved", parseInt(e.target.value) || 0)}
                                 className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
                             </div>
-                            <div className="text-[10px] text-slate-400">= {Math.max(0, edit.quantity - edit.reserved)} своб</div>
+                            <div className="text-[10px] text-slate-400">= {Math.max(0, edit.quantity - edit.reserved)} мест</div>
                           </div>
                         ) : (
                           <div>
-                            <span className={`font-medium ${v.stock > 0 ? "text-emerald-600" : "text-rose-600"}`}>{v.stock} своб</span>
+                            <span className={`font-medium ${v.stock > 0 ? "text-emerald-600" : "text-rose-600"}`}>{v.stock} мест</span>
                             {v.reserved > 0 && <span className="text-xs text-amber-600 ml-1">+ {v.reserved} резерв</span>}
                           </div>
                         )}
@@ -677,25 +806,25 @@ export default function ProductDetailPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1">
+                        <div className="flex flex-col gap-1">
                           {isEditing ? (
                             <>
                               <button type="button" disabled={isSaving} onClick={() => saveInventory(v.id)}
                                 className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">{isSaving ? "..." : "OK"}</button>
                               <button type="button" onClick={() => cancelEdit(v.id)}
-                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition-colors">X</button>
+                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition-colors">Bekor</button>
                             </>
                           ) : (
                             <>
                               <button type="button" onClick={() => toggleVariantMedia(v.id)}
                                 className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${vMedia.length > 0 ? "bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100" : "bg-white border border-slate-200 text-slate-400 hover:bg-slate-50"}`}
-                                title="Фото варианта">
+                                title="Фото даты">
                                 {vMedia.length > 0 ? `${vMedia.length} фото` : "Фото"}
                               </button>
                               <button type="button" onClick={() => startEdit(v)}
-                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-indigo-600 hover:bg-indigo-50 transition-colors">Склад</button>
+                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-indigo-600 hover:bg-indigo-50 transition-colors">Места</button>
                               <button type="button" onClick={() => setDeleteVariantId(v.id)}
-                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-rose-500 hover:bg-rose-50 transition-colors" title="Удалить вариант">&times;</button>
+                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-rose-500 hover:bg-rose-50 transition-colors" title="Удалить дату">Удалить</button>
                             </>
                           )}
                         </div>
@@ -704,7 +833,7 @@ export default function ProductDetailPage() {
                     {/* Variant photos row */}
                     {isMediaExpanded && (
                       <tr className="bg-violet-50/30">
-                        <td colSpan={8} className="px-4 py-3">
+                        <td colSpan={6} className="px-4 py-3">
                           <div className="flex items-center gap-3 flex-wrap">
                             {vMedia.map((m) => (
                               <div key={m.id} className="relative group w-16 h-16 rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
@@ -737,7 +866,7 @@ export default function ProductDetailPage() {
       {/* Sales history */}
       <div className="card">
         <div className="px-4 py-3 border-b border-slate-200/60 bg-slate-50/50 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900">История продаж</h2>
+          <h2 className="font-semibold text-slate-900">История бронирований</h2>
           {!showSales && <button type="button" onClick={loadSales} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Загрузить →</button>}
         </div>
         {showSales && sales && (
@@ -745,7 +874,7 @@ export default function ProductDetailPage() {
             <div className="flex gap-4 mb-4">
               <div className="bg-indigo-50 rounded-xl px-4 py-3 text-center">
                 <p className="text-xl font-bold text-indigo-700">{sales.total_sold}</p>
-                <p className="text-[10px] text-indigo-500">продано шт</p>
+                <p className="text-[10px] text-indigo-500">забронировано</p>
               </div>
               <div className="bg-emerald-50 rounded-xl px-4 py-3 text-center">
                 <p className="text-xl font-bold text-emerald-700">{fmt(sales.total_revenue)}</p>
@@ -753,7 +882,7 @@ export default function ProductDetailPage() {
               </div>
             </div>
             {sales.orders.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">Нет продаж</p>
+              <p className="text-sm text-slate-400 text-center py-4">Нет бронирований</p>
             ) : (
               <div className="space-y-2">
                 {sales.orders.slice(0, 20).map((o, i) => (
@@ -767,7 +896,7 @@ export default function ProductDetailPage() {
                       <span className={`px-1.5 py-0.5 rounded ${statusColors[o.status] || "bg-amber-50 text-amber-700"}`}>
                         {statusLabels[o.status] || o.status}
                       </span>
-                      <span className="text-slate-500">{o.qty} шт</span>
+                      <span className="text-slate-500">{o.qty} чел</span>
                       <span className="font-medium text-slate-900">{fmt(o.total)} сум</span>
                       {o.date && <span className="text-slate-400">{new Date(o.date).toLocaleDateString("ru")}</span>}
                     </div>
@@ -783,7 +912,7 @@ export default function ProductDetailPage() {
       <div className="card overflow-x-auto">
         <div className="px-4 py-3 border-b border-slate-200/60 bg-slate-50/50">
           <h2 className="font-semibold text-slate-900">Алиасы / Синонимы ({product.aliases.length})</h2>
-          <p className="text-xs text-slate-400 mt-0.5">По этим словам ИИ находит этот товар</p>
+          <p className="text-xs text-slate-400 mt-0.5">По этим словам ИИ находит этот тур</p>
         </div>
         <div className="p-4">
           <div className="flex gap-2 mb-3">
@@ -811,8 +940,8 @@ export default function ProductDetailPage() {
       </div>
       <ConfirmDialog
         open={!!deleteVariantId}
-        title="Удалить вариант"
-        message="Удалить этот вариант? Это действие нельзя отменить."
+        title="Удалить дату"
+        message="Удалить эту дату отправления? Это действие нельзя отменить."
         confirmText="Удалить"
         variant="danger"
         onConfirm={() => { if (deleteVariantId) { deleteVariant(deleteVariantId); } setDeleteVariantId(null); }}

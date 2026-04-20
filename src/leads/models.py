@@ -13,7 +13,7 @@ class Lead(PkMixin, TenantMixin, UpdatableMixin, Base):
     __table_args__ = (
         Index("ix_leads_tenant_status", "tenant_id", "status"),
         CheckConstraint("status IN ('new', 'contacted', 'qualified', 'converted', 'lost')", name="ck_leads_status"),
-        CheckConstraint("source IN ('dm', 'comment', 'manual')", name="ck_leads_source"),
+        CheckConstraint("source IN ('dm', 'comment', 'manual', 'instagram_dm', 'instagram_comment')", name="ck_leads_source"),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -43,3 +43,6 @@ class Lead(PkMixin, TenantMixin, UpdatableMixin, Base):
         String(30), nullable=False, server_default=text("'dm'")
     )  # dm, comment, manual
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Instagram fields
+    instagram_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    instagram_username: Mapped[str | None] = mapped_column(String(255), nullable=True)

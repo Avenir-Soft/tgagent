@@ -33,6 +33,9 @@ class Category(PkMixin, TenantMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    name_ru: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    name_uz_cyr: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    name_en: Mapped[str | None] = mapped_column(String(200), nullable=True)
     slug: Mapped[str] = mapped_column(String(200), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
@@ -51,8 +54,12 @@ class Product(PkMixin, TenantMixin, UpdatableMixin, Base):
     )
     external_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name: Mapped[str] = mapped_column(String(500), nullable=False)
+    name_ru: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    name_uz_cyr: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    name_en: Mapped[str | None] = mapped_column(String(500), nullable=True)
     slug: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description_ru: Mapped[str | None] = mapped_column(Text, nullable=True)
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
     )

@@ -24,7 +24,24 @@ def _detect_language(text: str, current_language: str = "ru") -> str:
     word_list = text_lower.replace("\u2019", "'").replace("\u2018", "'").replace("'", "'").split()
     words = set(word_list)
 
-    # --- Check STRONG Uzbek markers first (even for single words) ---
+    # --- Check Russian FIRST when clear Russian markers present ---
+    # This prevents false Uzbek detection for shared words like "кемпинг"
+    ru_strong_words = {
+        "привет", "приветик", "прив", "здравствуйте", "здрасте", "здарова", "здаров", "здоров", "здорова", "добрый",
+        "хочу", "хотел", "хотела", "можете", "можно", "пожалуйста",
+        "спасибо", "подскажите", "покажите", "сколько", "почему",
+        "заказать", "говорить", "говорите", "русском", "русски",
+        "скажите", "помогите", "нужен", "нужна", "нужно",
+        "оформить", "доставка", "доставку", "скинуть", "скиньте",
+        "фотки", "фоток", "фото", "фотографии",
+        "ку", "хай", "хеллоу",  # informal greetings
+        "какой", "какие", "какая", "какое", "есть",
+        "расскажите", "отправьте", "давайте",
+    }
+    if words & ru_strong_words:
+        return "ru"
+
+    # --- Check STRONG Uzbek markers (even for single words) ---
 
     # Uzbek-specific Cyrillic characters: ў, қ, ғ, ҳ — always Uzbek
     if any(c in text for c in "ўқғҳ"):
@@ -39,11 +56,17 @@ def _detect_language(text: str, current_language: str = "ru") -> str:
 
     # Single strong Uzbek Cyrillic words (even alone)
     uz_strong_cyrillic = {
-        "салом", "рахмат", "керак", "нима", "кани", "борми", "йўқ", "яхши",
+        "салом", "рахмат", "керак", "нима", "кани", "борми", "боми", "йўқ", "яхши",
         "кўрсат", "кейин", "ассалому", "ёрдам", "олай", "берай",
         "болди", "булди", "чунарли", "кушвурин", "кушворин", "жунатинг",
         "жунатвурасиз", "расмийлаштирамизми", "урвурин", "олдинги",
-        "зааказ", "закажи", "маҳсулот", "мавжуд", "буюртма",
+        "зааказ", "маҳсулот", "мавжуд", "буюртма",
+        # Informal / misspelled Uzbek (common in chat)
+        "турла", "турлар", "турлари", "канак", "канака", "кевотиё",
+        "кетмокчиман", "кетвораман", "борсак", "боламиз",
+        "шаршара", "жойлар",
+        "маза", "мазали", "зўр", "зор", "жуда",
+        "бронла", "бронлаш", "бронлашни",
     }
     if words & uz_strong_cyrillic:
         return "uz_cyrillic"
@@ -90,20 +113,7 @@ def _detect_language(text: str, current_language: str = "ru") -> str:
     if words & uz_strong_latin:
         return "uz_latin"
 
-    # --- Strong Russian markers (must be checked BEFORE short message fallback!) ---
-    # Without this, "Привет" in a conversation with current_language=uz_cyrillic
-    # falls through to the fallback and stays uz_cyrillic.
-    ru_strong_words = {
-        "привет", "приветик", "прив", "здравствуйте", "здрасте", "здарова", "здаров", "здоров", "здорова", "добрый",
-        "хочу", "хотел", "хотела", "можете", "можно", "пожалуйста",
-        "спасибо", "подскажите", "покажите", "сколько", "почему",
-        "заказать", "говорить", "говорите", "русском", "русски",
-        "скажите", "помогите", "нужен", "нужна", "нужно",
-        "оформить", "доставка", "доставку",
-        "ку", "хай", "хеллоу",  # informal greetings
-    }
-    if words & ru_strong_words:
-        return "ru"
+    # (Russian strong words already checked at the top)
 
     # --- English detection ---
     en_words = {
@@ -179,6 +189,8 @@ def _detect_language(text: str, current_language: str = "ru") -> str:
         "канча", "нарси", "бераман", "оламан",
         "олб", "йок", "бовот", "сурадим", "езган",
         "олди", "кирди", "чикди", "булди",
+        "канак", "канака", "кетвораман", "кетмокчиман",
+        "кевотиё", "шаршара", "боми", "турла",
     ]
     for marker in uz_informal_cyrillic:
         if marker in text_lower:
@@ -230,22 +242,22 @@ _HOW_ARE_YOU_PATTERNS = {
 _GREETING_RESPONSES = {
     "ru": [
         "Привет! Чем могу помочь?",
-        "Здравствуйте! Что подобрать?",
-        "Привет! Какой товар интересует?",
+        "Здравствуйте! Какой тур интересует?",
+        "Привет! Какой тур подобрать?",
     ],
     "uz_cyrillic": [
         "Ассалому алейкум! Қандай ёрдам бера оламан?",
-        "Ассалому алейкум! Қайси товаримиз қизиқтиряпти?",
-        "Салом! Қандай товар керак?",
+        "Ассалому алейкум! Қайси тур қизиқтиряпти?",
+        "Салом! Қандай тур керак?",
     ],
     "uz_latin": [
         "Assalomu alaykum! Qanday yordam bera olaman?",
-        "Assalomu alaykum! Qaysi tovarimiz qiziqtiryapti?",
-        "Salom! Qanday tovar kerak?",
+        "Assalomu alaykum! Qaysi tur qiziqtiryapti?",
+        "Salom! Qanday tur kerak?",
     ],
     "en": [
         "Hi! How can I help you?",
-        "Hello! What product are you looking for?",
+        "Hello! What tour are you looking for?",
         "Hey! What can I show you?",
     ],
 }
@@ -257,11 +269,11 @@ _HOW_ARE_YOU_RESPONSES = {
     ],
     "uz_cyrillic": [
         "Яхшиман, раҳмат! Сизга қандай ёрдам бера оламан?",
-        "Раҳмат, яхши! Қандай товар керак?",
+        "Раҳмат, яхши! Қандай тур керак?",
     ],
     "uz_latin": [
         "Yaxshiman, rahmat! Sizga qanday yordam bera olaman?",
-        "Rahmat, yaxshi! Qanday tovar kerak?",
+        "Rahmat, yaxshi! Qanday tur kerak?",
     ],
     "en": [
         "I'm good, thanks! How can I help you?",

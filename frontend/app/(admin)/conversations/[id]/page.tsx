@@ -33,11 +33,13 @@ interface Conversation {
   telegram_username: string | null;
   telegram_first_name: string | null;
   source_type: string;
+  source_platform: string;
   status: string;
   state: string;
   state_context: Record<string, unknown> | null;
   ai_enabled: boolean;
   is_training_candidate: boolean;
+  instagram_user_id: string | null;
 }
 
 interface CustomerHistory {
@@ -410,11 +412,26 @@ export default function ConversationDetailPage() {
               { label: conv.telegram_first_name || "Клиент" },
             ]} />
             <div className="flex items-center gap-2">
+              {/* Platform badge */}
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                conv.source_platform === "instagram"
+                  ? "bg-gradient-to-r from-purple-100 to-pink-100 text-pink-700"
+                  : "bg-sky-50 text-sky-600"
+              }`}>
+                {conv.source_platform === "instagram" ? "IG" : "TG"}
+              </span>
               <h1 className="text-xl font-bold text-slate-900">
                 {conv.telegram_first_name || "Клиент"}{" "}
                 {conv.telegram_username && <span className="text-indigo-500 text-sm font-normal">@{conv.telegram_username}</span>}
               </h1>
-              {conv.telegram_username && (
+              {conv.source_platform === "instagram" ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-50 to-pink-50 text-pink-600">
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="2" width="20" height="20" rx="5" /><circle cx="12" cy="12" r="5" /><circle cx="17.5" cy="6.5" r="1.5" />
+                  </svg>
+                  Instagram
+                </span>
+              ) : conv.telegram_username ? (
                 <a href={`https://t.me/${conv.telegram_username.replace(/^@/, "")}`} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors">
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
@@ -422,7 +439,7 @@ export default function ConversationDetailPage() {
                   </svg>
                   Telegram
                 </a>
-              )}
+              ) : null}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">

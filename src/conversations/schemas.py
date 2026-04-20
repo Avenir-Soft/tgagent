@@ -9,6 +9,7 @@ class CommentTemplateCreate(BaseModel):
     trigger_patterns: list[str]
     language: str = "ru"
     template_text: str
+    platform: str = "all"  # all, telegram, instagram
 
 
 class CommentTemplateOut(BaseModel):
@@ -20,6 +21,7 @@ class CommentTemplateOut(BaseModel):
     template_text: str
     is_active: bool
     usage_count: int = 0
+    platform: str = "all"
 
     model_config = {"from_attributes": True}
 
@@ -43,6 +45,11 @@ class ConversationOut(BaseModel):
     current_product_id: UUID | None
     current_variant_id: UUID | None
     created_at: datetime
+    # Instagram fields
+    instagram_user_id: str | None = None
+    instagram_thread_id: str | None = None
+    # Computed: platform derived from instagram_user_id presence
+    source_platform: str = "telegram"
 
     model_config = {"from_attributes": True}
 
@@ -82,6 +89,7 @@ class CommentTemplateUpdate(BaseModel):
     language: str | None = None
     template_text: str | None = None
     is_active: bool | None = None
+    platform: str | None = None
 
 
 class TrainingLabelUpdate(BaseModel):

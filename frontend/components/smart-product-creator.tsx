@@ -128,7 +128,6 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
     const colors = [...(selectedSpecs.color || [])];
     const storages = specAxes.storage ? [...(selectedSpecs.storage || [])] : [""];
     const rams = specAxes.ram ? [...(selectedSpecs.ram || [])] : [""];
-    const sizes = specAxes.size ? [...(selectedSpecs.size || [])] : [""];
 
     if (colors.length === 0) colors.push("");
 
@@ -136,18 +135,16 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
     for (const color of colors) {
       for (const storage of storages) {
         for (const ram of rams) {
-          for (const size of sizes) {
-            rows.push({
-              id: nextId(),
-              color,
-              storage,
-              ram,
-              size,
-              price: "",
-              quantity: "",
-              enabled: true,
-            });
-          }
+          rows.push({
+            id: nextId(),
+            color,
+            storage,
+            ram,
+            size: "",
+            price: "",
+            quantity: "",
+            enabled: true,
+          });
         }
       }
     }
@@ -267,13 +264,13 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
   const handleCreate = useCallback(async () => {
     const enabledVariants = variants.filter(v => v.enabled);
     if (enabledVariants.length === 0) {
-      toast("Добавьте хотя бы один вариант", "error");
+      toast("Добавьте хотя бы одну дату", "error");
       return;
     }
 
     const missingPrices = enabledVariants.filter(v => !v.price || Number(v.price) <= 0);
     if (missingPrices.length > 0) {
-      toast(`Заполните цену для ${missingPrices.length} вариантов`, "error");
+      toast(`Заполните цену для ${missingPrices.length} дат`, "error");
       return;
     }
 
@@ -355,7 +352,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Умное создание товара</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Умное создание тура</h2>
             <p className="text-xs text-slate-400 mt-0.5">AI заполнит всё автоматически</p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -367,8 +364,8 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
         <div className="flex items-center gap-2 px-6 py-3 bg-slate-50/50 border-b border-slate-100">
           {[
             { key: "name", label: "Название" },
-            { key: "specs", label: "Спеки" },
-            { key: "variants", label: "Варианты и фото" },
+            { key: "specs", label: "Параметры" },
+            { key: "variants", label: "Даты и фото" },
           ].map((s, i) => {
             const steps = ["name", "specs", "variants"];
             const current = steps.indexOf(step);
@@ -395,14 +392,14 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
           {step === "name" && (
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Что продаёте?</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Какой тур добавляете?</label>
                 <div className="flex gap-3">
                   <input
                     type="text"
                     value={productName}
                     onChange={e => setProductName(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && handleAiGenerate()}
-                    placeholder="Например: iPhone 15 Pro, Samsung Galaxy S24, AirPods Pro 2..."
+                    placeholder="Например: Paltau sharshara, Chimgan trek, Tuzkon kemping..."
                     className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                     autoFocus
                   />
@@ -425,7 +422,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                     )}
                   </button>
                 </div>
-                <p className="text-xs text-slate-400 mt-2">Введите название — AI определит категорию, бренд, варианты и алиасы</p>
+                <p className="text-xs text-slate-400 mt-2">Введите название — AI определит категорию, сложность, даты и алиасы</p>
               </div>
 
               {/* Manual fallback */}
@@ -434,7 +431,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                   type="button"
                   onClick={() => {
                     setStep("specs");
-                    setSpecAxes({ color: [], storage: null, ram: null, size: null });
+                    setSpecAxes({ color: [], storage: [], ram: null, size: null });
                     setSelectedSpecs({});
                   }}
                   className="text-sm text-slate-500 hover:text-indigo-600 transition-colors"
@@ -456,12 +453,12 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                     className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Бренд</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Сложность</label>
                   <input type="text" value={brand} onChange={e => setBrand(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Модель</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Длительность</label>
                   <input type="text" value={model} onChange={e => setModel(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                 </div>
@@ -474,12 +471,13 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
 
               {/* Spec axes selection */}
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-800">Что есть в наличии?</h3>
+                <h3 className="text-sm font-semibold text-slate-800">Параметры тура</h3>
 
-                {(["color", "storage", "ram", "size"] as const).map(axis => {
+                {(["color", "storage", "ram"] as const).map(axis => {
                   const values = specAxes[axis];
-                  if (!values || values.length === 0) return null;
-                  const labels: Record<string, string> = { color: "Цвета", storage: "Память", ram: "RAM", size: "Размер" };
+                  if (values === null || values === undefined) return null;
+                  const labels: Record<string, string> = { color: "Даты отправления", storage: "Время выезда", ram: "Доп. инфо" };
+                  const placeholders: Record<string, string> = { color: "19.04.2026", storage: "08:00", ram: "Встреча у метро" };
                   return (
                     <div key={axis}>
                       <label className="block text-xs font-medium text-slate-500 mb-2">{labels[axis]}</label>
@@ -509,8 +507,8 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                             value={customSpecInput[axis] || ""}
                             onChange={e => setCustomSpecInput(p => ({ ...p, [axis]: e.target.value }))}
                             onKeyDown={e => e.key === "Enter" && addCustomSpec(axis)}
-                            placeholder="+"
-                            className="w-20 px-2 py-1.5 border border-dashed border-slate-300 rounded-lg text-sm text-center focus:ring-1 focus:ring-indigo-500 outline-none"
+                            placeholder={placeholders[axis] || "+"}
+                            className="w-28 px-2 py-1.5 border border-dashed border-slate-300 rounded-lg text-sm text-center focus:ring-1 focus:ring-indigo-500 outline-none"
                           />
                         </div>
                       </div>
@@ -519,17 +517,13 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                 })}
 
                 {/* Add new spec axis */}
-                {!specAxes.storage && (
+                {specAxes.storage === null && (
                   <button type="button" onClick={() => setSpecAxes(p => ({ ...p, storage: [] }))}
-                    className="text-xs text-indigo-600 hover:text-indigo-700">+ Добавить Память</button>
+                    className="text-xs text-indigo-600 hover:text-indigo-700">+ Добавить Время выезда</button>
                 )}
-                {!specAxes.ram && (
+                {specAxes.ram === null && (
                   <button type="button" onClick={() => setSpecAxes(p => ({ ...p, ram: [] }))}
-                    className="text-xs text-indigo-600 hover:text-indigo-700 ml-3">+ Добавить RAM</button>
-                )}
-                {!specAxes.size && (
-                  <button type="button" onClick={() => setSpecAxes(p => ({ ...p, size: [] }))}
-                    className="text-xs text-indigo-600 hover:text-indigo-700 ml-3">+ Добавить Размер</button>
+                    className="text-xs text-indigo-600 hover:text-indigo-700 ml-3">+ Добавить Доп. инфо</button>
                 )}
               </div>
 
@@ -542,7 +536,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                   onClick={generateVariants}
                   className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors"
                 >
-                  Сгенерировать варианты →
+                  Сгенерировать даты →
                 </button>
               </div>
             </div>
@@ -555,7 +549,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-slate-800">
-                    Варианты <span className="text-slate-400 font-normal">({enabledCount} шт)</span>
+                    Даты <span className="text-slate-400 font-normal">({enabledCount})</span>
                   </h3>
                   <button type="button" onClick={addVariantRow}
                     className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">+ Добавить строку</button>
@@ -567,14 +561,14 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                   <select value={quickField} onChange={e => setQuickField(e.target.value as any)}
                     className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white">
                     <option value="price">Цена</option>
-                    <option value="quantity">Кол-во</option>
+                    <option value="quantity">Мест</option>
                   </select>
                   <span className="text-xs text-slate-400">для</span>
                   {/* Color filter */}
                   {specAxes.color && specAxes.color.length > 1 && (
                     <select value={qfColor} onChange={e => setQfColor(e.target.value)}
                       className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white">
-                      <option value="all">Все цвета</option>
+                      <option value="all">Все даты</option>
                       {[...new Set(variants.map(v => v.color).filter(Boolean))].map(c =>
                         <option key={c} value={c}>{c}</option>
                       )}
@@ -584,7 +578,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                   {specAxes.storage && specAxes.storage.length > 1 && (
                     <select value={qfStorage} onChange={e => setQfStorage(e.target.value)}
                       className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white">
-                      <option value="all">Вся память</option>
+                      <option value="all">Все времена</option>
                       {[...new Set(variants.map(v => v.storage).filter(Boolean))].map(s =>
                         <option key={s} value={s}>{s}</option>
                       )}
@@ -594,7 +588,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                   {specAxes.ram && specAxes.ram.length > 1 && (
                     <select value={qfRam} onChange={e => setQfRam(e.target.value)}
                       className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white">
-                      <option value="all">Весь RAM</option>
+                      <option value="all">Все</option>
                       {[...new Set(variants.map(v => v.ram).filter(Boolean))].map(r =>
                         <option key={r} value={r}>{r}</option>
                       )}
@@ -603,7 +597,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                   <span className="text-xs text-slate-400">=</span>
                   <input type="text" value={quickValue ? formatPrice(quickValue) : ""} onChange={e => setQuickValue(e.target.value.replace(/[^0-9]/g, ""))}
                     onKeyDown={e => e.key === "Enter" && applyQuickFill()}
-                    placeholder={quickField === "price" ? "15.200.000" : "5"}
+                    placeholder={quickField === "price" ? "250.000" : "20"}
                     className="w-32 text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-indigo-500" />
                   <button type="button" onClick={applyQuickFill}
                     className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-lg hover:bg-indigo-200 font-medium">Применить</button>
@@ -615,12 +609,11 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                     <thead>
                       <tr className="text-xs text-slate-500 border-b border-slate-100">
                         <th className="py-2 px-2 text-left w-8">✓</th>
-                        {specAxes.color?.length ? <th className="py-2 px-2 text-left">Цвет</th> : null}
-                        {specAxes.storage ? <th className="py-2 px-2 text-left">Память</th> : null}
-                        {specAxes.ram ? <th className="py-2 px-2 text-left">RAM</th> : null}
-                        {specAxes.size ? <th className="py-2 px-2 text-left">Размер</th> : null}
+                        <th className="py-2 px-2 text-left">Дата</th>
+                        {specAxes.storage ? <th className="py-2 px-2 text-left">Время</th> : null}
+                        {specAxes.ram ? <th className="py-2 px-2 text-left">Доп. инфо</th> : null}
                         <th className="py-2 px-2 text-left">Цена (сум)</th>
-                        <th className="py-2 px-2 text-left">Кол-во</th>
+                        <th className="py-2 px-2 text-left">Мест</th>
                         <th className="py-2 px-2 text-center w-20"></th>
                       </tr>
                     </thead>
@@ -631,27 +624,22 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                             <input type="checkbox" checked={v.enabled} onChange={() => updateVariant(v.id, "enabled", !v.enabled)}
                               className="w-4 h-4 rounded border-slate-300 text-indigo-600" />
                           </td>
-                          {specAxes.color?.length ? (
-                            <td className="py-1.5 px-2">
-                              <input type="text" value={v.color} onChange={e => updateVariant(v.id, "color", e.target.value)}
-                                className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 py-0.5 text-sm outline-none" />
-                            </td>
-                          ) : null}
+                          <td className="py-1.5 px-2">
+                            <input type="text" value={v.color} onChange={e => updateVariant(v.id, "color", e.target.value)}
+                              placeholder="19.04.2026"
+                              className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 py-0.5 text-sm outline-none" />
+                          </td>
                           {specAxes.storage ? (
                             <td className="py-1.5 px-2">
                               <input type="text" value={v.storage} onChange={e => updateVariant(v.id, "storage", e.target.value)}
+                                placeholder="08:00"
                                 className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 py-0.5 text-sm outline-none" />
                             </td>
                           ) : null}
                           {specAxes.ram ? (
                             <td className="py-1.5 px-2">
                               <input type="text" value={v.ram} onChange={e => updateVariant(v.id, "ram", e.target.value)}
-                                className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 py-0.5 text-sm outline-none" />
-                            </td>
-                          ) : null}
-                          {specAxes.size ? (
-                            <td className="py-1.5 px-2">
-                              <input type="text" value={v.size} onChange={e => updateVariant(v.id, "size", e.target.value)}
+                                placeholder="Доп. инфо"
                                 className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 py-0.5 text-sm outline-none" />
                             </td>
                           ) : null}
@@ -694,7 +682,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                           <input type="checkbox" checked={v.enabled} onChange={() => updateVariant(v.id, "enabled", !v.enabled)}
                             className="w-4 h-4 rounded border-slate-300 text-indigo-600" />
                           <span className="text-sm font-medium text-slate-700">
-                            {[v.color, v.storage, v.ram, v.size].filter(Boolean).join(" · ") || "Стандарт"}
+                            {[v.color, v.storage, v.ram].filter(Boolean).join(" · ") || "Дата не указана"}
                           </span>
                         </div>
                         <div className="flex gap-1">
@@ -713,7 +701,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                             placeholder="0" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-mono outline-none focus:ring-1 focus:ring-indigo-500" />
                         </div>
                         <div>
-                          <label className="text-[10px] text-slate-400 uppercase">Кол-во</label>
+                          <label className="text-[10px] text-slate-400 uppercase">Мест</label>
                           <input type="text" value={v.quantity} onChange={e => updateVariant(v.id, "quantity", e.target.value.replace(/[^0-9]/g, ""))}
                             placeholder="0" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-mono outline-none focus:ring-1 focus:ring-indigo-500" />
                         </div>
@@ -800,7 +788,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center mb-4">
                   <div>
                     <div className="text-lg font-bold text-indigo-700">{enabledCount}</div>
-                    <div className="text-[10px] text-slate-500 uppercase">Вариантов</div>
+                    <div className="text-[10px] text-slate-500 uppercase">Дат</div>
                   </div>
                   <div>
                     <div className="text-lg font-bold text-indigo-700">{photosCount}</div>
@@ -814,7 +802,7 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                     <div className="text-lg font-bold text-indigo-700">
                       {variants.filter(v => v.enabled).reduce((s, v) => s + (Number(v.quantity) || 0), 0)}
                     </div>
-                    <div className="text-[10px] text-slate-500 uppercase">Общий склад</div>
+                    <div className="text-[10px] text-slate-500 uppercase">Всего мест</div>
                   </div>
                 </div>
 
@@ -833,12 +821,12 @@ export default function SmartProductCreator({ onCreated, onClose }: SmartProduct
                         Создаю...
                       </>
                     ) : (
-                      <>Создать товар</>
+                      <>Создать тур</>
                     )}
                   </button>
                 </div>
                 {!hasAllPrices && enabledCount > 0 && (
-                  <p className="text-xs text-amber-600 text-center mt-2">Заполните цену для всех вариантов</p>
+                  <p className="text-xs text-amber-600 text-center mt-2">Заполните цену для всех дат</p>
                 )}
               </div>
             </div>

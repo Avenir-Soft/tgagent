@@ -98,7 +98,7 @@ export default function BroadcastPage() {
 
   // Load carts + history
   useEffect(() => {
-    api.get<AbandonedCart[]>("/dashboard/abandoned-carts").then(setAbandonedCarts).catch(() => toast("Не удалось загрузить брошенные корзины", "error"));
+    api.get<AbandonedCart[]>("/dashboard/abandoned-carts").then(setAbandonedCarts).catch(() => toast("Не удалось загрузить незавершённые брони", "error"));
     loadHistory();
     const timer = setInterval(() => {
       api.get<AbandonedCart[]>("/dashboard/abandoned-carts").then(setAbandonedCarts).catch(() => {});
@@ -259,12 +259,12 @@ export default function BroadcastPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold text-slate-900">Рассылки и брошенные корзины</h1>
+      <h1 className="text-2xl font-bold text-slate-900">Рассылки и незавершённые брони</h1>
 
       {/* Abandoned Carts */}
       <section>
         <h2 className="text-lg font-semibold text-slate-900 mb-3">
-          Брошенные корзины
+          Незавершённые брони
           {abandonedCarts.length > 0 && (
             <span className="ml-2 bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full">
               {abandonedCarts.length}
@@ -273,7 +273,7 @@ export default function BroadcastPage() {
         </h2>
         {abandonedCarts.length === 0 ? (
           <div className="card p-6 text-center text-slate-400">
-            Нет брошенных корзин (2+ часа без активности)
+            Нет незавершённых бронирований (2+ часа без активности)
           </div>
         ) : (
           <div className="space-y-2">
@@ -330,7 +330,7 @@ export default function BroadcastPage() {
                   broadcastFilter === f ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                {f === "ordered" ? "Покупателям" : "Всем клиентам"}
+                {f === "ordered" ? "Клиентам" : "Всем контактам"}
               </button>
             ))}
             <span className="ml-auto text-sm font-medium text-indigo-600">
@@ -519,7 +519,7 @@ export default function BroadcastPage() {
             <span className="text-xs text-slate-400">
               {selectedIds.size === recipients.length
                 ? broadcastFilter === "ordered"
-                  ? "Все покупатели"
+                  ? "Все клиенты"
                   : "Все клиенты"
                 : `${selectedIds.size} получател${selectedIds.size === 1 ? "ь" : selectedIds.size < 5 ? "я" : "ей"}`}
             </span>

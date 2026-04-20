@@ -23,6 +23,7 @@ async function request<T>(path: string, options: RequestInit = {}, _retried = fa
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "1",
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -62,7 +63,7 @@ export const api = {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const formData = new FormData();
     formData.append(fieldName, file);
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { "ngrok-skip-browser-warning": "1" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: formData });
     if (!res.ok) {

@@ -15,7 +15,7 @@ class Order(PkMixin, TenantMixin, UpdatableMixin, Base):
         Index("ix_orders_tenant_status", "tenant_id", "status"),
         UniqueConstraint("tenant_id", "order_number", name="uq_orders_tenant_order_number"),
         CheckConstraint(
-            "status IN ('draft', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'returned')",
+            "status IN ('draft', 'pending_payment', 'confirmed', 'completed', 'cancelled')",
             name="ck_orders_status",
         ),
     )
@@ -43,7 +43,7 @@ class Order(PkMixin, TenantMixin, UpdatableMixin, Base):
     )
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, server_default=text("'draft'")
-    )  # draft, confirmed, processing, shipped, delivered, cancelled, returned
+    )  # draft, pending_payment, confirmed, completed, cancelled
 
     items = relationship("OrderItem", back_populates="order", lazy="selectin")
 

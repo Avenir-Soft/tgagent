@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     openai_moderation_model: str = "omni-moderation-latest"
 
+    # Instagram / Meta Graph API (official — when developer account ready)
+    instagram_app_id: str = ""
+    instagram_app_secret: str = ""
+    instagram_webhook_verify_token: str = "easy-tour-ig-verify-2026"
+    # Instagram / instagrapi (unofficial — for demo)
+    instagram_username: str = ""
+    instagram_password: str = ""
+    instagram_session_id: str = ""
+    instagram_proxy: str = ""  # e.g. http://user:pass@host:port or socks5://host:port
+
     # Logging
     log_format: str = "text"  # "text" for dev, "json" for production
     log_level: str = "INFO"
