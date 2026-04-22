@@ -184,8 +184,24 @@ export default function PlatformSidebar({ open, onClose }: { open?: boolean; onC
           ))}
         </nav>
 
+        {/* Switch to admin dashboard */}
+        <div className="px-[10px] pt-[8px]" style={{ borderTop: "1px solid var(--line)" }}>
+          <a
+            href="/dashboard"
+            className="flex items-center gap-[8px] px-[10px] py-[7px] rounded-[6px] text-[11.5px] font-medium transition-all w-full"
+            style={{ background: "var(--bg-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-soft)"; e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.borderColor = "var(--accent)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-2)"; e.currentTarget.style.color = "var(--ink-2)"; e.currentTarget.style.borderColor = "var(--line)"; }}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+            </svg>
+            Перейти в магазин
+          </a>
+        </div>
+
         {/* User section */}
-        <div className="px-[10px] pb-[10px]" style={{ borderTop: "1px solid var(--line)" }}>
+        <div className="px-[10px] pb-[10px]">
           <div className="flex items-center gap-[10px] pt-[10px]">
             <div
               className="w-[30px] h-[30px] rounded-full grid place-items-center text-[11px] font-semibold flex-shrink-0"
