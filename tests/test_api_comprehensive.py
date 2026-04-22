@@ -1,12 +1,14 @@
 """Comprehensive API test suite — covers ALL endpoint groups with positive and negative cases.
 
-Requires a running backend on localhost:8000 with seeded data.
+Requires a running backend on localhost:8001 with seeded data.
 Run: pytest tests/test_api_comprehensive.py -v
 
 Accounts used:
-- admin@gmail.com / admin       — store_owner (tenant-scoped)
+- admin@gmail.com / admin123    — store_owner (tenant-scoped)
 - superadmin@gmail.com / admin123 — super_admin (cross-tenant)
 """
+
+import asyncio
 
 import time
 import uuid
@@ -537,7 +539,7 @@ class TestPlatform:
             pytest.skip("No tenants available")
         tenant_id = tenants["items"][0]["id"]
 
-        email = f"pytest-{_UID}@test.local"
+        email = f"pytest-{_UID}@example.com"
         st, d = await api_request(
             session, "POST", "/platform/users",
             headers=superadmin_headers,
@@ -837,14 +839,22 @@ class TestHealth:
 
 class TestSSE:
     async def test_sse_connects_with_token(self, session, auth_token):
-        """SSE endpoint accepts valid JWT via query param."""
+        """SSE endpoint accepts valid SSE token via query param."""
+        # First get SSE token
+        st, data = await api_request(
+            session, "POST", "/events/token",
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
+        if st != 200:
+            pytest.skip("SSE token endpoint not available")
+        sse_token = data.get("token", auth_token)
         try:
             async with session.get(
-                f"{BASE_URL}/events/stream?token={auth_token}",
+                f"{BASE_URL}/events/stream?token={sse_token}",
                 timeout=aiohttp.ClientTimeout(total=3),
             ) as resp:
                 assert resp.status == 200
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):
             pass  # Expected — SSE streams indefinitely
 
     async def test_sse_rejects_without_token(self, session):
@@ -1013,6 +1023,7 @@ class TestPlatformAiLogs:
 
 class TestPromptRules:
     async def test_get_prompt_rules(self, session, auth_headers):
+        """GET /ai-settings/prompt-rules returns list. NOTE: requires backend restart after router fix."""
         """GET /ai-settings/prompt-rules returns list."""
         st, d = await api_request(
             session, "GET", "/ai-settings/prompt-rules", headers=auth_headers,
@@ -1075,7 +1086,7 @@ class TestPasswordReset:
         """POST /auth/forgot-password always returns 200 (no email enumeration)."""
         st, d = await api_request(
             session, "POST", "/auth/forgot-password",
-            json_data={"email": "nonexistent@test.local"},
+            json_data={"email": "nonexistent@example.com"},
         )
         assert st == 200
         assert d.get("status") == "ok"

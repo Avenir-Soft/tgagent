@@ -16,6 +16,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from pgvector.sqlalchemy import Vector
+
 from src.core.database import Base
 from src.core.models import PkMixin, TenantMixin, TimestampMixin, UpdatableMixin
 
@@ -59,6 +61,7 @@ class Product(PkMixin, TenantMixin, UpdatableMixin, Base):
     brand: Mapped[str | None] = mapped_column(String(200), nullable=True)
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    embedding = mapped_column(Vector(1536), nullable=True)
 
     category = relationship("Category", back_populates="products")
     variants = relationship("ProductVariant", back_populates="product", lazy="selectin")

@@ -61,14 +61,23 @@ async def _search_cache_set(tenant_id: UUID, query: str, result: dict) -> None:
 
 
 async def invalidate_catalog_cache(tenant_id) -> None:
-    """Invalidate categories in-memory cache AND Redis search cache."""
+    """Invalidate categories in-memory cache, Redis search cache, AND query embedding cache."""
     _cat_cache.pop(str(tenant_id), None)
     try:
         r = await _get_cache_redis()
+        # Invalidate ILIKE search cache
         prefix = f"cat_srch:{tenant_id}:"
         cursor = 0
         while True:
             cursor, keys = await r.scan(cursor, match=f"{prefix}*", count=100)
+            if keys:
+                await r.delete(*keys)
+            if cursor == 0:
+                break
+        # Invalidate query embedding cache (shared across tenants, but cheap to clear)
+        cursor = 0
+        while True:
+            cursor, keys = await r.scan(cursor, match="embed_q:*", count=100)
             if keys:
                 await r.delete(*keys)
             if cursor == 0:
@@ -177,12 +186,36 @@ async def list_categories(tenant_id: UUID, db: AsyncSession) -> dict:
     return data
 
 
+async def _get_query_embedding(query: str) -> list[float] | None:
+    """Get query embedding with Redis cache (TTL 5 min) to avoid duplicate API calls."""
+    cache_key = f"embed_q:{hashlib.md5(query.lower().strip().encode()).hexdigest()}"
+    try:
+        r = await _get_cache_redis()
+        cached = await r.get(cache_key)
+        if cached:
+            return _json.loads(cached)
+    except Exception:
+        pass
+
+    from src.core.vector import generate_embedding
+    embedding = await generate_embedding(query)
+    if embedding:
+        try:
+            r = await _get_cache_redis()
+            await r.setex(cache_key, 300, _json.dumps(embedding))
+        except Exception:
+            pass
+    return embedding
+
+
 async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) -> dict:
-    """Search products by ILIKE on product.name, product_alias.alias_text, product_variant.title,
-    category.name, product.brand, product.model.
+    """Hybrid search: vector (semantic) + ILIKE (exact) on product.name,
+    product_alias.alias_text, product_variant.title, category.name, product.brand, product.model.
 
     Splits query into words and searches each word separately for better fuzzy matching.
-    Returns up to 15 matching products ranked by relevance (name match > brand/model > category).
+    Vector search finds semantically similar products (typo-tolerant, multilingual).
+    Results are merged and ranked by relevance.
+    Returns up to 15 matching products.
     """
     # Search with full query + each word separately for better matching
     search_terms = [query.strip()]
@@ -215,6 +248,27 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
     if cached_result is not None:
         return cached_result
 
+    # ── 1. Vector search (semantic, typo-tolerant, multilingual) ─────────
+    # Returns ordered list of product IDs by cosine similarity
+    vector_ranked_ids: list[UUID] = []
+    try:
+        query_embedding = await _get_query_embedding(query)
+        if query_embedding:
+            vector_result = await db.execute(
+                select(Product.id)
+                .where(
+                    Product.tenant_id == tenant_id,
+                    Product.is_active.is_(True),
+                    Product.embedding.isnot(None),
+                )
+                .order_by(Product.embedding.cosine_distance(query_embedding))
+                .limit(10)
+            )
+            vector_ranked_ids = list(vector_result.scalars().all())
+    except Exception as e:
+        _logger.debug("Vector search failed (falling back to ILIKE only): %s", e)
+
+    # ── 2. ILIKE search (existing exact matching) ────────────────────────
     # Build ALL subqueries for ALL terms in one pass — single DB round-trip
     all_subqueries = []
     for term in search_terms:
@@ -248,7 +302,11 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
 
     matching_ids = union_all(*all_subqueries).subquery()
     result = await db.execute(select(matching_ids.c.pid).distinct())
-    all_product_ids = set(result.scalars().all())
+    ilike_product_ids = set(result.scalars().all())
+
+    # ── 3. Merge: vector + ILIKE (vector is additive, never removes ILIKE) ──
+    vector_id_set = set(vector_ranked_ids)
+    all_product_ids = ilike_product_ids | vector_id_set
 
     if not all_product_ids:
         empty = {"found": False, "products": []}
@@ -317,19 +375,33 @@ async def get_product_candidates(tenant_id: UUID, query: str, db: AsyncSession) 
             "total_photos": len(_all_photo_urls),
         })
 
-    # Rank by relevance: exact name match > name contains > brand/model match > category match
+    # ── 4. Rank by relevance ─────────────────────────────────────────────
+    # Priority: exact name > name contains > brand/model > vector top-5 > ILIKE alias > vector rest
+    # Build vector rank map: {product_id_str: rank_position}
+    _vector_rank = {str(pid): i for i, pid in enumerate(vector_ranked_ids)}
+
     q_lower = query.strip().lower()
     def _relevance(p):
+        pid = p["product_id"]
         name_l = (p["name"] or "").lower()
         brand_l = (p.get("brand") or "").lower()
         model_l = (p.get("model") or "").lower()
         if name_l == q_lower:
-            return 0  # exact name match
+            return (0, 0)  # exact name match (highest)
         if q_lower in name_l or name_l in q_lower:
-            return 1  # name contains query or vice versa
+            return (1, 0)  # name contains query or vice versa
         if q_lower in brand_l or q_lower in model_l:
-            return 2  # brand/model match
-        return 3  # category/alias match
+            return (2, 0)  # brand/model match
+        # Vector top-5 results rank higher than generic ILIKE matches
+        v_rank = _vector_rank.get(pid)
+        if v_rank is not None and v_rank < 5:
+            return (3, v_rank)  # vector top-5
+        if pid in {str(x) for x in ilike_product_ids}:
+            return (4, 0)  # ILIKE alias/category match
+        # Vector results beyond top-5
+        if v_rank is not None:
+            return (5, v_rank)
+        return (6, 0)  # fallback
 
     product_list.sort(key=_relevance)
 

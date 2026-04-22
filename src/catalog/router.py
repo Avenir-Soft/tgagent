@@ -1,3 +1,4 @@
+import logging
 import re
 from uuid import UUID
 
@@ -42,9 +43,33 @@ from src.catalog.schemas import (
 
 from src.ai.truth_tools import invalidate_catalog_cache
 from src.core.audit import log_audit
+from src.core.vector import generate_embedding, build_embedding_text
 from src.platform.deps import check_not_read_only
 
 router = APIRouter(tags=["catalog"])
+
+_embed_logger = logging.getLogger(__name__ + ".embedding")
+
+
+async def _update_product_embedding(product_id, tenant_id, db: AsyncSession) -> None:
+    """Generate and save embedding for a product (fire-and-forget, non-fatal)."""
+    try:
+        result = await db.execute(
+            select(Product)
+            .where(Product.id == product_id, Product.tenant_id == tenant_id)
+            .options(selectinload(Product.category), selectinload(Product.aliases))
+        )
+        prod = result.scalar_one_or_none()
+        if not prod:
+            return
+        text = build_embedding_text(prod)
+        embedding = await generate_embedding(text)
+        if embedding:
+            prod.embedding = embedding
+            await db.flush()
+            _embed_logger.debug("Embedding updated for product %s", product_id)
+    except Exception as e:
+        _embed_logger.warning("Embedding update failed for product %s: %s", product_id, e)
 
 
 def _build_product_detail(product: Product) -> ProductDetailOut:
@@ -140,6 +165,9 @@ async def create_product(
     # Invalidate AI search cache so new product is immediately visible
     await invalidate_catalog_cache(user.tenant_id)
 
+    # Generate embedding for vector search (non-fatal)
+    await _update_product_embedding(product.id, user.tenant_id, db)
+
     # Re-fetch with eager-loaded relationships to avoid MissingGreenlet
     result = await db.execute(
         _product_query_with_relations().where(Product.id == product.id)
@@ -217,6 +245,12 @@ async def update_product(
         setattr(product, field, value)
     await db.flush()
     await invalidate_catalog_cache(user.tenant_id)
+
+    # Re-generate embedding if name/brand/model/description/category changed
+    _embed_fields = {"name", "brand", "model", "description", "category_id"}
+    if _embed_fields & set(changed_fields.keys()):
+        await _update_product_embedding(product_id, user.tenant_id, db)
+
     await log_audit(
         db, user.tenant_id, "user", str(user.id), "product.update", "product", str(product_id),
         {"changed_fields": list(changed_fields.keys())},
@@ -569,6 +603,8 @@ async def create_product_alias(
     )
     db.add(alias)
     await db.flush()
+    # Aliases are part of embedding text — regenerate
+    await _update_product_embedding(product_id, user.tenant_id, db)
     return ProductAliasOut.model_validate(alias)
 
 
@@ -604,8 +640,11 @@ async def delete_product_alias(
     alias = result.scalar_one_or_none()
     if not alias:
         raise HTTPException(status_code=404, detail="Alias not found")
+    _alias_product_id = alias.product_id
     await db.delete(alias)
     await db.flush()
+    # Aliases are part of embedding text — regenerate
+    await _update_product_embedding(_alias_product_id, user.tenant_id, db)
 
 
 # --- Product Media ---
@@ -1090,6 +1129,9 @@ async def smart_create_product(
 
     # Invalidate cache
     await invalidate_catalog_cache(user.tenant_id)
+
+    # Generate embedding for vector search (non-fatal)
+    await _update_product_embedding(product.id, user.tenant_id, db)
 
     # Re-fetch with relations
     result = await db.execute(

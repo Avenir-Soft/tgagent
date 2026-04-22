@@ -53,31 +53,27 @@ async def admin_user_data(session: aiohttp.ClientSession) -> dict:
 # ── Super Admin ──────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def superadmin_token(session: aiohttp.ClientSession) -> str:
-    """Login as super_admin and return a valid JWT token."""
+async def superadmin_user_data(session: aiohttp.ClientSession) -> dict:
+    """Login as superadmin and return user + tokens. Single login for all superadmin fixtures."""
+    import asyncio
+    await asyncio.sleep(2)  # Avoid rate limit from admin login fixtures
     async with session.post(
         f"{BASE_URL}/auth/login",
         json={"email": "superadmin@gmail.com", "password": "admin123"},
     ) as resp:
         assert resp.status == 200, f"Superadmin login failed: {await resp.text()}"
-        data = await resp.json()
-        return data["access_token"]
+        return await resp.json()
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def superadmin_token(superadmin_user_data: dict) -> str:
+    """Extract token from superadmin login (no extra API call)."""
+    return superadmin_user_data["access_token"]
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def superadmin_headers(superadmin_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {superadmin_token}"}
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def superadmin_user_data(session: aiohttp.ClientSession) -> dict:
-    """Login as superadmin and return user + refresh token data."""
-    async with session.post(
-        f"{BASE_URL}/auth/login",
-        json={"email": "superadmin@gmail.com", "password": "admin123"},
-    ) as resp:
-        assert resp.status == 200
-        return await resp.json()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

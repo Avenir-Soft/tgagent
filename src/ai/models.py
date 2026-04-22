@@ -82,6 +82,11 @@ class AiSettings(PkMixin, TenantMixin, UpdatableMixin, Base):
         String(50), nullable=True
     )  # Override model per tenant (e.g. "gpt-4o", "claude-sonnet-4-6")
 
+    # Prompt rules (JSONB array of custom rules)
+    prompt_rules: Mapped[list | None] = mapped_column(
+        JSONB, nullable=True
+    )
+
 
 class AITraceLog(PkMixin, TenantMixin, TimestampMixin, Base):
     """Persistent AI trace log — stores full pipeline trace for each AI interaction."""

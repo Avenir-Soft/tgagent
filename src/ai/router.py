@@ -308,7 +308,7 @@ async def get_prompt_rules(
         select(AiSettings).where(AiSettings.tenant_id == user.tenant_id)
     )
     ai_settings = result.scalar_one_or_none()
-    return ai_settings.prompt_rules or [] if ai_settings else []
+    return (ai_settings.prompt_rules or []) if ai_settings else []
 
 
 @router.post("/ai-settings/prompt-rules")
