@@ -1,0 +1,6 @@
+[     882ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:25630
+[    1726ms] [ERROR] Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID @ https://gmedia.playstation.com/is/image/SIEPDC/PS5-Slim-Beauty-image-block-01-en-27jan26?fmt=jpeg&wid=400:0
+[   21545ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/hot-reloader/app/hot-reloader-app.js:196
+[   22221ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/_next/static/webpack/6546dfc8938330e9.webpack.hot-update.json:0
+[   23245ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:25630
+[   23858ms] [ERROR] Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID @ https://gmedia.playstation.com/is/image/SIEPDC/PS5-Slim-Beauty-image-block-01-en-27jan26?fmt=jpeg&wid=400:0

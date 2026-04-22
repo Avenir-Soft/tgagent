@@ -12,11 +12,11 @@ from src.core.rate_limit import limiter
 import logging
 import secrets
 
-import redis.asyncio as aioredis
-
+from src.core.audit import log_audit
 from src.core.config import settings
+from src.core.redis import get_redis
 
-_redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+_redis = get_redis()
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -25,25 +25,37 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
 async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email))
+    result = await db.execute(
+        select(User).where(User.email == body.email, User.is_active.is_(True)).limit(1)
+    )
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
+    # Record last login
+    from datetime import datetime
+    user.last_login_at = datetime.utcnow()
+    await db.flush()
+
     access = create_access_token({"sub": str(user.id), "tenant_id": str(user.tenant_id)})
     refresh = await create_refresh_token(str(user.id), str(user.tenant_id))
+
+    await log_audit(db, user.tenant_id, "user", str(user.id), "login", "user", str(user.id), {"email": user.email})
+
     return TokenResponse(access_token=access, refresh_token=refresh, user=UserOut.model_validate(user))
 
 
 @router.post("/logout")
 async def logout(
     credentials=Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Blacklist the current JWT token."""
     await blacklist_token(credentials.credentials)
+    await log_audit(db, user.tenant_id, "user", str(user.id), "logout", "user", str(user.id))
     return {"status": "logged_out"}
 
 
@@ -81,12 +93,25 @@ async def change_password(
 ):
     if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Неверный текущий пароль")
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Пароль минимум 8 символов")
-    if body.new_password.isdigit() or body.new_password.isalpha():
-        raise HTTPException(status_code=400, detail="Пароль должен содержать буквы и цифры")
+    # Password complexity validated by PasswordChangeRequest schema (field_validator)
     user.password_hash = hash_password(body.new_password)
     await db.flush()
+
+    # Invalidate any pending password reset tokens for this user
+    try:
+        cursor = 0
+        while True:
+            cursor, keys = await _redis.scan(cursor, match="pwd_reset:*", count=100)
+            for key in keys:
+                val = await _redis.get(key)
+                if val == str(user.id):
+                    await _redis.delete(key)
+            if cursor == 0:
+                break
+    except Exception:
+        pass  # Non-critical — don't break password change
+
+    await log_audit(db, user.tenant_id, "user", str(user.id), "password_change", "user", str(user.id))
     return {"status": "ok"}
 
 
@@ -111,7 +136,9 @@ async def list_operators(
 @limiter.limit("3/minute")
 async def forgot_password(request: Request, body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     """Generate a password reset token. In DEBUG mode the token is returned in the response."""
-    result = await db.execute(select(User).where(User.email == body.email))
+    result = await db.execute(
+        select(User).where(User.email == body.email, User.is_active.is_(True)).limit(1)
+    )
     user = result.scalar_one_or_none()
 
     # Always return success to prevent email enumeration

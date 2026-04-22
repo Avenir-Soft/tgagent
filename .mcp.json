@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ],
+      "env": {}
+    },
+    "postgres": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@bytebase/dbhub",
+        "--dsn",
+        "postgresql://macbook@localhost:5432/ai_closer"
+      ],
+      "env": {}
+    },
+    "telegram": {
+      "type": "stdio",
+      "command": "/Users/macbook/Desktop/tg agent/.venv/bin/mcp-telegram",
+      "args": ["start"],
+      "env": {
+        "API_ID": "33243468",
+        "API_HASH": "6aae610aaed24da144f980e0842cb4bd"
+      }
+    }
+  }
+}

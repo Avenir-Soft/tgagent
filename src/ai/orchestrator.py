@@ -55,16 +55,69 @@ from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Singleton OpenAI client — reused across all calls
+# Singleton OpenAI client — reused across all calls (platform default)
 import openai as _openai_mod
 _openai_client: _openai_mod.AsyncOpenAI | None = None
 
 
-def _get_openai_client() -> _openai_mod.AsyncOpenAI:
+def _get_openai_client(api_key: str | None = None) -> _openai_mod.AsyncOpenAI:
+    """Get an OpenAI client. If api_key is provided, creates a fresh client for that tenant."""
+    if api_key:
+        return _openai_mod.AsyncOpenAI(api_key=api_key)
     global _openai_client
     if _openai_client is None:
         _openai_client = _openai_mod.AsyncOpenAI(api_key=settings.openai_api_key)
     return _openai_client
+
+
+def _get_tenant_ai_config(ai_settings) -> tuple[str, object, str]:
+    """Resolve tenant's AI provider, client, and model.
+
+    Returns (provider, client, model) where:
+    - provider: "openai" | "anthropic"
+    - client: AsyncOpenAI or AsyncAnthropic instance
+    - model: model name to use
+
+    Fallback chain: tenant AI settings -> env config -> platform settings defaults.
+    """
+    from src.platform.settings_cache import get_platform_settings
+    platform_cfg = get_platform_settings()
+
+    provider = "openai"
+    # Fallback chain: env var -> platform settings default
+    model = settings.openai_model_main or platform_cfg.get("default_ai_model", "gpt-4o-mini")
+    tenant_api_key = None
+
+    if ai_settings:
+        provider = getattr(ai_settings, "ai_provider", "openai") or "openai"
+        if ai_settings.ai_model_override:
+            model = ai_settings.ai_model_override
+        encrypted = getattr(ai_settings, "ai_api_key_encrypted", None)
+        if encrypted:
+            try:
+                from src.core.security import decrypt_api_key
+                tenant_api_key = decrypt_api_key(encrypted)
+            except ValueError:
+                logger.warning("Failed to decrypt tenant API key — falling back to platform default")
+                tenant_api_key = None
+                provider = "openai"
+
+    if provider == "anthropic" and tenant_api_key:
+        try:
+            import anthropic
+            client = anthropic.AsyncAnthropic(api_key=tenant_api_key)
+            if not model or model.startswith("gpt"):
+                model = "claude-haiku-4-5"
+            return provider, client, model
+        except ImportError:
+            logger.warning("anthropic SDK not installed — falling back to OpenAI")
+            provider = "openai"
+
+    # OpenAI path (default or with tenant key)
+    client = _get_openai_client(api_key=tenant_api_key)
+    if not model or (provider == "openai" and model.startswith("claude")):
+        model = settings.openai_model_main
+    return "openai", client, model
 
 
 # ── AI Settings in-memory cache (TTL 60s) ────────────────────────────────────
@@ -188,7 +241,38 @@ async def process_dm_message(
     t0 = time.monotonic()
 
     try:
-        client = _get_openai_client()
+        # --- Step 0.5: Platform-level maintenance check ---
+        from src.platform.settings_cache import get_platform_settings
+        platform_cfg = get_platform_settings()
+        if platform_cfg.get("maintenance_mode"):
+            logger.info("Maintenance mode ON — skipping AI for tenant %s", tenant_id)
+            trace.add_step("info", "Maintenance mode", "Platform maintenance_mode=True — AI blocked")
+            trace.final_response = "Сервис временно на обслуживании. Попробуйте позже."
+            trace.total_duration_ms = int((time.monotonic() - t0) * 1000)
+            await finish_trace(tenant_id, trace, db)
+            return {"text": "Сервис временно на обслуживании. Попробуйте позже.", "image_urls": []}
+
+        # --- Step 0.6: Daily message limit (Redis counter, TTL 86400) ---
+        try:
+            from src.core.redis import get_redis
+            redis = get_redis()
+            max_messages = platform_cfg.get("max_messages_per_day", 5000)
+            counter_key = f"platform:msg_count:{tenant_id}:{time.strftime('%Y-%m-%d')}"
+            current_count = await redis.incr(counter_key)
+            if current_count == 1:
+                await redis.expire(counter_key, 86400)
+            if current_count > max_messages:
+                logger.warning(
+                    "Daily message limit exceeded for tenant %s: %d/%d",
+                    tenant_id, current_count, max_messages,
+                )
+                trace.add_step("guard", "Daily limit", f"count={current_count}, max={max_messages}")
+                trace.final_response = "Дневной лимит сообщений исчерпан. Попробуйте завтра."
+                trace.total_duration_ms = int((time.monotonic() - t0) * 1000)
+                await finish_trace(tenant_id, trace, db)
+                return {"text": "Дневной лимит сообщений исчерпан. Попробуйте завтра.", "image_urls": []}
+        except Exception:
+            logger.debug("Redis daily counter failed (non-fatal, allowing message through)", exc_info=True)
 
         # --- Step 1: Load conversation + state ---
         conv_result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
@@ -211,6 +295,10 @@ async def process_dm_message(
             logger.info("DM auto-reply disabled for tenant %s — skipping AI", tenant_id)
             trace.add_step("info", "Kill switch", "allow_auto_dm_reply=False — AI отключён")
             return None
+
+        # --- Step 2.5: Resolve per-tenant AI provider/client/model ---
+        ai_provider, ai_client, ai_model = _get_tenant_ai_config(ai_settings)
+        trace.add_step("info", "AI Provider", f"provider={ai_provider}, model={ai_model}, custom_key={bool(getattr(ai_settings, 'ai_api_key_encrypted', None))}")
 
         # --- Step 3: Language detection ---
         default_lang = ai_settings.language if ai_settings else "ru"
@@ -292,7 +380,7 @@ async def process_dm_message(
         # --- Step 8: Build system prompt ---
         current_state = _determine_state(conversation, state_context)
         system_content = build_system_prompt(conversation, state_context, detected_lang, ai_settings, current_state)
-        trace.model = settings.openai_model_main
+        trace.model = ai_model
         trace.add_step("info", "State & prompt", f"state={current_state}, prompt_len={len(system_content)}")
 
         # --- Step 9: Build messages with history (last 20) ---
@@ -302,8 +390,9 @@ async def process_dm_message(
         # --- Step 10: Multi-round tool calling ---
         cart_before_ai = [item.get("title", "") for item in state_context.get("cart", [])]
         final_text, collected_image_urls, tools_called, current_state, variant_images_map = await _run_tool_loop(
-            client, messages, tenant_id, conversation, state_context,
+            ai_client, messages, tenant_id, conversation, state_context,
             current_state, detected_lang, ai_settings, db, trace,
+            ai_provider=ai_provider, ai_model=ai_model,
         )
         trace.tools_called = list(tools_called)
 
@@ -512,15 +601,117 @@ async def _build_messages(conversation_id, system_content, user_message, comment
     return messages
 
 
+async def _call_anthropic(client, model: str, messages: list, tools=None, max_tokens=500, temperature=0.3) -> dict:
+    """Call Anthropic Messages API, adapting OpenAI-format messages.
+
+    Returns dict with keys: text, message (raw content blocks), tool_calls, input_tokens, output_tokens.
+    """
+    # Extract system prompt from messages
+    system_prompt = ""
+    api_messages = []
+    for msg in messages:
+        if msg.get("role") == "system":
+            system_prompt += (msg.get("content") or "") + "\n"
+        elif msg.get("role") == "user":
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                # Tool result format from previous round
+                api_messages.append(msg)
+            else:
+                api_messages.append({"role": "user", "content": content})
+        elif msg.get("role") == "assistant":
+            content = msg.get("content")
+            if isinstance(content, list):
+                api_messages.append({"role": "assistant", "content": content})
+            elif isinstance(content, str):
+                api_messages.append({"role": "assistant", "content": content})
+            else:
+                # OpenAI-format assistant message with tool_calls — skip (already converted)
+                pass
+        elif msg.get("role") == "tool":
+            # Convert OpenAI tool result to Anthropic format
+            api_messages.append({
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": msg.get("tool_call_id", ""), "content": msg.get("content", "")}],
+            })
+
+    # Merge consecutive same-role messages (Anthropic requires alternating roles)
+    merged = []
+    for m in api_messages:
+        if merged and merged[-1]["role"] == m["role"]:
+            prev_content = merged[-1]["content"]
+            new_content = m["content"]
+            if isinstance(prev_content, str) and isinstance(new_content, str):
+                merged[-1]["content"] = prev_content + "\n" + new_content
+            elif isinstance(prev_content, list) and isinstance(new_content, list):
+                merged[-1]["content"] = prev_content + new_content
+            elif isinstance(prev_content, str):
+                merged[-1]["content"] = [{"type": "text", "text": prev_content}] + (new_content if isinstance(new_content, list) else [{"type": "text", "text": new_content}])
+            else:
+                merged[-1]["content"] = prev_content + [{"type": "text", "text": new_content}] if isinstance(new_content, str) else prev_content + new_content
+        else:
+            merged.append(m)
+
+    # Convert OpenAI tool definitions to Anthropic format
+    anthropic_tools = None
+    if tools:
+        anthropic_tools = []
+        for t in tools:
+            func = t.get("function", {})
+            anthropic_tools.append({
+                "name": func.get("name"),
+                "description": func.get("description", ""),
+                "input_schema": func.get("parameters", {"type": "object", "properties": {}}),
+            })
+
+    kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": merged,
+        "temperature": temperature,
+    }
+    if system_prompt.strip():
+        kwargs["system"] = system_prompt.strip()
+    if anthropic_tools:
+        kwargs["tools"] = anthropic_tools
+
+    response = await client.messages.create(**kwargs)
+
+    # Parse response
+    text_parts = []
+    tool_calls = []
+    for block in response.content:
+        if block.type == "text":
+            text_parts.append(block.text)
+        elif block.type == "tool_use":
+            tool_calls.append({
+                "id": block.id,
+                "name": block.name,
+                "input": block.input,
+            })
+
+    return {
+        "text": "\n".join(text_parts) if text_parts else None,
+        "message": response.content,  # raw content blocks for appending to messages
+        "tool_calls": tool_calls,
+        "input_tokens": getattr(response.usage, "input_tokens", 0),
+        "output_tokens": getattr(response.usage, "output_tokens", 0),
+    }
+
+
 async def _run_tool_loop(
     client, messages, tenant_id, conversation, state_context,
     current_state, detected_lang, ai_settings, db,
     trace: AITrace | None = None,
+    ai_provider: str = "openai",
+    ai_model: str | None = None,
 ):
     """Execute multi-round tool calling loop (up to 3 rounds).
 
+    Supports both OpenAI and Anthropic providers.
     Returns (final_text, collected_image_urls, tools_called, current_state, variant_images_map).
     """
+    model = ai_model or settings.openai_model_main
     final_text = None
     collected_image_urls: list[str] = []
     variant_images_map: dict = {}
@@ -528,9 +719,111 @@ async def _run_tool_loop(
 
     for round_num in range(3):
         t_llm = time.monotonic()
+
+        if ai_provider == "anthropic":
+            response_data = await _call_anthropic(
+                client, model=model, messages=messages,
+                tools=TOOL_DEFINITIONS, max_tokens=500, temperature=0.3,
+            )
+            llm_ms = int((time.monotonic() - t_llm) * 1000)
+            assistant_msg = response_data["message"]
+            tool_calls = response_data.get("tool_calls", [])
+            if trace:
+                trace.prompt_tokens += response_data.get("input_tokens", 0)
+                trace.completion_tokens += response_data.get("output_tokens", 0)
+
+            if not tool_calls:
+                final_text = response_data.get("text")
+                if trace:
+                    trace.add_step("llm_call", f"Round {round_num + 1} → text response (anthropic)", (final_text or "")[:200], llm_ms)
+                break
+
+            if trace:
+                tool_names = [tc["name"] for tc in tool_calls]
+                trace.add_step("llm_call", f"Round {round_num + 1} → {len(tool_names)} tool(s) (anthropic)", ", ".join(tool_names), llm_ms)
+
+            # Append assistant message for Anthropic
+            messages.append({"role": "assistant", "content": assistant_msg})
+            forced_response = None
+            round_tool_names = {tc["name"] for tc in tool_calls}
+
+            for tc in tool_calls:
+                tool_name = tc["name"]
+                tool_args = tc["input"]
+                tool_use_id = tc["id"]
+                tools_called.add(tool_name)
+
+                # Guard: block select_for_cart in same round as get_variant_candidates
+                if tool_name == "select_for_cart" and "get_variant_candidates" in round_tool_names:
+                    msg_lower = messages[-1].get("content", "")
+                    if isinstance(msg_lower, str):
+                        msg_lower = msg_lower.lower().strip()
+                    else:
+                        msg_lower = ""
+                    is_short_confirm = len(msg_lower.split()) <= 5 and any(w in msg_lower.split() for w in _CONFIRM_WORDS)
+                    if not is_short_confirm:
+                        logger.warning("BLOCKED select_for_cart in same round as get_variant_candidates")
+                        result = {"error": "Сначала покажи варианты клиенту и дождись его выбора. Нельзя добавлять в корзину автоматически."}
+                        messages.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": json.dumps(result, ensure_ascii=False)}]})
+                        if trace:
+                            trace.add_step("guard", f"BLOCKED {tool_name}", "blocked in same round as get_variant_candidates")
+                        continue
+
+                t_tool = time.monotonic()
+                result = await execute_tool(
+                    tool_name, tool_args,
+                    tenant_id=tenant_id, conversation=conversation,
+                    state_context=state_context, db=db, ai_settings=ai_settings,
+                )
+                tool_ms = int((time.monotonic() - t_tool) * 1000)
+
+                if trace:
+                    args_str = json.dumps(tool_args, ensure_ascii=False, default=str)
+                    trace.add_step("tool_call", tool_name, f"args: {args_str}", 0)
+                    result_str = json.dumps(result, ensure_ascii=False, default=str) if isinstance(result, dict) else str(result)
+                    trace.add_step("tool_result", f"← {tool_name}", result_str[:500], tool_ms)
+
+                if isinstance(result, dict):
+                    imgs_before = len(collected_image_urls)
+                    collected_image_urls = extract_images_from_tool_result(
+                        tool_name, result, variant_images_map, collected_image_urls,
+                    )
+                    imgs_after = len(collected_image_urls)
+                    if trace and imgs_after != imgs_before:
+                        trace.add_step("photo", f"Photos from {tool_name}", f"{imgs_before} → {imgs_after} urls")
+
+                if isinstance(result, dict):
+                    state_context = _update_context_from_tool(state_context, tool_name, tool_args, result)
+
+                new_state = next_state(current_state, tool_name)
+                if new_state != current_state:
+                    if trace:
+                        trace.add_step("state", "State transition", f"{current_state} → {new_state}")
+                    current_state = new_state
+                    conversation.state = new_state
+
+                if isinstance(result, dict) and result.get("success"):
+                    forced_response = _build_order_modification_response(
+                        tool_name, result, detected_lang,
+                        tone=ai_settings.tone if ai_settings else "friendly_sales",
+                    )
+
+                messages.append({
+                    "role": "user",
+                    "content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": json.dumps(result, ensure_ascii=False, default=str)}],
+                })
+
+            if forced_response:
+                final_text = forced_response
+                if trace:
+                    trace.add_step("info", "Forced response", final_text[:200])
+                break
+            continue  # next round for Anthropic
+
+        # --- OpenAI provider path ---
         response = await _openai_with_retry(
             client,
-            model=settings.openai_model_main,
+            model=model,
             messages=messages,
             tools=TOOL_DEFINITIONS,
             tool_choice="auto",
@@ -629,20 +922,31 @@ async def _run_tool_loop(
                 trace.add_step("info", "Forced response", final_text[:200])
             break
     else:
-        # Max rounds reached
+        # Max rounds reached — final text-only call
         t_llm = time.monotonic()
-        response = await _openai_with_retry(
-            client,
-            model=settings.openai_model_main,
-            messages=messages,
-            max_tokens=500,
-            temperature=0.3,
-        )
-        llm_ms = int((time.monotonic() - t_llm) * 1000)
-        final_text = response.choices[0].message.content
-        if trace and response.usage:
-            trace.prompt_tokens += response.usage.prompt_tokens or 0
-            trace.completion_tokens += response.usage.completion_tokens or 0
+        if ai_provider == "anthropic":
+            response_data = await _call_anthropic(
+                client, model=model, messages=messages,
+                tools=None, max_tokens=500, temperature=0.3,
+            )
+            llm_ms = int((time.monotonic() - t_llm) * 1000)
+            final_text = response_data.get("text")
+            if trace:
+                trace.prompt_tokens += response_data.get("input_tokens", 0)
+                trace.completion_tokens += response_data.get("output_tokens", 0)
+        else:
+            response = await _openai_with_retry(
+                client,
+                model=model,
+                messages=messages,
+                max_tokens=500,
+                temperature=0.3,
+            )
+            llm_ms = int((time.monotonic() - t_llm) * 1000)
+            final_text = response.choices[0].message.content
+            if trace and response.usage:
+                trace.prompt_tokens += response.usage.prompt_tokens or 0
+                trace.completion_tokens += response.usage.completion_tokens or 0
         if trace:
             trace.add_step("llm_call", "Max rounds → final text", (final_text or "")[:200], llm_ms)
 
@@ -683,13 +987,18 @@ async def _handle_fallback(tenant_id, conversation_id, user_message, exc, db):
         fb_mode = fb_settings.fallback_mode if fb_settings else "handoff"
 
         if fb_mode == "fallback_model":
+            # Use platform default OpenAI for fallback (not tenant's key — it may have been the source of the error)
             fb_client = _get_openai_client()
             conv_result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
             conv = conv_result.scalar_one_or_none()
             if conv and user_message:
-                logger.info("Fallback: trying %s for tenant %s", settings.openai_model_fallback, tenant_id)
+                # Fallback model: env var -> platform settings
+                from src.platform.settings_cache import get_platform_settings
+                _pcfg = get_platform_settings()
+                fb_model = settings.openai_model_fallback or _pcfg.get("fallback_model", "gpt-4o")
+                logger.info("Fallback: trying %s for tenant %s", fb_model, tenant_id)
                 fb_response = await fb_client.chat.completions.create(
-                    model=settings.openai_model_fallback,
+                    model=fb_model,
                     messages=[
                         {"role": "system", "content": "Ты помощник магазина. Основная модель временно недоступна. Ответь кратко и предложи подождать или написать позже."},
                         {"role": "user", "content": user_message},

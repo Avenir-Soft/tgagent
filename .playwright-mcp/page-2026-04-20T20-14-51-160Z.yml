@@ -1,0 +1,142 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e99] [cursor=pointer]:
+    - img [ref=e100]
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e6]:
+        - img [ref=e8]
+        - generic [ref=e10]:
+          - heading "AI Closer" [level=1] [ref=e11]
+          - generic [ref=e13]: Platform
+      - navigation [ref=e14]:
+        - generic [ref=e15]:
+          - paragraph [ref=e16]: Обзор
+          - link "Обзор" [ref=e18] [cursor=pointer]:
+            - /url: /platform-overview
+            - img [ref=e20]
+            - generic [ref=e23]: Обзор
+        - generic [ref=e24]:
+          - paragraph [ref=e25]: Управление
+          - generic [ref=e26]:
+            - link "Тенанты" [ref=e27] [cursor=pointer]:
+              - /url: /platform-tenants
+              - img [ref=e29]
+              - generic [ref=e31]: Тенанты
+            - link "Пользователи" [ref=e32] [cursor=pointer]:
+              - /url: /platform-users
+              - img [ref=e34]
+              - generic [ref=e36]: Пользователи
+        - generic [ref=e37]:
+          - paragraph [ref=e38]: Мониторинг
+          - generic [ref=e39]:
+            - link "AI Монитор" [ref=e40] [cursor=pointer]:
+              - /url: /platform-ai-monitor
+              - img [ref=e42]
+              - generic [ref=e44]: AI Монитор
+            - link "Биллинг" [ref=e45] [cursor=pointer]:
+              - /url: /platform-billing
+              - img [ref=e47]
+              - generic [ref=e49]: Биллинг
+            - link "Логи" [ref=e50] [cursor=pointer]:
+              - /url: /platform-logs
+              - img [ref=e52]
+              - generic [ref=e54]: Логи
+        - generic [ref=e55]:
+          - paragraph [ref=e56]: Система
+          - link "Настройки" [ref=e58] [cursor=pointer]:
+            - /url: /platform-settings
+            - img [ref=e60]
+            - generic [ref=e63]: Настройки
+      - generic [ref=e66]:
+        - generic [ref=e67]: SA
+        - generic [ref=e68]:
+          - paragraph [ref=e69]: superadmin@gmail.com
+          - paragraph [ref=e70]: Super Admin
+        - button "Тёмная тема" [ref=e71]:
+          - img [ref=e72]
+        - button "Выйти" [ref=e74]:
+          - img [ref=e75]
+    - main [ref=e78]:
+      - navigation [ref=e79]:
+        - link "Платформа" [ref=e81] [cursor=pointer]:
+          - /url: /platform-overview
+        - generic [ref=e82]:
+          - img [ref=e83]
+          - generic [ref=e85]: Тенанты
+      - generic [ref=e103]:
+        - generic [ref=e104]:
+          - generic [ref=e105]:
+            - heading "Тенанты" [level=1] [ref=e106]
+            - generic [ref=e107]: "2"
+          - button "+ Создать" [active] [ref=e109]
+        - generic [ref=e164]:
+          - heading "Новый тенант" [level=3] [ref=e165]
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - generic [ref=e168]: Название
+              - textbox "My Store" [ref=e169]
+            - generic [ref=e170]:
+              - generic [ref=e171]: Slug
+              - textbox "my-store" [ref=e172]
+            - generic [ref=e173]:
+              - generic [ref=e174]: Email администратора
+              - textbox "admin@store.com" [ref=e175]
+            - generic [ref=e176]:
+              - generic [ref=e177]: Пароль
+              - textbox "min 8 symbols" [ref=e178]
+            - generic [ref=e179]:
+              - button "Отмена" [ref=e180]
+              - button "Создать" [ref=e181]
+        - generic [ref=e110]:
+          - img [ref=e111]
+          - textbox "Поиск по названию или slug..." [ref=e114]
+        - generic [ref=e115]:
+          - table [ref=e117]:
+            - rowgroup [ref=e118]:
+              - row "Название ↕ Slug Статус Товары ↕ Диалоги Пользователи Создан ↓" [ref=e119]:
+                - columnheader [ref=e120]:
+                  - checkbox [ref=e121]
+                - columnheader "Название ↕" [ref=e122] [cursor=pointer]
+                - columnheader "Slug" [ref=e123]
+                - columnheader "Статус" [ref=e124]
+                - columnheader "Товары ↕" [ref=e125] [cursor=pointer]
+                - columnheader "Диалоги" [ref=e126]
+                - columnheader "Пользователи" [ref=e127]
+                - columnheader "Создан ↓" [ref=e128] [cursor=pointer]
+                - columnheader [ref=e129]
+            - rowgroup [ref=e130]:
+              - row "Easy Tour easy-tour Активен 13 5 1 17 апр. 2026 г. Подробнее" [ref=e131]:
+                - cell [ref=e132]:
+                  - checkbox [ref=e133]
+                - cell "Easy Tour" [ref=e134]
+                - cell "easy-tour" [ref=e135]
+                - cell "Активен" [ref=e136]:
+                  - generic [ref=e137]: Активен
+                - cell "13" [ref=e138]
+                - cell "5" [ref=e139]
+                - cell "1" [ref=e140]
+                - cell "17 апр. 2026 г." [ref=e141]
+                - cell "Подробнее" [ref=e142]:
+                  - link "Подробнее" [ref=e143] [cursor=pointer]:
+                    - /url: /platform-tenants/ed0342b5-a5b6-4013-9686-6e2717ee18e6
+              - row "TechnoUz Demo Store technouz-demo Активен 24 10 3 18 мар. 2026 г. Подробнее" [ref=e144]:
+                - cell [ref=e145]:
+                  - checkbox [ref=e146]
+                - cell "TechnoUz Demo Store" [ref=e147]
+                - cell "technouz-demo" [ref=e148]
+                - cell "Активен" [ref=e149]:
+                  - generic [ref=e150]: Активен
+                - cell "24" [ref=e151]
+                - cell "10" [ref=e152]
+                - cell "3" [ref=e153]
+                - cell "18 мар. 2026 г." [ref=e154]
+                - cell "Подробнее" [ref=e155]:
+                  - link "Подробнее" [ref=e156] [cursor=pointer]:
+                    - /url: /platform-tenants/a7b1be91-b75f-4088-848a-22705b44b1b2
+          - generic [ref=e157]:
+            - generic [ref=e158]: Показано 1–2 из 2
+            - generic [ref=e159]:
+              - button "Назад" [disabled] [ref=e160]
+              - button "1" [ref=e161]
+              - button "Вперёд" [disabled] [ref=e162]

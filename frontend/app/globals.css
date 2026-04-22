@@ -1,5 +1,78 @@
 @import "tailwindcss";
 
+/* ============================================================
+   AI Closer Platform · design tokens (CSS variables)
+   ============================================================ */
+
+:root {
+  /* surfaces */
+  --bg: #f6f5f0;
+  --bg-2: #faf8f2;
+  --panel: #ffffff;
+  --panel-2: #fbfaf5;
+  /* lines */
+  --line: #e3dfd4;
+  --line-2: #d6d1c4;
+  --hair: #ece7d9;
+  /* ink */
+  --ink: #141210;
+  --ink-2: #5a544c;
+  --ink-3: #8a847a;
+  --ink-4: #b2ab9f;
+  /* accent */
+  --accent: #2a4a7f;
+  --accent-soft: #2a4a7f14;
+  --accent-ring: #2a4a7f55;
+  /* signal */
+  --good: #2f6a3f; --good-soft: #2f6a3f14;
+  --warn: #9c6b00; --warn-soft: #9c6b0014;
+  --bad: #9c2a2a;  --bad-soft: #9c2a2a14;
+  --info: #1e5a9c; --info-soft: #1e5a9c14;
+  /* shadow */
+  --shadow: 0 1px 0 #00000008 inset, 0 4px 14px -8px #00000018;
+}
+
+html.dark {
+  /* surfaces */
+  --bg: #0a0d12;
+  --bg-2: #0f1319;
+  --panel: #131821;
+  --panel-2: #171d27;
+  /* lines */
+  --line: #232a36;
+  --line-2: #2b3442;
+  --hair: #1b2230;
+  /* ink */
+  --ink: #e7ecf3;
+  --ink-2: #9aa3b2;
+  --ink-3: #6a7386;
+  --ink-4: #4a5264;
+  /* accent */
+  --accent: #7c8cff;
+  --accent-soft: #7c8cff1a;
+  --accent-ring: #7c8cff55;
+  /* signal */
+  --good: #4ade80; --good-soft: #4ade801a;
+  --warn: #f5b454; --warn-soft: #f5b4541a;
+  --bad: #f87171;  --bad-soft: #f871711a;
+  --info: #60a5fa; --info-soft: #60a5fa1a;
+  /* shadow */
+  --shadow: 0 1px 0 #ffffff06 inset, 0 8px 24px -12px #00000066;
+}
+
+@layer utilities {
+  .tnum { font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--font-mono, 'Geist Mono'), ui-monospace, monospace; }
+  .label-mono {
+    font-family: var(--font-mono, 'Geist Mono'), ui-monospace, monospace;
+    font-size: 9.5px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--ink-3);
+  }
+}
+
 /* ── Animations ────────────────────────────────────── */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(12px); }

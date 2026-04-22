@@ -1,0 +1,116 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e5]:
+      - img [ref=e7]
+      - generic [ref=e9]:
+        - heading "AI Closer" [level=1] [ref=e10]
+        - paragraph [ref=e11]: Панель управления
+    - navigation [ref=e12]:
+      - generic [ref=e13]:
+        - paragraph [ref=e14]: Обзор
+        - generic [ref=e15]:
+          - link "Дашборд" [ref=e16] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e18]
+            - generic [ref=e23]: Дашборд
+          - link "Аналитика" [ref=e24] [cursor=pointer]:
+            - /url: /analytics
+            - img [ref=e26]
+            - generic [ref=e29]: Аналитика
+      - generic [ref=e30]:
+        - paragraph [ref=e31]: Продажи
+        - generic [ref=e32]:
+          - link "Диалоги" [ref=e33] [cursor=pointer]:
+            - /url: /conversations
+            - img [ref=e35]
+            - generic [ref=e37]: Диалоги
+          - link "Лиды" [ref=e38] [cursor=pointer]:
+            - /url: /leads
+            - img [ref=e40]
+            - generic [ref=e44]: Лиды
+          - link "Заказы" [ref=e45] [cursor=pointer]:
+            - /url: /orders
+            - img [ref=e47]
+            - generic [ref=e49]: Заказы
+          - link "Товары" [ref=e50] [cursor=pointer]:
+            - /url: /products
+            - img [ref=e52]
+            - generic [ref=e55]: Товары
+      - generic [ref=e56]:
+        - paragraph [ref=e57]: Операции
+        - generic [ref=e58]:
+          - link "Доставка" [ref=e59] [cursor=pointer]:
+            - /url: /delivery
+            - img [ref=e61]
+            - generic [ref=e66]: Доставка
+          - link "Передачи" [ref=e67] [cursor=pointer]:
+            - /url: /handoffs
+            - img [ref=e69]
+            - generic [ref=e71]: Передачи
+          - link "Рассылки" [ref=e72] [cursor=pointer]:
+            - /url: /broadcast
+            - img [ref=e74]
+            - generic [ref=e76]: Рассылки
+      - generic [ref=e77]:
+        - paragraph [ref=e78]: AI & Обучение
+        - generic [ref=e79]:
+          - link "Обучение AI" [ref=e80] [cursor=pointer]:
+            - /url: /training
+            - img [ref=e82]
+            - generic [ref=e84]: Обучение AI
+          - link "Шаблоны" [ref=e85] [cursor=pointer]:
+            - /url: /templates
+            - img [ref=e87]
+            - generic [ref=e89]: Шаблоны
+      - generic [ref=e90]:
+        - paragraph [ref=e91]: Система
+        - generic [ref=e92]:
+          - link "Telegram" [ref=e93] [cursor=pointer]:
+            - /url: /telegram
+            - img [ref=e95]
+            - generic [ref=e97]: Telegram
+          - link "Настройки" [ref=e98] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e100]
+            - generic [ref=e103]: Настройки
+    - generic [ref=e106]:
+      - generic [ref=e107]: "?"
+      - generic:
+        - paragraph
+        - paragraph
+      - button "Тёмная тема" [ref=e108]:
+        - img [ref=e109]
+      - button "Выйти" [ref=e111]:
+        - img [ref=e112]
+  - main [ref=e115]:
+    - generic [ref=e116]:
+      - generic [ref=e117]:
+        - generic [ref=e118]:
+          - heading "Товары (0)" [level=1] [ref=e119]
+          - paragraph [ref=e120]: Управление каталогом товаров
+        - generic [ref=e121]:
+          - button "Экспорт CSV" [ref=e122]
+          - button "+ Добавить" [ref=e123]
+      - generic [ref=e124]:
+        - textbox "Поиск по названию или бренду..." [ref=e125]
+        - combobox "Фильтр по категории" [ref=e126]:
+          - option "Все категории" [selected]
+      - generic [ref=e128]:
+        - generic [ref=e129]: "Сортировка:"
+        - button "по названию" [ref=e130]
+        - button "по цене" [ref=e131]
+        - button "по наличию" [ref=e132]
+      - table [ref=e134]:
+        - rowgroup [ref=e135]:
+          - row "Товар Категория Цена Наличие Варианты Статус" [ref=e136]:
+            - columnheader [ref=e137]:
+              - checkbox [ref=e138]
+            - columnheader "Товар" [ref=e139]
+            - columnheader "Категория" [ref=e140]
+            - columnheader "Цена" [ref=e141]
+            - columnheader "Наличие" [ref=e142]
+            - columnheader "Варианты" [ref=e143]
+            - columnheader "Статус" [ref=e144]
+        - rowgroup [ref=e145]:
+          - row "Нет товаров" [ref=e146]:
+            - cell "Нет товаров" [ref=e147]

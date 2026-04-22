@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
@@ -22,6 +23,7 @@ class User(PkMixin, TenantMixin, TimestampMixin, Base):
         String(30), nullable=False, server_default=text("'store_owner'")
     )  # super_admin, store_owner, operator
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    last_login_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True

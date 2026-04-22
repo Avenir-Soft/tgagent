@@ -28,6 +28,8 @@ from src.conversations.service import (
     reset_conversation as svc_reset,
     send_operator_message as svc_send_operator,
 )
+from src.core.audit import log_audit
+from src.platform.deps import check_not_read_only
 
 router = APIRouter(tags=["conversations"])
 
@@ -35,7 +37,7 @@ router = APIRouter(tags=["conversations"])
 # --- Templates (simple CRUD — kept inline) ---
 
 
-@router.post("/templates", response_model=CommentTemplateOut, status_code=201)
+@router.post("/templates", response_model=CommentTemplateOut, status_code=201, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def create_template(
     request: Request,
@@ -66,7 +68,7 @@ async def list_templates(
     return [CommentTemplateOut.model_validate(t) for t in result.scalars().all()]
 
 
-@router.patch("/templates/{template_id}", response_model=CommentTemplateOut)
+@router.patch("/templates/{template_id}", response_model=CommentTemplateOut, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def update_template(
     request: Request,
@@ -90,7 +92,7 @@ async def update_template(
     return CommentTemplateOut.model_validate(tpl)
 
 
-@router.delete("/templates/{template_id}")
+@router.delete("/templates/{template_id}", dependencies=[Depends(check_not_read_only)])
 @limiter.limit("20/minute")
 async def delete_template(
     request: Request,
@@ -266,7 +268,7 @@ async def get_customer_history(
     return data
 
 
-@router.patch("/conversations/{conversation_id}/toggle-ai")
+@router.patch("/conversations/{conversation_id}/toggle-ai", dependencies=[Depends(check_not_read_only)])
 @limiter.limit("60/minute")
 async def toggle_ai(
     request: Request,
@@ -287,10 +289,14 @@ async def toggle_ai(
         conv.status = "active"
         conv.state = "idle"
     await db.flush()
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "conversation.toggle_ai", "conversation", str(conversation_id),
+        {"ai_enabled": conv.ai_enabled},
+    )
     return {"ai_enabled": conv.ai_enabled, "status": conv.status}
 
 
-@router.post("/conversations/{conversation_id}/reset")
+@router.post("/conversations/{conversation_id}/reset", dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def reset_conversation(
     request: Request,
@@ -306,10 +312,14 @@ async def reset_conversation(
     conv = result.scalar_one_or_none()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    return await svc_reset(user.tenant_id, conv, db)
+    result = await svc_reset(user.tenant_id, conv, db)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "conversation.reset", "conversation", str(conversation_id),
+    )
+    return result
 
 
-@router.patch("/conversations/{conversation_id}/messages/{message_id}", response_model=MessageOut)
+@router.patch("/conversations/{conversation_id}/messages/{message_id}", response_model=MessageOut, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def edit_message(
     request: Request,
@@ -331,12 +341,20 @@ async def edit_message(
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
 
+    old_text = msg.raw_text
     msg.raw_text = body.raw_text
     await db.flush()
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "message.edit", "message", str(message_id),
+        {"conversation_id": str(conversation_id), "sync_telegram": body.sync_telegram},
+    )
 
     if body.sync_telegram and msg.telegram_message_id:
         conv_result = await db.execute(
-            select(Conversation).where(Conversation.id == conversation_id)
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.tenant_id == user.tenant_id,
+            )
         )
         conv = conv_result.scalar_one_or_none()
         if conv:
@@ -345,7 +363,7 @@ async def edit_message(
     return MessageOut.model_validate(msg)
 
 
-@router.post("/conversations/{conversation_id}/messages", response_model=MessageOut, status_code=201)
+@router.post("/conversations/{conversation_id}/messages", response_model=MessageOut, status_code=201, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def send_operator_message(
     request: Request,
@@ -380,6 +398,11 @@ async def send_operator_message(
         conv.last_message_at = datetime.now(timezone.utc)
         await db.flush()
 
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "message.send", "message", str(msg.id),
+        {"conversation_id": str(conversation_id), "sync_telegram": body.sync_telegram},
+    )
+
     # SSE: notify about operator message
     try:
         from src.sse.event_bus import publish_event
@@ -398,7 +421,7 @@ async def send_operator_message(
     return MessageOut.model_validate(msg)
 
 
-@router.delete("/conversations/{conversation_id}")
+@router.delete("/conversations/{conversation_id}", dependencies=[Depends(check_not_read_only)])
 @limiter.limit("20/minute")
 async def delete_conversation(
     request: Request,
@@ -415,11 +438,16 @@ async def delete_conversation(
     conv = result.scalar_one_or_none()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    customer = conv.telegram_first_name or conv.telegram_username
     await delete_conversation_cascade(user.tenant_id, conversation_id, db)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "conversation.delete", "conversation", str(conversation_id),
+        {"customer": customer},
+    )
     return {"deleted": True}
 
 
-@router.post("/conversations/bulk-delete")
+@router.post("/conversations/bulk-delete", dependencies=[Depends(check_not_read_only)])
 @limiter.limit("10/minute")
 async def bulk_delete_conversations(
     request: Request,

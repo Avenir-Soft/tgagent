@@ -1,0 +1,299 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e9]:
+          - heading "AI Closer" [level=1] [ref=e10]
+          - paragraph [ref=e11]: Панель управления
+      - navigation [ref=e12]:
+        - generic [ref=e13]:
+          - paragraph [ref=e14]: Обзор
+          - generic [ref=e15]:
+            - link "Дашборд" [ref=e16] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e18]
+              - generic [ref=e23]: Дашборд
+            - link "Аналитика" [ref=e24] [cursor=pointer]:
+              - /url: /analytics
+              - img [ref=e26]
+              - generic [ref=e29]: Аналитика
+        - generic [ref=e30]:
+          - paragraph [ref=e31]: Продажи
+          - generic [ref=e32]:
+            - link "Диалоги" [ref=e33] [cursor=pointer]:
+              - /url: /conversations
+              - img [ref=e35]
+              - generic [ref=e37]: Диалоги
+            - link "Лиды" [ref=e38] [cursor=pointer]:
+              - /url: /leads
+              - img [ref=e40]
+              - generic [ref=e44]: Лиды
+            - link "Заказы" [ref=e45] [cursor=pointer]:
+              - /url: /orders
+              - img [ref=e47]
+              - generic [ref=e49]: Заказы
+            - link "Товары" [ref=e50] [cursor=pointer]:
+              - /url: /products
+              - img [ref=e52]
+              - generic [ref=e55]: Товары
+        - generic [ref=e56]:
+          - paragraph [ref=e57]: Операции
+          - generic [ref=e58]:
+            - link "Доставка" [ref=e59] [cursor=pointer]:
+              - /url: /delivery
+              - img [ref=e61]
+              - generic [ref=e66]: Доставка
+            - link "Передачи" [ref=e67] [cursor=pointer]:
+              - /url: /handoffs
+              - img [ref=e69]
+              - generic [ref=e71]: Передачи
+            - link "Рассылки" [ref=e72] [cursor=pointer]:
+              - /url: /broadcast
+              - img [ref=e74]
+              - generic [ref=e76]: Рассылки
+        - generic [ref=e77]:
+          - paragraph [ref=e78]: AI & Обучение
+          - generic [ref=e79]:
+            - link "Обучение AI" [ref=e80] [cursor=pointer]:
+              - /url: /training
+              - img [ref=e82]
+              - generic [ref=e84]: Обучение AI
+            - link "Шаблоны" [ref=e85] [cursor=pointer]:
+              - /url: /templates
+              - img [ref=e87]
+              - generic [ref=e89]: Шаблоны
+        - generic [ref=e90]:
+          - paragraph [ref=e91]: Система
+          - generic [ref=e92]:
+            - link "Telegram" [ref=e93] [cursor=pointer]:
+              - /url: /telegram
+              - img [ref=e95]
+              - generic [ref=e97]: Telegram
+            - link "Настройки" [ref=e98] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e100]
+              - generic [ref=e103]: Настройки
+      - generic [ref=e106]:
+        - generic [ref=e107]: SO
+        - generic [ref=e148]:
+          - paragraph [ref=e149]: admin@gmail.com
+          - paragraph [ref=e150]: store owner
+        - button "Тёмная тема" [ref=e108]:
+          - img [ref=e109]
+        - button "Выйти" [ref=e111]:
+          - img [ref=e112]
+    - main [ref=e115]:
+      - generic [ref=e1538]:
+        - generic [ref=e1539]:
+          - generic [ref=e1540]:
+            - generic [ref=e1541]:
+              - button "← Назад" [ref=e1542]
+              - generic [ref=e1543]:
+                - heading "Oybek Sobitov @oybeff" [level=1] [ref=e1544]:
+                  - text: Oybek Sobitov
+                  - generic [ref=e1545]: "@oybeff"
+                - link "Telegram" [ref=e1546] [cursor=pointer]:
+                  - /url: https://t.me/oybeff
+                  - img [ref=e1547]
+                  - text: Telegram
+            - generic [ref=e1549]:
+              - generic [ref=e1550]: NEW_CHAT
+              - button "AI ON" [ref=e1551]
+              - button "Скрыть" [ref=e1552]
+              - button "Сброс" [ref=e1553]
+              - button "Удалить диалог" [ref=e1554]:
+                - img [ref=e1555]
+          - generic [ref=e1558]:
+            - img [ref=e1559]
+            - textbox "Поиск в сообщениях..." [ref=e1562]
+          - paragraph [ref=e1564]: Нет сообщений
+          - generic [ref=e1565]:
+            - button "Здравствуйте 👋 Напишите нам в личку @av..." [ref=e1566]
+            - button "Напишите нам в ЛС @avenir_uz подскажем т..." [ref=e1567]
+            - button "Напишите нам в личные сообщения @avenir_..." [ref=e1568]
+          - generic [ref=e1569]:
+            - textbox "Написать от имени оператора... (Enter / Ctrl+Enter — отправить)" [ref=e1570]
+            - button "Отправить" [disabled] [ref=e1571]
+        - generic [ref=e1573]:
+          - generic [ref=e1574]:
+            - generic [ref=e1575]: O
+            - heading "Oybek Sobitov" [level=3] [ref=e1576]
+            - paragraph [ref=e1577]: "@oybeff"
+            - generic [ref=e1578]: Конвертирован
+            - paragraph [ref=e1579]: 📞 977061605
+            - paragraph [ref=e1580]: 📍 Tashkent
+            - generic [ref=e1581]:
+              - generic [ref=e1582]: 0 сообщ.
+              - generic [ref=e1583]: 19 заказ.
+          - generic [ref=e1584]:
+            - heading "История заказов" [level=4] [ref=e1585]
+            - generic [ref=e1586]:
+              - generic [ref=e1587]:
+                - generic [ref=e1588]:
+                  - generic [ref=e1589]: ORD-E2F91BF5
+                  - generic [ref=e1590]: Отменён
+                - generic [ref=e1591]:
+                  - paragraph [ref=e1592]: Apple iPhone 15 · iPhone 15 128GB Pink ×2
+                  - paragraph [ref=e1593]: Apple AirPods Pro 2 · AirPods Pro 2 USB‑C White
+                - paragraph [ref=e1594]: 28 305 000 сум
+                - paragraph [ref=e1595]: 06.04.2026
+              - generic [ref=e1596]:
+                - generic [ref=e1597]:
+                  - generic [ref=e1598]: ORD-8CF77924
+                  - generic [ref=e1599]: Отменён
+                - paragraph [ref=e1601]: Samsung Galaxy S24 · Samsung Galaxy S24 256GB Onyx Black
+                - paragraph [ref=e1602]: 10 935 000 сум
+                - paragraph [ref=e1603]: 06.04.2026
+              - generic [ref=e1604]:
+                - generic [ref=e1605]:
+                  - generic [ref=e1606]: ORD-CEA7F9FE
+                  - generic [ref=e1607]: Отменён
+                - generic [ref=e1608]:
+                  - paragraph [ref=e1609]: Lenovo Legion 5 · Lenovo Legion 5 16 16/512 RTX4060
+                  - paragraph [ref=e1610]: Apple iPhone 15 Pro · iPhone 15 Pro 256GB Blue Titanium
+                  - paragraph [ref=e1611]: Sony PlayStation 5 Slim · PlayStation 5 Slim 1TB
+                - paragraph [ref=e1612]: 42 585 000 сум
+                - paragraph [ref=e1613]: 01.04.2026
+              - generic [ref=e1614]:
+                - generic [ref=e1615]:
+                  - generic [ref=e1616]: ORD-4CCB3A9F
+                  - generic [ref=e1617]: Отменён
+                - generic [ref=e1618]:
+                  - paragraph [ref=e1619]: Apple iPhone 15 Pro · iPhone 15 Pro 256GB Blue Titanium
+                  - paragraph [ref=e1620]: Apple MacBook Pro 14 M3 · MacBook Pro 14 M3 8/512 Space Gray
+                - paragraph [ref=e1621]: 38 335 000 сум
+                - paragraph [ref=e1622]: 26.03.2026
+              - generic [ref=e1623]:
+                - generic [ref=e1624]:
+                  - generic [ref=e1625]: ORD-327AF8FA
+                  - generic [ref=e1626]: Отменён
+                - generic [ref=e1627]:
+                  - paragraph [ref=e1628]: Anker MagGo 10000mAh · Anker MagGo 10000mAh White
+                  - paragraph [ref=e1629]: Apple iPhone 15 Pro Max · iPhone 15 Pro Max 256GB Natural Titanium
+                  - paragraph [ref=e1630]: Apple AirPods Pro 2 · AirPods Pro 2 USB‑C White
+                - paragraph [ref=e1631]: 21 715 000 сум
+                - paragraph [ref=e1632]: 26.03.2026
+              - generic [ref=e1633]:
+                - generic [ref=e1634]:
+                  - generic [ref=e1635]: ORD-304D7ADF
+                  - generic [ref=e1636]: Отменён
+                - generic [ref=e1637]:
+                  - paragraph [ref=e1638]: ASUS Zenbook 14 OLED · ASUS Zenbook 14 OLED 16/512 Intel Ultra 7
+                  - paragraph [ref=e1639]: Apple AirPods Pro 2 · AirPods Pro 2 USB‑C White
+                - paragraph [ref=e1640]: 20 125 000 сум
+                - paragraph [ref=e1641]: 24.03.2026
+              - generic [ref=e1642]:
+                - generic [ref=e1643]:
+                  - generic [ref=e1644]: ORD-06E07FDC
+                  - generic [ref=e1645]: Отменён
+                - paragraph [ref=e1647]: Apple MacBook Air M2 · MacBook Air M2 13.6 8/256 Midnight
+                - paragraph [ref=e1648]: 13 950 000 сум
+                - paragraph [ref=e1649]: 24.03.2026
+              - generic [ref=e1650]:
+                - generic [ref=e1651]:
+                  - generic [ref=e1652]: ORD-47D9DEB8
+                  - generic [ref=e1653]: Отменён
+                - generic [ref=e1654]:
+                  - paragraph [ref=e1655]: Apple iPhone 15 Pro · iPhone 15 Pro 256GB Natural Titanium
+                  - paragraph [ref=e1656]: Apple MacBook Air M2 · MacBook Air M2 13.6 8/256 Midnight
+                - paragraph [ref=e1657]: 29 335 000 сум
+                - paragraph [ref=e1658]: 24.03.2026
+              - generic [ref=e1659]:
+                - generic [ref=e1660]:
+                  - generic [ref=e1661]: ORD-97FBE1B2
+                  - generic [ref=e1662]: Отменён
+                - paragraph [ref=e1664]: Apple iPhone 15 Pro · iPhone 15 Pro 256GB Black
+                - paragraph [ref=e1665]: 15 235 000 сум
+                - paragraph [ref=e1666]: 24.03.2026
+              - generic [ref=e1667]:
+                - generic [ref=e1668]:
+                  - generic [ref=e1669]: ORD-A50E246D
+                  - generic [ref=e1670]: Отменён
+                - paragraph [ref=e1672]: Apple iPhone 15 Pro · iPhone 15 Pro 256GB Natural Titanium
+                - paragraph [ref=e1673]: 15 400 000 сум
+                - paragraph [ref=e1674]: 24.03.2026
+              - generic [ref=e1675]:
+                - generic [ref=e1676]:
+                  - generic [ref=e1677]: ORD-8EE761DA
+                  - generic [ref=e1678]: Отменён
+                - generic [ref=e1679]:
+                  - paragraph [ref=e1680]: Apple iPhone 15 Pro · iPhone 15 Pro 256GB Natural Titanium
+                  - paragraph [ref=e1681]: Apple AirPods Pro 2 · AirPods Pro 2 USB‑C White
+                - paragraph [ref=e1682]: 18 690 000 сум
+                - paragraph [ref=e1683]: 23.03.2026
+              - generic [ref=e1684]:
+                - generic [ref=e1685]:
+                  - generic [ref=e1686]: ORD-4C55BB4D
+                  - generic [ref=e1687]: Подтверждён
+                - generic [ref=e1688]:
+                  - paragraph [ref=e1689]: Apple iPhone 15 Pro · iPhone 15 Pro 256GB Black
+                  - paragraph [ref=e1690]: Sony WH-1000XM5 · Sony WH-1000XM5 Black
+                  - paragraph [ref=e1691]: Sony PlayStation 5 Slim · PlayStation 5 Slim 1TB
+                - paragraph [ref=e1692]: 28 575 000 сум
+                - paragraph [ref=e1693]: 23.03.2026
+              - generic [ref=e1694]:
+                - generic [ref=e1695]:
+                  - generic [ref=e1696]: ORD-123AF72C
+                  - generic [ref=e1697]: Отменён
+                - paragraph [ref=e1699]: Samsung Galaxy S24 Ultra · Samsung Galaxy S24 Ultra 256GB Titanium Black
+                - paragraph [ref=e1700]: 15 285 000 сум
+                - paragraph [ref=e1701]: 23.03.2026
+              - generic [ref=e1702]:
+                - generic [ref=e1703]:
+                  - generic [ref=e1704]: ORD-F37C811B
+                  - generic [ref=e1705]: Отменён
+                - generic [ref=e1706]:
+                  - paragraph [ref=e1707]: Samsung Galaxy S24 Ultra · Samsung Galaxy S24 Ultra 256GB Titanium Black
+                  - paragraph [ref=e1708]: Apple AirPods Pro 2 · AirPods Pro 2 USB‑C White
+                - paragraph [ref=e1709]: 18 540 000 сум
+                - paragraph [ref=e1710]: 23.03.2026
+              - generic [ref=e1711]:
+                - generic [ref=e1712]:
+                  - generic [ref=e1713]: ORD-29AF13E3
+                  - generic [ref=e1714]: Отменён
+                - paragraph [ref=e1716]: Apple MacBook Pro 14 M3 · MacBook Pro 14 M3 8/512 Space Gray
+                - paragraph [ref=e1717]: 22 900 000 сум
+                - paragraph [ref=e1718]: 20.03.2026
+              - generic [ref=e1719]:
+                - generic [ref=e1720]:
+                  - generic [ref=e1721]: ORD-5BE9D692
+                  - generic [ref=e1722]: Подтверждён
+                - generic [ref=e1723]:
+                  - paragraph [ref=e1724]: Apple iPhone 15 Pro · iPhone 15 Pro 256GB Blue Titanium
+                  - paragraph [ref=e1725]: Apple AirPods Pro 2 · AirPods Pro 2 USB‑C White
+                  - paragraph [ref=e1726]: Apple MacBook Pro 14 M3 · MacBook Pro 14 M3 8/512 Space Gray ×2
+                - paragraph [ref=e1727]: 64 540 000 сум
+                - paragraph [ref=e1728]: 20.03.2026
+              - generic [ref=e1729]:
+                - generic [ref=e1730]:
+                  - generic [ref=e1731]: ORD-C9F6FCA5
+                  - generic [ref=e1732]: Отменён
+                - generic [ref=e1733]:
+                  - paragraph [ref=e1734]: Sony PlayStation 5 Slim · PlayStation 5 Slim 1TB
+                  - paragraph [ref=e1735]: Sony WH-1000XM5 · Sony WH-1000XM5 Black
+                  - paragraph [ref=e1736]: Apple iPhone 15 Pro Max · iPhone 15 Pro Max 256GB Natural Titanium
+                  - paragraph [ref=e1737]: Apple iPhone 15 Pro Max · iPhone 15 Pro Max 256GB Black Titanium
+                  - paragraph [ref=e1738]: Apple MacBook Pro 14 M3 · MacBook Pro 14 M3 8/512 Space Gray ×2
+                - paragraph [ref=e1739]: 93 740 000 сум
+                - paragraph [ref=e1740]: 19.03.2026
+              - generic [ref=e1741]:
+                - generic [ref=e1742]:
+                  - generic [ref=e1743]: ORD-C95A3643
+                  - generic [ref=e1744]: Отменён
+                - paragraph [ref=e1746]: ASUS Zenbook 14 OLED · ASUS Zenbook 14 OLED 16/512 Intel Ultra 7
+                - paragraph [ref=e1747]: 16 800 000 сум
+                - paragraph [ref=e1748]: 19.03.2026
+              - generic [ref=e1749]:
+                - generic [ref=e1750]:
+                  - generic [ref=e1751]: ORD-A0FB3293
+                  - generic [ref=e1752]: Отменён
+                - generic [ref=e1753]:
+                  - paragraph [ref=e1754]: LG 55" OLED C3 · LG 55" OLED C3
+                  - paragraph [ref=e1755]: Anker MagGo 10000mAh · Anker MagGo 10000mAh White
+                  - paragraph [ref=e1756]: Apple iPhone 15 Pro · iPhone 15 Pro 256GB Blue Titanium
+                - paragraph [ref=e1757]: 33 290 000 сум
+                - paragraph [ref=e1758]: 19.03.2026
+  - button "Open Next.js Dev Tools" [ref=e532] [cursor=pointer]:
+    - img [ref=e533]
+  - alert [ref=e536]: Next.js

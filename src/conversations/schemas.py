@@ -101,3 +101,4 @@ class BroadcastRequest(BaseModel):
     image_url: str | None = None
     scheduled_at: str | None = None  # ISO datetime string for scheduled broadcast
     conversation_ids: list[str] | None = None  # optional: send only to these conversations
+    confirmed: bool = False  # must be True to send when recipients > 100

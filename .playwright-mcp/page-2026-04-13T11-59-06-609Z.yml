@@ -1,0 +1,503 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - link "Перейти к контенту" [ref=e12] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e13]:
+    - complementary [ref=e14]:
+      - generic [ref=e16]:
+        - img [ref=e18]
+        - generic [ref=e20]:
+          - heading "AI Closer" [level=1] [ref=e21]
+          - paragraph [ref=e22]: Панель управления
+      - navigation [ref=e23]:
+        - generic [ref=e24]:
+          - paragraph [ref=e25]: Обзор
+          - generic [ref=e26]:
+            - link "Дашборд" [ref=e27] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e29]
+              - generic [ref=e34]: Дашборд
+            - link "Аналитика" [ref=e35] [cursor=pointer]:
+              - /url: /analytics
+              - img [ref=e37]
+              - generic [ref=e40]: Аналитика
+        - generic [ref=e41]:
+          - paragraph [ref=e42]: Продажи
+          - generic [ref=e43]:
+            - link "Диалоги" [ref=e44] [cursor=pointer]:
+              - /url: /conversations
+              - img [ref=e46]
+              - generic [ref=e48]: Диалоги
+            - link "Лиды" [ref=e49] [cursor=pointer]:
+              - /url: /leads
+              - img [ref=e51]
+              - generic [ref=e55]: Лиды
+            - link "Заказы" [ref=e56] [cursor=pointer]:
+              - /url: /orders
+              - img [ref=e58]
+              - generic [ref=e60]: Заказы
+            - link "Товары" [ref=e61] [cursor=pointer]:
+              - /url: /products
+              - img [ref=e63]
+              - generic [ref=e66]: Товары
+        - generic [ref=e67]:
+          - paragraph [ref=e68]: Операции
+          - generic [ref=e69]:
+            - link "Доставка" [ref=e70] [cursor=pointer]:
+              - /url: /delivery
+              - img [ref=e72]
+              - generic [ref=e77]: Доставка
+            - link "Передачи" [ref=e78] [cursor=pointer]:
+              - /url: /handoffs
+              - img [ref=e80]
+              - generic [ref=e82]: Передачи
+            - link "Рассылки" [ref=e83] [cursor=pointer]:
+              - /url: /broadcast
+              - img [ref=e85]
+              - generic [ref=e87]: Рассылки
+        - generic [ref=e88]:
+          - paragraph [ref=e89]: AI & Обучение
+          - generic [ref=e90]:
+            - link "Обучение AI" [ref=e91] [cursor=pointer]:
+              - /url: /training
+              - img [ref=e93]
+              - generic [ref=e95]: Обучение AI
+            - link "Шаблоны" [ref=e96] [cursor=pointer]:
+              - /url: /templates
+              - img [ref=e98]
+              - generic [ref=e100]: Шаблоны
+            - link "AI Monitor" [ref=e101] [cursor=pointer]:
+              - /url: /ai-monitor
+              - img [ref=e103]
+              - generic [ref=e105]: AI Monitor
+        - generic [ref=e106]:
+          - paragraph [ref=e107]: Система
+          - generic [ref=e108]:
+            - link "Telegram" [ref=e109] [cursor=pointer]:
+              - /url: /telegram
+              - img [ref=e111]
+              - generic [ref=e113]: Telegram
+            - link "Настройки" [ref=e114] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e116]
+              - generic [ref=e119]: Настройки
+      - generic [ref=e122]:
+        - generic [ref=e123]: SO
+        - generic [ref=e124]:
+          - paragraph [ref=e125]: admin@gmail.com
+          - paragraph [ref=e126]: store owner
+        - button "Тёмная тема" [ref=e127]:
+          - img [ref=e128]
+        - button "Выйти" [ref=e130]:
+          - img [ref=e131]
+    - main [ref=e134]:
+      - generic [ref=e135]:
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - heading "Товары (23)" [level=1] [ref=e138]
+            - paragraph [ref=e139]: Управление каталогом товаров
+          - generic [ref=e140]:
+            - button "Экспорт CSV" [ref=e141]
+            - button "+ Вручную" [ref=e142]
+            - button "AI Создать" [ref=e143]:
+              - img [ref=e144]
+              - text: AI Создать
+        - generic [ref=e146]:
+          - textbox "Поиск по названию или бренду..." [ref=e147]
+          - combobox "Фильтр по категории" [ref=e148]:
+            - option "Все категории" [selected]
+            - option "Смартфоны"
+            - option "Аксессуары"
+            - option "Игровые устройства"
+            - option "ТВ и развлечения"
+            - option "Умные часы"
+            - option "Аудио"
+            - option "Планшеты"
+            - option "Ноутбуки"
+        - generic [ref=e150]:
+          - generic [ref=e151]: "Сортировка:"
+          - button "по названию" [ref=e152]
+          - button "по цене" [ref=e153]
+          - button "по наличию" [ref=e154]
+        - table [ref=e156]:
+          - rowgroup [ref=e157]:
+            - row "Товар Категория Цена Наличие Варианты Статус" [ref=e158]:
+              - columnheader [ref=e159]:
+                - checkbox [ref=e160]
+              - columnheader "Товар" [ref=e161]
+              - columnheader "Категория" [ref=e162]
+              - columnheader "Цена" [ref=e163]
+              - columnheader "Наличие" [ref=e164]
+              - columnheader "Варианты" [ref=e165]
+              - columnheader "Статус" [ref=e166]
+          - rowgroup [ref=e167]:
+            - row "Anker MagGo 10000mAh Anker MagGo 10000mAh Anker MagGo 10000mAh Аксессуары 990.000 сум 4 шт 1 Активен" [ref=e168] [cursor=pointer]:
+              - cell [ref=e169]:
+                - checkbox [ref=e170]
+              - cell "Anker MagGo 10000mAh Anker MagGo 10000mAh Anker MagGo 10000mAh" [ref=e171]:
+                - generic [ref=e172]:
+                  - img "Anker MagGo 10000mAh" [ref=e174]
+                  - generic [ref=e175]:
+                    - generic [ref=e176]: Anker MagGo 10000mAh
+                    - generic [ref=e177]: Anker MagGo 10000mAh
+              - cell "Аксессуары" [ref=e178]
+              - cell "990.000 сум" [ref=e179]
+              - cell "4 шт" [ref=e180]:
+                - generic [ref=e181]: 4 шт
+              - cell "1" [ref=e182]
+              - cell "Активен" [ref=e183]:
+                - button "Активен" [ref=e184]
+            - row "Apple AirPods Pro 2 Apple AirPods Pro 2 Apple AirPods Pro 2 Аудио 3.290.000 сум 9 шт 1 Активен" [ref=e185] [cursor=pointer]:
+              - cell [ref=e186]:
+                - checkbox [ref=e187]
+              - cell "Apple AirPods Pro 2 Apple AirPods Pro 2 Apple AirPods Pro 2" [ref=e188]:
+                - generic [ref=e189]:
+                  - img "Apple AirPods Pro 2" [ref=e191]
+                  - generic [ref=e192]:
+                    - generic [ref=e193]: Apple AirPods Pro 2
+                    - generic [ref=e194]: Apple AirPods Pro 2
+              - cell "Аудио" [ref=e195]
+              - cell "3.290.000 сум" [ref=e196]
+              - cell "9 шт" [ref=e197]:
+                - generic [ref=e198]: 9 шт
+              - cell "1" [ref=e199]
+              - cell "Активен" [ref=e200]:
+                - button "Активен" [ref=e201]
+            - row "Apple iPad Air 11 M2 Apple iPad Air 11 M2 Apple iPad Air 11 M2 Планшеты 10.200.000 — 11.800.000 сум 7 шт 2 Активен" [ref=e202] [cursor=pointer]:
+              - cell [ref=e203]:
+                - checkbox [ref=e204]
+              - cell "Apple iPad Air 11 M2 Apple iPad Air 11 M2 Apple iPad Air 11 M2" [ref=e205]:
+                - generic [ref=e206]:
+                  - img "Apple iPad Air 11 M2" [ref=e208]
+                  - generic [ref=e209]:
+                    - generic [ref=e210]: Apple iPad Air 11 M2
+                    - generic [ref=e211]: Apple iPad Air 11 M2
+              - cell "Планшеты" [ref=e212]
+              - cell "10.200.000 — 11.800.000 сум" [ref=e213]
+              - cell "7 шт" [ref=e214]:
+                - generic [ref=e215]: 7 шт
+              - cell "2" [ref=e216]
+              - cell "Активен" [ref=e217]:
+                - button "Активен" [ref=e218]
+            - row "Apple iPhone 15 Apple iPhone 15 Apple iPhone 15 Смартфоны 12.490.000 сум 31 шт 4 Активен" [ref=e219] [cursor=pointer]:
+              - cell [ref=e220]:
+                - checkbox [ref=e221]
+              - cell "Apple iPhone 15 Apple iPhone 15 Apple iPhone 15" [ref=e222]:
+                - generic [ref=e223]:
+                  - img "Apple iPhone 15" [ref=e225]
+                  - generic [ref=e226]:
+                    - generic [ref=e227]: Apple iPhone 15
+                    - generic [ref=e228]: Apple iPhone 15
+              - cell "Смартфоны" [ref=e229]
+              - cell "12.490.000 сум" [ref=e230]
+              - cell "31 шт" [ref=e231]:
+                - generic [ref=e232]: 31 шт
+              - cell "4" [ref=e233]
+              - cell "Активен" [ref=e234]:
+                - button "Активен" [ref=e235]
+            - row "Apple iPhone 15 Pro Apple iPhone 15 Pro Apple iPhone 15 Pro Смартфоны 15.200.000 — 15.400.000 сум 18 шт 3 Активен" [ref=e236] [cursor=pointer]:
+              - cell [ref=e237]:
+                - checkbox [ref=e238]
+              - cell "Apple iPhone 15 Pro Apple iPhone 15 Pro Apple iPhone 15 Pro" [ref=e239]:
+                - generic [ref=e240]:
+                  - img "Apple iPhone 15 Pro" [ref=e242]
+                  - generic [ref=e243]:
+                    - generic [ref=e244]: Apple iPhone 15 Pro
+                    - generic [ref=e245]: Apple iPhone 15 Pro
+              - cell "Смартфоны" [ref=e246]
+              - cell "15.200.000 — 15.400.000 сум" [ref=e247]
+              - cell "18 шт" [ref=e248]:
+                - generic [ref=e249]: 18 шт
+              - cell "3" [ref=e250]
+              - cell "Активен" [ref=e251]:
+                - button "Активен" [ref=e252]
+            - row "Apple iPhone 15 Pro Max Apple iPhone 15 Pro Max Apple iPhone 15 Pro Max Смартфоны 17.200.000 — 17.400.000 сум 10 шт 2 Активен" [ref=e253] [cursor=pointer]:
+              - cell [ref=e254]:
+                - checkbox [ref=e255]
+              - cell "Apple iPhone 15 Pro Max Apple iPhone 15 Pro Max Apple iPhone 15 Pro Max" [ref=e256]:
+                - generic [ref=e257]:
+                  - img "Apple iPhone 15 Pro Max" [ref=e259]
+                  - generic [ref=e260]:
+                    - generic [ref=e261]: Apple iPhone 15 Pro Max
+                    - generic [ref=e262]: Apple iPhone 15 Pro Max
+              - cell "Смартфоны" [ref=e263]
+              - cell "17.200.000 — 17.400.000 сум" [ref=e264]
+              - cell "10 шт" [ref=e265]:
+                - generic [ref=e266]: 10 шт
+              - cell "2" [ref=e267]
+              - cell "Активен" [ref=e268]:
+                - button "Активен" [ref=e269]
+            - row "Apple MacBook Air M2 Apple MacBook Air M2 Apple MacBook Air M2 Ноутбуки 13.900.000 — 15.900.000 сум 14 шт 2 Активен" [ref=e270] [cursor=pointer]:
+              - cell [ref=e271]:
+                - checkbox [ref=e272]
+              - cell "Apple MacBook Air M2 Apple MacBook Air M2 Apple MacBook Air M2" [ref=e273]:
+                - generic [ref=e274]:
+                  - img "Apple MacBook Air M2" [ref=e276]
+                  - generic [ref=e277]:
+                    - generic [ref=e278]: Apple MacBook Air M2
+                    - generic [ref=e279]: Apple MacBook Air M2
+              - cell "Ноутбуки" [ref=e280]
+              - cell "13.900.000 — 15.900.000 сум" [ref=e281]
+              - cell "14 шт" [ref=e282]:
+                - generic [ref=e283]: 14 шт
+              - cell "2" [ref=e284]
+              - cell "Активен" [ref=e285]:
+                - button "Активен" [ref=e286]
+            - row "Apple MacBook Pro 14 M3 Apple MacBook Pro 14 M3 Apple MacBook Pro 14 M3 Ноутбуки 22.900.000 сум 25 шт 1 Активен" [ref=e287] [cursor=pointer]:
+              - cell [ref=e288]:
+                - checkbox [ref=e289]
+              - cell "Apple MacBook Pro 14 M3 Apple MacBook Pro 14 M3 Apple MacBook Pro 14 M3" [ref=e290]:
+                - generic [ref=e291]:
+                  - img "Apple MacBook Pro 14 M3" [ref=e293]
+                  - generic [ref=e294]:
+                    - generic [ref=e295]: Apple MacBook Pro 14 M3
+                    - generic [ref=e296]: Apple MacBook Pro 14 M3
+              - cell "Ноутбуки" [ref=e297]
+              - cell "22.900.000 сум" [ref=e298]
+              - cell "25 шт" [ref=e299]:
+                - generic [ref=e300]: 25 шт
+              - cell "1" [ref=e301]
+              - cell "Активен" [ref=e302]:
+                - button "Активен" [ref=e303]
+            - row "Apple Watch Series 9 Apple Watch Series 9 Apple Watch Series 9 Умные часы 5.690.000 сум 6 шт 1 Активен" [ref=e304] [cursor=pointer]:
+              - cell [ref=e305]:
+                - checkbox [ref=e306]
+              - cell "Apple Watch Series 9 Apple Watch Series 9 Apple Watch Series 9" [ref=e307]:
+                - generic [ref=e308]:
+                  - img "Apple Watch Series 9" [ref=e310]
+                  - generic [ref=e311]:
+                    - generic [ref=e312]: Apple Watch Series 9
+                    - generic [ref=e313]: Apple Watch Series 9
+              - cell "Умные часы" [ref=e314]
+              - cell "5.690.000 сум" [ref=e315]
+              - cell "6 шт" [ref=e316]:
+                - generic [ref=e317]: 6 шт
+              - cell "1" [ref=e318]
+              - cell "Активен" [ref=e319]:
+                - button "Активен" [ref=e320]
+            - row "ASUS Zenbook 14 OLED ASUS Zenbook 14 OLED ASUS Zenbook 14 OLED Ноутбуки 16.800.000 сум 7 шт 1 Активен" [ref=e321] [cursor=pointer]:
+              - cell [ref=e322]:
+                - checkbox [ref=e323]
+              - cell "ASUS Zenbook 14 OLED ASUS Zenbook 14 OLED ASUS Zenbook 14 OLED" [ref=e324]:
+                - generic [ref=e325]:
+                  - img "ASUS Zenbook 14 OLED" [ref=e327]
+                  - generic [ref=e328]:
+                    - generic [ref=e329]: ASUS Zenbook 14 OLED
+                    - generic [ref=e330]: ASUS Zenbook 14 OLED
+              - cell "Ноутбуки" [ref=e331]
+              - cell "16.800.000 сум" [ref=e332]
+              - cell "7 шт" [ref=e333]:
+                - generic [ref=e334]: 7 шт
+              - cell "1" [ref=e335]
+              - cell "Активен" [ref=e336]:
+                - button "Активен" [ref=e337]
+            - row "Iphone 17 pro Apple 17 pro Смартфоны 120.000 — 12.000.000 сум Нет в наличии 2 Активен" [ref=e338] [cursor=pointer]:
+              - cell [ref=e339]:
+                - checkbox [ref=e340]
+              - cell "Iphone 17 pro Apple 17 pro" [ref=e341]:
+                - generic [ref=e342]:
+                  - img [ref=e344]
+                  - generic [ref=e346]:
+                    - generic [ref=e347]: Iphone 17 pro
+                    - generic [ref=e348]: Apple 17 pro
+              - cell "Смартфоны" [ref=e349]
+              - cell "120.000 — 12.000.000 сум" [ref=e350]
+              - cell "Нет в наличии" [ref=e351]
+              - cell "2" [ref=e352]
+              - cell "Активен" [ref=e353]:
+                - button "Активен" [ref=e354]
+            - row "JBL Charge 5 JBL Charge 5 JBL Charge 5 Аудио 1.890.000 сум 27 шт 2 Активен" [ref=e355] [cursor=pointer]:
+              - cell [ref=e356]:
+                - checkbox [ref=e357]
+              - cell "JBL Charge 5 JBL Charge 5 JBL Charge 5" [ref=e358]:
+                - generic [ref=e359]:
+                  - img "JBL Charge 5" [ref=e361]
+                  - generic [ref=e362]:
+                    - generic [ref=e363]: JBL Charge 5
+                    - generic [ref=e364]: JBL Charge 5
+              - cell "Аудио" [ref=e365]
+              - cell "1.890.000 сум" [ref=e366]
+              - cell "27 шт" [ref=e367]:
+                - generic [ref=e368]: 27 шт
+              - cell "2" [ref=e369]
+              - cell "Активен" [ref=e370]:
+                - button "Активен" [ref=e371]
+            - row "Lenovo Legion 5 Lenovo Legion 5 Lenovo Legion 5 Ноутбуки 18.700.000 сум 4 шт 1 Активен" [ref=e372] [cursor=pointer]:
+              - cell [ref=e373]:
+                - checkbox [ref=e374]
+              - cell "Lenovo Legion 5 Lenovo Legion 5 Lenovo Legion 5" [ref=e375]:
+                - generic [ref=e376]:
+                  - img "Lenovo Legion 5" [ref=e378]
+                  - generic [ref=e379]:
+                    - generic [ref=e380]: Lenovo Legion 5
+                    - generic [ref=e381]: Lenovo Legion 5
+              - cell "Ноутбуки" [ref=e382]
+              - cell "18.700.000 сум" [ref=e383]
+              - cell "4 шт" [ref=e384]:
+                - generic [ref=e385]: 4 шт
+              - cell "1" [ref=e386]
+              - cell "Активен" [ref=e387]:
+                - button "Активен" [ref=e388]
+            - row "LG 55\" OLED C3 LG 55\" OLED C3 LG 55\" OLED C3 ТВ и развлечения 16.900.000 сум 5 шт 1 Активен" [ref=e389] [cursor=pointer]:
+              - cell [ref=e390]:
+                - checkbox [ref=e391]
+              - cell "LG 55\" OLED C3 LG 55\" OLED C3 LG 55\" OLED C3" [ref=e392]:
+                - generic [ref=e393]:
+                  - img "LG 55\" OLED C3" [ref=e395]
+                  - generic [ref=e396]:
+                    - generic [ref=e397]: LG 55" OLED C3
+                    - generic [ref=e398]: LG 55" OLED C3
+              - cell "ТВ и развлечения" [ref=e399]
+              - cell "16.900.000 сум" [ref=e400]
+              - cell "5 шт" [ref=e401]:
+                - generic [ref=e402]: 5 шт
+              - cell "1" [ref=e403]
+              - cell "Активен" [ref=e404]:
+                - button "Активен" [ref=e405]
+            - row "Microsoft Xbox Series X Microsoft Xbox Series X Microsoft Xbox Series X Игровые устройства 8.350.000 сум 5 шт 1 Активен" [ref=e406] [cursor=pointer]:
+              - cell [ref=e407]:
+                - checkbox [ref=e408]
+              - cell "Microsoft Xbox Series X Microsoft Xbox Series X Microsoft Xbox Series X" [ref=e409]:
+                - generic [ref=e410]:
+                  - img "Microsoft Xbox Series X" [ref=e412]
+                  - generic [ref=e413]:
+                    - generic [ref=e414]: Microsoft Xbox Series X
+                    - generic [ref=e415]: Microsoft Xbox Series X
+              - cell "Игровые устройства" [ref=e416]
+              - cell "8.350.000 сум" [ref=e417]
+              - cell "5 шт" [ref=e418]:
+                - generic [ref=e419]: 5 шт
+              - cell "1" [ref=e420]
+              - cell "Активен" [ref=e421]:
+                - button "Активен" [ref=e422]
+            - row "Samsung 55\" QLED 4K Q70C Samsung 55\" QLED 4K Q70C Samsung 55\" QLED 4K Q70C ТВ и развлечения 11.200.000 сум 5 шт 1 Активен" [ref=e423] [cursor=pointer]:
+              - cell [ref=e424]:
+                - checkbox [ref=e425]
+              - cell "Samsung 55\" QLED 4K Q70C Samsung 55\" QLED 4K Q70C Samsung 55\" QLED 4K Q70C" [ref=e426]:
+                - generic [ref=e427]:
+                  - img "Samsung 55\" QLED 4K Q70C" [ref=e429]
+                  - generic [ref=e430]:
+                    - generic [ref=e431]: Samsung 55" QLED 4K Q70C
+                    - generic [ref=e432]: Samsung 55" QLED 4K Q70C
+              - cell "ТВ и развлечения" [ref=e433]
+              - cell "11.200.000 сум" [ref=e434]
+              - cell "5 шт" [ref=e435]:
+                - generic [ref=e436]: 5 шт
+              - cell "1" [ref=e437]
+              - cell "Активен" [ref=e438]:
+                - button "Активен" [ref=e439]
+            - row "Samsung Galaxy S24 Samsung Galaxy S24 Samsung Galaxy S24 Смартфоны 10.900.000 сум 5 шт 2 Активен" [ref=e440] [cursor=pointer]:
+              - cell [ref=e441]:
+                - checkbox [ref=e442]
+              - cell "Samsung Galaxy S24 Samsung Galaxy S24 Samsung Galaxy S24" [ref=e443]:
+                - generic [ref=e444]:
+                  - img "Samsung Galaxy S24" [ref=e446]
+                  - generic [ref=e447]:
+                    - generic [ref=e448]: Samsung Galaxy S24
+                    - generic [ref=e449]: Samsung Galaxy S24
+              - cell "Смартфоны" [ref=e450]
+              - cell "10.900.000 сум" [ref=e451]
+              - cell "5 шт" [ref=e452]:
+                - generic [ref=e453]: 5 шт
+              - cell "2" [ref=e454]
+              - cell "Активен" [ref=e455]:
+                - button "Активен" [ref=e456]
+            - row "Samsung Galaxy S24 Ultra Samsung Galaxy S24 Ultra Samsung Galaxy S24 Ultra Смартфоны 15.250.000 сум 14 шт 2 Активен" [ref=e457] [cursor=pointer]:
+              - cell [ref=e458]:
+                - checkbox [ref=e459]
+              - cell "Samsung Galaxy S24 Ultra Samsung Galaxy S24 Ultra Samsung Galaxy S24 Ultra" [ref=e460]:
+                - generic [ref=e461]:
+                  - img "Samsung Galaxy S24 Ultra" [ref=e463]
+                  - generic [ref=e464]:
+                    - generic [ref=e465]: Samsung Galaxy S24 Ultra
+                    - generic [ref=e466]: Samsung Galaxy S24 Ultra
+              - cell "Смартфоны" [ref=e467]
+              - cell "15.250.000 сум" [ref=e468]
+              - cell "14 шт" [ref=e469]:
+                - generic [ref=e470]: 14 шт
+              - cell "2" [ref=e471]
+              - cell "Активен" [ref=e472]:
+                - button "Активен" [ref=e473]
+            - row "Samsung Galaxy Tab S9 Samsung Galaxy Tab S9 Samsung Galaxy Tab S9 Планшеты 9.400.000 сум 6 шт 1 Активен" [ref=e474] [cursor=pointer]:
+              - cell [ref=e475]:
+                - checkbox [ref=e476]
+              - cell "Samsung Galaxy Tab S9 Samsung Galaxy Tab S9 Samsung Galaxy Tab S9" [ref=e477]:
+                - generic [ref=e478]:
+                  - img "Samsung Galaxy Tab S9" [ref=e480]
+                  - generic [ref=e481]:
+                    - generic [ref=e482]: Samsung Galaxy Tab S9
+                    - generic [ref=e483]: Samsung Galaxy Tab S9
+              - cell "Планшеты" [ref=e484]
+              - cell "9.400.000 сум" [ref=e485]
+              - cell "6 шт" [ref=e486]:
+                - generic [ref=e487]: 6 шт
+              - cell "1" [ref=e488]
+              - cell "Активен" [ref=e489]:
+                - button "Активен" [ref=e490]
+            - row "Samsung Galaxy Watch 6 Samsung Galaxy Watch 6 Samsung Galaxy Watch 6 Умные часы 3.290.000 сум 4 шт 1 Активен" [ref=e491] [cursor=pointer]:
+              - cell [ref=e492]:
+                - checkbox [ref=e493]
+              - cell "Samsung Galaxy Watch 6 Samsung Galaxy Watch 6 Samsung Galaxy Watch 6" [ref=e494]:
+                - generic [ref=e495]:
+                  - img "Samsung Galaxy Watch 6" [ref=e497]
+                  - generic [ref=e498]:
+                    - generic [ref=e499]: Samsung Galaxy Watch 6
+                    - generic [ref=e500]: Samsung Galaxy Watch 6
+              - cell "Умные часы" [ref=e501]
+              - cell "3.290.000 сум" [ref=e502]
+              - cell "4 шт" [ref=e503]:
+                - generic [ref=e504]: 4 шт
+              - cell "1" [ref=e505]
+              - cell "Активен" [ref=e506]:
+                - button "Активен" [ref=e507]
+            - row "Sony PlayStation 5 Slim Sony PlayStation 5 Slim Sony PlayStation 5 Slim Игровые устройства 8.450.000 сум 5 шт 1 Активен" [ref=e508] [cursor=pointer]:
+              - cell [ref=e509]:
+                - checkbox [ref=e510]
+              - cell "Sony PlayStation 5 Slim Sony PlayStation 5 Slim Sony PlayStation 5 Slim" [ref=e511]:
+                - generic [ref=e512]:
+                  - img "Sony PlayStation 5 Slim" [ref=e514]
+                  - generic [ref=e515]:
+                    - generic [ref=e516]: Sony PlayStation 5 Slim
+                    - generic [ref=e517]: Sony PlayStation 5 Slim
+              - cell "Игровые устройства" [ref=e518]
+              - cell "8.450.000 сум" [ref=e519]
+              - cell "5 шт" [ref=e520]:
+                - generic [ref=e521]: 5 шт
+              - cell "1" [ref=e522]
+              - cell "Активен" [ref=e523]:
+                - button "Активен" [ref=e524]
+            - row "Sony WH-1000XM5 Sony WH-1000XM5 Sony WH-1000XM5 Аудио 4.890.000 сум 7 шт 1 Активен" [ref=e525] [cursor=pointer]:
+              - cell [ref=e526]:
+                - checkbox [ref=e527]
+              - cell "Sony WH-1000XM5 Sony WH-1000XM5 Sony WH-1000XM5" [ref=e528]:
+                - generic [ref=e529]:
+                  - img "Sony WH-1000XM5" [ref=e531]
+                  - generic [ref=e532]:
+                    - generic [ref=e533]: Sony WH-1000XM5
+                    - generic [ref=e534]: Sony WH-1000XM5
+              - cell "Аудио" [ref=e535]
+              - cell "4.890.000 сум" [ref=e536]
+              - cell "7 шт" [ref=e537]:
+                - generic [ref=e538]: 7 шт
+              - cell "1" [ref=e539]
+              - cell "Активен" [ref=e540]:
+                - button "Активен" [ref=e541]
+            - row "Xiaomi Redmi Note 13 Pro Xiaomi Redmi Note 13 Pro Xiaomi Redmi Note 13 Pro Смартфоны 4.390.000 сум 14 шт 2 Активен" [ref=e542] [cursor=pointer]:
+              - cell [ref=e543]:
+                - checkbox [ref=e544]
+              - cell "Xiaomi Redmi Note 13 Pro Xiaomi Redmi Note 13 Pro Xiaomi Redmi Note 13 Pro" [ref=e545]:
+                - generic [ref=e546]:
+                  - img "Xiaomi Redmi Note 13 Pro" [ref=e548]
+                  - generic [ref=e549]:
+                    - generic [ref=e550]: Xiaomi Redmi Note 13 Pro
+                    - generic [ref=e551]: Xiaomi Redmi Note 13 Pro
+              - cell "Смартфоны" [ref=e552]
+              - cell "4.390.000 сум" [ref=e553]
+              - cell "14 шт" [ref=e554]:
+                - generic [ref=e555]: 14 шт
+              - cell "2" [ref=e556]
+              - cell "Активен" [ref=e557]:
+                - button "Активен" [ref=e558]
+        - generic [ref=e559]: Показано 23 из 23

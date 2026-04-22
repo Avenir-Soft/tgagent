@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class AiSettingsCreate(BaseModel):
@@ -26,8 +26,8 @@ class AiSettingsCreate(BaseModel):
     channel_ai_replies_enabled: bool = True
     channel_show_price: bool = True
     # Store-level settings
-    timezone: str = "Asia/Tashkent"
-    currency: str = "UZS"
+    timezone: str | None = "Asia/Tashkent"
+    currency: str | None = "UZS"
     # Prompt rules
     prompt_rules: list[dict[str, Any]] | None = None
 
@@ -56,9 +56,47 @@ class AiSettingsOut(BaseModel):
     channel_ai_replies_enabled: bool = True
     channel_show_price: bool = True
     # Store-level settings
-    timezone: str = "Asia/Tashkent"
-    currency: str = "UZS"
+    timezone: str | None = "Asia/Tashkent"
+    currency: str | None = "UZS"
     # Prompt rules
     prompt_rules: list[dict[str, Any]] | None = None
+    # Per-tenant AI provider (never expose the actual key)
+    ai_provider: str = "openai"
+    has_api_key: bool = False
+    ai_model_override: str | None = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _compute_has_api_key(cls, data):
+        """Compute has_api_key from the ORM model's ai_api_key_encrypted field."""
+        if hasattr(data, "__dict__"):
+            # SQLAlchemy model object
+            encrypted = getattr(data, "ai_api_key_encrypted", None)
+            # We need to set has_api_key on the dict form — Pydantic v2 from_attributes
+            # The trick: return a dict with the computed field injected
+            d = {}
+            for field_name in cls.model_fields:
+                if field_name == "has_api_key":
+                    d["has_api_key"] = bool(encrypted)
+                else:
+                    d[field_name] = getattr(data, field_name, None)
+            return d
+        # Already a dict
+        if isinstance(data, dict):
+            encrypted = data.get("ai_api_key_encrypted")
+            data["has_api_key"] = bool(encrypted)
+        return data
+
+
+class ApiKeyInput(BaseModel):
+    provider: str  # "openai" | "anthropic"
+    api_key: str
+    model: str | None = None
+
+
+class ApiKeyStatusOut(BaseModel):
+    has_key: bool
+    provider: str
+    model: str | None = None

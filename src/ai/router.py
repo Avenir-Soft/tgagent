@@ -12,8 +12,10 @@ from src.core.database import get_db
 from src.core.rate_limit import limiter
 from src.ai.models import AiSettings
 from src.ai.orchestrator import invalidate_ai_settings_cache
-from src.ai.schemas import AiSettingsCreate, AiSettingsOut
+from src.ai.schemas import AiSettingsCreate, AiSettingsOut, ApiKeyInput, ApiKeyStatusOut
 from src.ai.tracer import get_traces, clear_traces
+from src.core.audit import log_audit
+from src.core.security import encrypt_api_key, decrypt_api_key
 
 router = APIRouter(tags=["ai"])
 
@@ -58,6 +60,10 @@ async def update_ai_settings(
         db.add(settings)
     await db.flush()
     invalidate_ai_settings_cache(user.tenant_id)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "settings.update", "ai_settings", None,
+        {"changed_fields": list(body.model_dump().keys())},
+    )
     return AiSettingsOut.model_validate(settings)
 
 
@@ -117,6 +123,178 @@ async def reset_ai_settings(
     await db.flush()
     invalidate_ai_settings_cache(user.tenant_id)
     return AiSettingsOut.model_validate(settings)
+
+
+# ── Per-Tenant API Key Management ────────────────────────────────────────────
+
+import logging as _logging
+
+_api_key_logger = _logging.getLogger(__name__)
+
+_VALID_PROVIDERS = {"openai", "anthropic"}
+_PROVIDER_KEY_PREFIXES = {"openai": "sk-", "anthropic": "sk-ant-"}
+
+
+@router.put("/ai-settings/api-key")
+@limiter.limit("10/minute")
+async def save_api_key(
+    request: Request,
+    body: ApiKeyInput,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    """Save an encrypted API key for this tenant. Validates the key first."""
+    if body.provider not in _VALID_PROVIDERS:
+        raise HTTPException(400, f"Неизвестный провайдер: {body.provider}. Допустимые: {', '.join(_VALID_PROVIDERS)}")
+
+    api_key = body.api_key.strip()
+    if not api_key or len(api_key) < 10:
+        raise HTTPException(400, "API ключ слишком короткий")
+
+    # Validate key by making a lightweight test call
+    try:
+        await _validate_api_key(body.provider, api_key, body.model)
+    except Exception as e:
+        raise HTTPException(400, f"Ключ невалиден: {e}")
+
+    # Load or create settings
+    result = await db.execute(
+        select(AiSettings).where(AiSettings.tenant_id == user.tenant_id)
+    )
+    ai_settings = result.scalar_one_or_none()
+    if not ai_settings:
+        ai_settings = AiSettings(tenant_id=user.tenant_id)
+        db.add(ai_settings)
+        await db.flush()
+
+    # Encrypt and save
+    ai_settings.ai_provider = body.provider
+    ai_settings.ai_api_key_encrypted = encrypt_api_key(api_key)
+    if body.model:
+        ai_settings.ai_model_override = body.model
+    await db.flush()
+    invalidate_ai_settings_cache(user.tenant_id)
+
+    _api_key_logger.info("Tenant %s saved %s API key", user.tenant_id, body.provider)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "api_key.set", "ai_settings", None,
+        {"provider": body.provider, "model": body.model},
+    )
+    return {"status": "saved", "provider": body.provider, "model": body.model}
+
+
+@router.get("/ai-settings/api-key-status", response_model=ApiKeyStatusOut)
+async def get_api_key_status(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Check if tenant has a custom API key configured. Never returns the actual key."""
+    result = await db.execute(
+        select(AiSettings).where(AiSettings.tenant_id == user.tenant_id)
+    )
+    ai_settings = result.scalar_one_or_none()
+    if not ai_settings:
+        return ApiKeyStatusOut(has_key=False, provider="openai", model=None)
+    return ApiKeyStatusOut(
+        has_key=bool(ai_settings.ai_api_key_encrypted),
+        provider=ai_settings.ai_provider or "openai",
+        model=ai_settings.ai_model_override,
+    )
+
+
+@router.delete("/ai-settings/api-key")
+@limiter.limit("10/minute")
+async def delete_api_key(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_store_owner),
+):
+    """Remove tenant's custom API key — revert to platform default."""
+    result = await db.execute(
+        select(AiSettings).where(AiSettings.tenant_id == user.tenant_id)
+    )
+    ai_settings = result.scalar_one_or_none()
+    if not ai_settings:
+        raise HTTPException(404, "Настройки не найдены")
+
+    ai_settings.ai_api_key_encrypted = None
+    ai_settings.ai_model_override = None
+    ai_settings.ai_provider = "openai"
+    await db.flush()
+    invalidate_ai_settings_cache(user.tenant_id)
+
+    _api_key_logger.info("Tenant %s deleted custom API key", user.tenant_id)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "api_key.delete", "ai_settings", None,
+    )
+    return {"status": "deleted"}
+
+
+@router.post("/ai-settings/test-api-key")
+@limiter.limit("5/minute")
+async def test_api_key(
+    request: Request,
+    body: ApiKeyInput,
+    user: User = Depends(require_store_owner),
+):
+    """Test an API key without saving it."""
+    if body.provider not in _VALID_PROVIDERS:
+        raise HTTPException(400, f"Неизвестный провайдер: {body.provider}")
+    try:
+        await _validate_api_key(body.provider, body.api_key.strip(), body.model)
+    except Exception as e:
+        raise HTTPException(400, f"Ключ невалиден: {e}")
+    return {"status": "valid", "provider": body.provider}
+
+
+async def _validate_api_key(provider: str, api_key: str, model: str | None = None):
+    """Validate an API key by making a lightweight test API call.
+
+    Raises Exception with descriptive message on failure.
+    """
+    if provider == "openai":
+        import openai
+        client = openai.AsyncOpenAI(api_key=api_key)
+        test_model = model or "gpt-4o-mini"
+        try:
+            await client.chat.completions.create(
+                model=test_model,
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1,
+            )
+        except openai.AuthenticationError:
+            raise ValueError("Неверный API ключ OpenAI")
+        except openai.PermissionDeniedError:
+            raise ValueError("API ключ не имеет доступа к этой модели")
+        except openai.NotFoundError:
+            raise ValueError(f"Модель '{test_model}' не найдена")
+        except Exception as e:
+            raise ValueError(f"Ошибка OpenAI: {type(e).__name__}: {e}")
+
+    elif provider == "anthropic":
+        try:
+            import anthropic
+        except ImportError:
+            raise ValueError("Anthropic SDK не установлен на сервере (pip install anthropic)")
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        test_model = model or "claude-haiku-4-5"
+        try:
+            await client.messages.create(
+                model=test_model,
+                max_tokens=1,
+                messages=[{"role": "user", "content": "test"}],
+            )
+        except anthropic.AuthenticationError:
+            raise ValueError("Неверный API ключ Anthropic")
+        except anthropic.PermissionDeniedError:
+            raise ValueError("API ключ не имеет доступа к этой модели")
+        except anthropic.NotFoundError:
+            raise ValueError(f"Модель '{test_model}' не найдена")
+        except Exception as e:
+            raise ValueError(f"Ошибка Anthropic: {type(e).__name__}: {e}")
+
+    else:
+        raise ValueError(f"Неизвестный провайдер: {provider}")
 
 
 # ── Prompt Rules CRUD ─────────────────────────────────────────────────────────

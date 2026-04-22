@@ -28,8 +28,13 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      await login(email, password);
-      router.push("/dashboard");
+      const result = await login(email, password);
+      // Role-based redirect
+      if (result.user.role === "super_admin") {
+        router.push("/platform-overview");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: any) {
       const msg = err.message || "";
       if (msg.includes("401") || msg.includes("Неверный")) setError("Неверный email или пароль");

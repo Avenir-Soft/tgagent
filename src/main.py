@@ -21,174 +21,23 @@ from src.orders.router import router as orders_router
 from src.telegram.router import router as telegram_router
 from src.tenants.router import router as tenants_router
 from src.analytics.router import router as analytics_router
+from src.platform.router import router as platform_router
 from src.sse.router import router as sse_router
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
 
-async def _run_startup_migrations():
-    """Safety net: idempotent DDL for envs that haven't run Alembic yet.
-    All of these are now covered by Alembic revision b2c3d4e5f6a7.
-    This function can be removed once all environments have migrated."""
-    from src.core.database import engine
-    from sqlalchemy import text as _sql
-    async with engine.begin() as conn:
-        stmts = [
-            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS training_label VARCHAR(20)",
-            "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_training_candidate BOOLEAN NOT NULL DEFAULT FALSE",
-            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
-            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS rejection_selected_text TEXT",
-            "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS operator_telegram_username VARCHAR(100)",
-            "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS channel_cta_handle VARCHAR(100)",
-            "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS channel_ai_replies_enabled BOOLEAN NOT NULL DEFAULT TRUE",
-            "ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS channel_show_price BOOLEAN NOT NULL DEFAULT TRUE",
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_settings_tenant ON ai_settings (tenant_id)",
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_tenant_variant ON inventory (tenant_id, variant_id)",
-            "CREATE INDEX IF NOT EXISTS ix_conversations_last_msg ON conversations (last_message_at DESC NULLS LAST)",
-            "CREATE INDEX IF NOT EXISTS ix_conversations_training ON conversations (is_training_candidate) WHERE is_training_candidate = TRUE",
-            "CREATE INDEX IF NOT EXISTS ix_conversations_state ON conversations (state)",
-            "CREATE INDEX IF NOT EXISTS ix_orders_lead ON orders (lead_id)",
-            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type VARCHAR(20)",
-            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_file_id VARCHAR(255)",
-            "CREATE INDEX IF NOT EXISTS ix_messages_conv_created ON messages (conversation_id, created_at DESC)",
-            # Analytics tables (Phase 5)
-            """CREATE TABLE IF NOT EXISTS customer_segments (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                tenant_id UUID NOT NULL,
-                lead_id UUID NOT NULL,
-                customer_name VARCHAR(255),
-                telegram_user_id BIGINT NOT NULL,
-                recency_days INT NOT NULL DEFAULT 0,
-                frequency INT NOT NULL DEFAULT 0,
-                monetary NUMERIC(14,2) NOT NULL DEFAULT 0,
-                r_score INT NOT NULL DEFAULT 1,
-                f_score INT NOT NULL DEFAULT 1,
-                m_score INT NOT NULL DEFAULT 1,
-                rfm_score INT NOT NULL DEFAULT 111,
-                segment VARCHAR(30) NOT NULL DEFAULT 'new',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            )""",
-            "CREATE UNIQUE INDEX IF NOT EXISTS ix_customer_segments_tenant_lead ON customer_segments (tenant_id, lead_id)",
-            "CREATE INDEX IF NOT EXISTS ix_customer_segments_tenant_id ON customer_segments (tenant_id)",
-            """CREATE TABLE IF NOT EXISTS competitor_prices (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                tenant_id UUID NOT NULL,
-                product_id UUID REFERENCES products(id) ON DELETE SET NULL,
-                competitor_name VARCHAR(255) NOT NULL,
-                competitor_channel VARCHAR(255),
-                product_title VARCHAR(500) NOT NULL,
-                competitor_price NUMERIC(14,2) NOT NULL,
-                our_price NUMERIC(14,2),
-                currency VARCHAR(10) NOT NULL DEFAULT 'UZS',
-                source VARCHAR(30) NOT NULL DEFAULT 'manual',
-                captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            )""",
-            "CREATE INDEX IF NOT EXISTS ix_competitor_prices_tenant_product ON competitor_prices (tenant_id, product_id)",
-            "CREATE INDEX IF NOT EXISTS ix_competitor_prices_tenant_id ON competitor_prices (tenant_id)",
-            # Broadcast history
-            """CREATE TABLE IF NOT EXISTS broadcast_history (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-                message_text TEXT NOT NULL,
-                image_url TEXT,
-                filter_type VARCHAR(30) NOT NULL,
-                sent_count INT NOT NULL DEFAULT 0,
-                failed_count INT NOT NULL DEFAULT 0,
-                total_targets INT NOT NULL DEFAULT 0,
-                status VARCHAR(30) NOT NULL DEFAULT 'sending',
-                scheduled_at TIMESTAMPTZ,
-                sent_at TIMESTAMPTZ,
-                created_by_user_id UUID NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            )""",
-            "CREATE INDEX IF NOT EXISTS ix_broadcast_history_tenant ON broadcast_history (tenant_id)",
-            "ALTER TABLE broadcast_history ADD COLUMN IF NOT EXISTS recipients_json JSONB",
-            "ALTER TABLE broadcast_history ADD COLUMN IF NOT EXISTS target_conversation_ids JSONB",
-            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500)",
-            # MED-15: unique constraint on telegram_accounts (tenant_id, phone_number)
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_telegram_accounts_tenant_phone ON telegram_accounts (tenant_id, phone_number)",
-            # LOW-10: per-tenant unique order_number (drop global unique first, idempotent)
-            "DROP INDEX IF EXISTS orders_order_number_key",
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_tenant_order_number ON orders (tenant_id, order_number)",
-            # LOW-11: per-tenant unique email (drop global unique first)
-            "DROP INDEX IF EXISTS users_email_key",
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_tenant_email ON users (tenant_id, email)",
-            # LOW-12: per-tenant unique category slug
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_tenant_slug ON categories (tenant_id, slug)",
-            # AI Trace Logs (persistent AI monitor)
-            """CREATE TABLE IF NOT EXISTS ai_trace_logs (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-                conversation_id UUID,
-                trace_id VARCHAR(8) NOT NULL,
-                user_message TEXT NOT NULL DEFAULT '',
-                detected_language VARCHAR(20) NOT NULL DEFAULT '',
-                model VARCHAR(50) NOT NULL DEFAULT '',
-                state_before VARCHAR(30) NOT NULL DEFAULT '',
-                state_after VARCHAR(30) NOT NULL DEFAULT '',
-                tools_called JSONB NOT NULL DEFAULT '[]'::jsonb,
-                steps JSONB NOT NULL DEFAULT '[]'::jsonb,
-                final_response TEXT NOT NULL DEFAULT '',
-                image_urls JSONB NOT NULL DEFAULT '[]'::jsonb,
-                total_duration_ms INT NOT NULL DEFAULT 0,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            )""",
-            "CREATE INDEX IF NOT EXISTS ix_ai_trace_logs_tenant ON ai_trace_logs (tenant_id, created_at DESC)",
-            "ALTER TABLE ai_trace_logs ADD COLUMN IF NOT EXISTS prompt_tokens INT NOT NULL DEFAULT 0",
-            "ALTER TABLE ai_trace_logs ADD COLUMN IF NOT EXISTS completion_tokens INT NOT NULL DEFAULT 0",
-        ]
-        for stmt in stmts:
-            try:
-                await conn.execute(_sql(stmt))
-            except Exception as e:
-                logger.warning("Migration skipped (%s): %s", stmt[:50], e)
-
-        # ── Row-Level Security (defense-in-depth tenant isolation) ────────
-        # Policies are created on all tenant-scoped tables.
-        # RLS is enforced only for non-owner roles. In production, create
-        # a dedicated app role (not the table owner) and grant it access —
-        # then RLS automatically kicks in.
-        _rls_tables = [
-            "users", "telegram_accounts", "telegram_channels",
-            "telegram_discussion_groups", "categories", "products",
-            "product_aliases", "product_variants", "inventory",
-            "product_media", "delivery_rules", "customer_segments",
-            "competitor_prices", "leads", "handoffs", "audit_logs",
-            "ai_settings", "ai_trace_logs", "orders",
-            "comment_templates", "conversations", "messages",
-            "broadcast_history",
-        ]
-        for tbl in _rls_tables:
-            for rls_stmt in [
-                f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY",
-                f"""DO $$ BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM pg_policies WHERE tablename = '{tbl}' AND policyname = 'tenant_isolation'
-                    ) THEN
-                        EXECUTE 'CREATE POLICY tenant_isolation ON {tbl} USING (tenant_id = current_setting(''app.current_tenant_id'', true)::uuid)';
-                    END IF;
-                END $$""",
-            ]:
-                try:
-                    await conn.execute(_sql(rls_stmt))
-                except Exception as e:
-                    logger.warning("RLS migration skipped (%s): %s", tbl, e)
-
-        # Fix legacy role values — only when legacy values actually exist
-        # Guarded to prevent silent overwrites if 'admin'/'owner' are ever reused
-        try:
-            legacy = (await conn.execute(
-                _sql("SELECT COUNT(*) FROM users WHERE role IN ('admin', 'owner')")
-            )).scalar()
-            if legacy:
-                await conn.execute(_sql("UPDATE users SET role = 'super_admin' WHERE role = 'admin'"))
-                await conn.execute(_sql("UPDATE users SET role = 'store_owner' WHERE role = 'owner'"))
-                logger.info("Migrated %d legacy role value(s)", legacy)
-        except Exception as e:
-            logger.warning("Role migration skipped: %s", e)
+async def _run_alembic_upgrade():
+    """Run Alembic migrations on startup. All schema DDL is managed by Alembic."""
+    import subprocess
+    result = subprocess.run(
+        ["alembic", "upgrade", "head"],
+        capture_output=True, text=True, timeout=30,
+        cwd="/Users/macbook/Desktop/tg agent",
+    )
+    if result.returncode != 0:
+        logger.warning("Alembic upgrade failed: %s", result.stderr[:500])
 
 
 async def _execute_due_broadcasts():
@@ -315,10 +164,10 @@ async def lifespan(app: FastAPI):
         logger.warning("⚠️  encryption_key is a known default — OK for dev, NEVER use in production!")
 
     try:
-        await _run_startup_migrations()
-        logger.info("Startup migrations done")
+        await _run_alembic_upgrade()
+        logger.info("Alembic migrations done")
     except Exception:
-        logger.exception("Startup migrations failed (non-fatal)")
+        logger.exception("Alembic migrations failed (non-fatal)")
     try:
         from src.telegram.service import start_all_clients
 
@@ -373,6 +222,11 @@ async def lifespan(app: FastAPI):
         pass
     logger.info("Shutting down AI Closer...")
     try:
+        from src.core.redis import close_redis
+        await close_redis()
+    except Exception:
+        logger.exception("Error closing shared Redis pool")
+    try:
         from src.sse.event_bus import close_event_bus
         await close_event_bus()
     except Exception:
@@ -400,36 +254,62 @@ from src.core.rate_limit import limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Security headers + request context
-from starlette.middleware.base import BaseHTTPMiddleware
+# Security headers + request context (raw ASGI middleware — does NOT buffer response body, safe for SSE)
 from src.core.logging_config import generate_request_id, set_log_context
 
-class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        # Inject request_id for structured logging
-        rid = request.headers.get("X-Request-ID") or generate_request_id()
+_SECURITY_HEADERS = [
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+    (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+]
+
+
+class _SecurityHeadersMiddleware:
+    """Raw ASGI middleware that injects security headers and request ID without buffering the response body."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Extract or generate request_id from incoming headers
+        rid = None
+        for name, value in scope.get("headers", []):
+            if name == b"x-request-id":
+                rid = value.decode("latin-1")
+                break
+        if not rid:
+            rid = generate_request_id()
         set_log_context(request_id=rid)
 
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = rid
-        # Clear log context after request
-        set_log_context(request_id=None, tenant_id=None, conversation_id=None)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'"
-        return response
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.append((b"x-request-id", rid.encode("latin-1")))
+                headers.extend(_SECURITY_HEADERS)
+                message = {**message, "headers": headers}
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_headers)
+        finally:
+            set_log_context(request_id=None, tenant_id=None, conversation_id=None)
 
 app.add_middleware(_SecurityHeadersMiddleware)
 
 # CORS
+# NOTE: In production, cors_origins should be restricted to the actual frontend domain(s).
+# The current list includes localhost/LAN IPs for development convenience.
 _cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -458,6 +338,7 @@ app.include_router(import_router)
 app.include_router(ai_router)
 app.include_router(training_router)
 app.include_router(analytics_router)
+app.include_router(platform_router)
 app.include_router(sse_router)
 
 

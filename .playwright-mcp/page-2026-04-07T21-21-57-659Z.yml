@@ -1,0 +1,813 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic:
+      - generic: 
+  - generic [ref=e32]:
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - button "Open menu" [ref=e4053] [cursor=pointer]
+        - generic:       
+      - generic [ref=e39]:
+        - generic [ref=e3601]: 
+        - button "Open Story List" [ref=e4649] [cursor=pointer]:
+          - img "Amon aka" [ref=e4652]
+          - img "azamat oka" [ref=e4655]
+          - img "кенайим" [ref=e4658]
+        - textbox "Search" [ref=e53]
+    - generic [ref=e55]:
+      - generic [ref=e56]:
+        - generic [ref=e58]:
+          - text: All
+          - generic [ref=e59]: "202"
+        - generic [ref=e61] [cursor=pointer]: Personal
+        - generic [ref=e63] [cursor=pointer]:
+          - text: Groups
+          - generic [ref=e64]: "38"
+        - generic [ref=e66] [cursor=pointer]:
+          - text: channel
+          - generic [ref=e67]: "150"
+        - generic [ref=e69] [cursor=pointer]:
+          - text: LINKO
+          - generic [ref=e70]: "1"
+        - generic [ref=e72] [cursor=pointer]:
+          - text: IUT
+          - img "🫴" [ref=e73]
+          - generic [ref=e74]: "10"
+        - generic [ref=e76] [cursor=pointer]:
+          - text: Freelance
+          - generic [ref=e77]: "8"
+        - generic [ref=e79] [cursor=pointer]:
+          - text: Bot
+          - generic [ref=e80]: "15"
+      - generic [ref=e81]:
+        - generic [ref=e4056]:
+          - button "Archived Chats funstat & telelog, Only fans, Deleted Account, Deleted Account, Deleted Account 2" [ref=e4058] [cursor=pointer]:
+            - img [ref=e4062]: 
+            - generic [ref=e4063]:
+              - heading "Archived Chats" [level=3] [ref=e4066]
+              - generic [ref=e4067]:
+                - generic [ref=e4068]: funstat & telelog, Only fans, Deleted Account, Deleted Account, Deleted Account
+                - generic [ref=e4070]: "2"
+          - link "Oybek Sobitov Saved Messages Tue 📎 application-dc5d0a1f-e3da-46dd-8887-f50d1d5dd4fe.apk" [ref=e4072] [cursor=pointer]:
+            - /url: "#1973111692"
+            - img "Oybek Sobitov" [ref=e4077]: 
+            - generic [ref=e4078]:
+              - generic [ref=e4079]:
+                - button "Saved Messages" [ref=e4081]
+                - generic [ref=e4082]:
+                  - generic [ref=e4086]: 
+                  - generic [ref=e4087]: Tue
+              - generic [ref=e4088]:
+                - paragraph [ref=e4089]:
+                  - generic [ref=e4091]:
+                    - img "📎" [ref=e4092]
+                    - text: application-dc5d0a1f-e3da-46dd-8887-f50d1d5dd4fe.apk
+                - generic [ref=e4095]: 
+          - 'link "Way to senior programmer Way to senior programmer Mar 17 https://www.autodesk.com/products/flow-studio/overview wesbtite AI creating 3d modelling #3d" [ref=e4097] [cursor=pointer]':
+            - /url: "#-1002137248750"
+            - generic "Way to senior programmer" [ref=e4100]:
+              - generic [ref=e4102]: W
+            - generic [ref=e4103]:
+              - generic [ref=e4104]:
+                - button "Way to senior programmer" [ref=e4106]
+                - generic [ref=e4107]: 
+                - generic [ref=e4109]: Mar 17
+              - generic [ref=e4110]:
+                - paragraph [ref=e4111]:
+                  - generic [ref=e4112]: "https://www.autodesk.com/products/flow-studio/overview wesbtite AI creating 3d modelling #3d"
+                - generic [ref=e4115]: 
+          - 'link "Camshot chat Camshot chat 02:18 nuriddinovv : 🎤 Voice Message 569" [ref=e4659] [cursor=pointer]':
+            - /url: "#-1002502987057"
+            - img "Camshot chat" [ref=e4144]
+            - generic [ref=e4145]:
+              - generic [ref=e4146]:
+                - button "Camshot chat" [ref=e4148]
+                - generic [ref=e4149]: 
+                - generic [ref=e4151]: 02:18
+              - generic [ref=e4152]:
+                - paragraph [ref=e4153]:
+                  - generic [ref=e4154]: nuriddinovv
+                  - generic [ref=e4155]: ":"
+                  - generic [ref=e4660]:
+                    - img "🎤" [ref=e4661]
+                    - text: Voice Message
+                - generic [ref=e4160]: "569"
+          - 'link "Не придумал Не придумал 02:17 a : mata nma? 1.5K" [ref=e4117] [cursor=pointer]':
+            - /url: "#-1001911693064"
+            - img "Не придумал" [ref=e4122]
+            - generic [ref=e4123]:
+              - generic [ref=e4124]:
+                - button "Не придумал" [ref=e4126]
+                - generic [ref=e4127]: 
+                - generic [ref=e4129]: 02:17
+              - generic [ref=e4130]:
+                - paragraph [ref=e4131]:
+                  - generic [ref=e4132]: a
+                  - generic [ref=e4133]: ":"
+                  - generic [ref=e4134]: mata nma?
+                - generic [ref=e4137]: 1.5K
+          - link "Scholarships Corner Scholarships Corner 02:14 Dreaming of studying in the UK but worried about high fees? The University of Sheffield is offering a £3,000 tuition fee discount for international students starting a master’s in September 2026! L... 13" [ref=e4162] [cursor=pointer]:
+            - /url: "#-1001487470813"
+            - img "Scholarships Corner" [ref=e4167]
+            - generic [ref=e4168]:
+              - generic [ref=e4169]:
+                - button "Scholarships Corner" [ref=e4171]
+                - generic [ref=e4172]: 
+                - generic [ref=e4174]: 02:14
+              - generic [ref=e4175]:
+                - paragraph [ref=e4176]:
+                  - generic [ref=e4178]: Dreaming of studying in the UK but worried about high fees? The University of Sheffield is offering a £3,000 tuition fee discount for international students starting a master’s in September 2026! L...
+                - generic [ref=e4181]: "13"
+          - link "Библиотека Geek_book_Hub 💾 Библиотека Geek_book_Hub 💾 02:14 📎 Создаем_устройства_на_микроконтроллерах_Белов2007.djvu 18" [ref=e4183] [cursor=pointer]:
+            - /url: "#-1001519902550"
+            - img "Библиотека Geek_book_Hub 💾" [ref=e4188]
+            - generic [ref=e4189]:
+              - generic [ref=e4190]:
+                - button "Библиотека Geek_book_Hub 💾" [ref=e4192]:
+                  - text: Библиотека Geek_book_Hub
+                  - img "💾" [ref=e4193]
+                - generic [ref=e4194]: 
+                - generic [ref=e4196]: 02:14
+              - generic [ref=e4197]:
+                - paragraph [ref=e4198]:
+                  - generic [ref=e4200]:
+                    - img "📎" [ref=e4201]
+                    - text: Создаем_устройства_на_микроконтроллерах_Белов2007.djvu
+                - generic [ref=e4204]: "18"
+          - 'link "Uzbekistan Students at Inha (Korea) Uzbekistan Students at Inha (Korea) 02:14 Azizbek : Assalomu alaykum shu atrofda ingilizcha biladigan dentist bormi? 92" [ref=e4206] [cursor=pointer]':
+            - /url: "#-1001387705065"
+            - img "Uzbekistan Students at Inha (Korea)" [ref=e4211]
+            - generic [ref=e4212]:
+              - generic [ref=e4213]:
+                - button "Uzbekistan Students at Inha (Korea)" [ref=e4215]
+                - generic [ref=e4216]: 
+                - generic [ref=e4218]: 02:14
+              - generic [ref=e4219]:
+                - paragraph [ref=e4220]:
+                  - generic [ref=e4221]: Azizbek
+                  - generic [ref=e4222]: ":"
+                  - generic [ref=e4223]: Assalomu alaykum shu atrofda ingilizcha biladigan dentist bormi?
+                - generic [ref=e4226]: "92"
+          - link "Avenir | Manager Avenir | Manager 02:13 Подключаю оператора, подождите немного 🙏" [ref=e4228] [cursor=pointer]:
+            - /url: "#7646279281"
+            - img "Avenir | Manager" [ref=e4233]
+            - generic [ref=e4234]:
+              - generic [ref=e4235]:
+                - button "Avenir | Manager" [ref=e4237]
+                - generic [ref=e4239]: 02:13
+              - paragraph [ref=e4241]:
+                - generic [ref=e4242]:
+                  - text: Подключаю оператора, подождите немного
+                  - img "🙏" [ref=e4243]
+          - 'link "Intelligent people Intelligent people 02:12 _ : Plan 133" [ref=e4245] [cursor=pointer]':
+            - /url: "#-1002623006893"
+            - img "Intelligent people" [ref=e4250]
+            - generic [ref=e4251]:
+              - generic [ref=e4252]:
+                - button "Intelligent people" [ref=e4254]
+                - generic [ref=e4255]: 
+                - generic [ref=e4257]: 02:12
+              - generic [ref=e4258]:
+                - paragraph [ref=e4259]:
+                  - generic [ref=e4260]: _
+                  - generic [ref=e4261]: ":"
+                  - generic [ref=e4262]: Plan
+                - generic [ref=e4265]: "133"
+          - 'link "Phonedoctor Family❤️ Phonedoctor Family ❤️ 02:08 Руслан Ражабов : Руслан Ражабов joined the group via invite link 85" [ref=e4267] [cursor=pointer]':
+            - /url: "#-1001789480501"
+            - img "Phonedoctor Family❤️" [ref=e4272]
+            - generic [ref=e4273]:
+              - generic [ref=e4274]:
+                - button "Phonedoctor Family ❤️" [ref=e4276]:
+                  - text: Phonedoctor Family
+                  - img "❤️" [ref=e4277]
+                - generic [ref=e4278]: 
+                - generic [ref=e4280]: 02:08
+              - generic [ref=e4281]:
+                - paragraph [ref=e4282]:
+                  - generic [ref=e4283]: Руслан Ражабов
+                  - generic [ref=e4284]: ":"
+                  - generic [ref=e4285]: Руслан Ражабов joined the group via invite link
+                - generic [ref=e4288]: "85"
+          - link "UzDevice UzDevice 02:05 🎤 Voice Message" [ref=e6317] [cursor=pointer]:
+            - /url: "#-1002843755689"
+            - img "UzDevice" [ref=e4295]
+            - generic [ref=e4296]:
+              - generic [ref=e4297]:
+                - button "UzDevice" [ref=e4299]
+                - generic [ref=e4300]: 
+                - generic [ref=e4302]: 02:05
+              - paragraph [ref=e4304]:
+                - generic [ref=e4306]:
+                  - img "🎤" [ref=e4307]
+                  - text: Voice Message
+          - link "Хауди Хо - IT юмор, жизнь программиста Хауди Хо - IT юмор, жизнь программиста 02:03 Хорошие новости, ЦЕНЫ НА ОПЕРАТИВКУ начали стремительно падать 🚬 Скажем за это спасибо гуглу 🙏 68" [ref=e4312] [cursor=pointer]:
+            - /url: "#-1001385083539"
+            - img "Хауди Хо - IT юмор, жизнь программиста" [ref=e4317]
+            - generic [ref=e4318]:
+              - generic [ref=e4319]:
+                - button "Хауди Хо - IT юмор, жизнь программиста" [ref=e4321]
+                - generic [ref=e4322]: 
+                - generic [ref=e4324]: 02:03
+              - generic [ref=e4325]:
+                - paragraph [ref=e4326]:
+                  - generic [ref=e4328]:
+                    - text: Хорошие новости, ЦЕНЫ НА ОПЕРАТИВКУ начали стремительно падать
+                    - img "🚬" [ref=e4330]
+                    - text: Скажем за это спасибо гуглу
+                    - img "🙏" [ref=e4332]
+                - generic [ref=e4335]: "68"
+          - link "Birthday countdown Birthday countdown 01:59 Your birthday is in 38 days 11" [ref=e4337] [cursor=pointer]:
+            - /url: "#1449851668"
+            - img "Birthday countdown" [ref=e4342]
+            - generic [ref=e4343]:
+              - generic [ref=e4344]:
+                - button "Birthday countdown" [ref=e4346]
+                - generic [ref=e4347]: 
+                - generic [ref=e4349]: 01:59
+              - generic [ref=e4350]:
+                - paragraph [ref=e4351]:
+                  - generic [ref=e4352]: Your birthday is in 38 days
+                - generic [ref=e4355]: "11"
+          - link "PREP 2026 PREP 2026 01:58 1:8 boʻlishi mumkin edi xisob, ammo bu realku:) 54" [ref=e4357] [cursor=pointer]:
+            - /url: "#-1002083267764"
+            - img "PREP 2026" [ref=e4362]
+            - generic [ref=e4363]:
+              - generic [ref=e4364]:
+                - button "PREP 2026" [ref=e4366]
+                - generic [ref=e4367]: 
+                - generic [ref=e4369]: 01:58
+              - generic [ref=e4370]:
+                - paragraph [ref=e4371]:
+                  - generic [ref=e4372]: 1:8 boʻlishi mumkin edi xisob, ammo bu realku:)
+                - generic [ref=e4375]: "54"
+          - link "Letters to the Beyond Letters to the Beyond 01:56 bu bavariya rostan qo'rqinchli... 21" [ref=e4377] [cursor=pointer]:
+            - /url: "#-1001754032193"
+            - img "Letters to the Beyond" [ref=e4382]
+            - generic [ref=e4383]:
+              - generic [ref=e4384]:
+                - button "Letters to the Beyond" [ref=e4386]
+                - generic [ref=e4387]: 
+                - generic [ref=e4389]: 01:56
+              - generic [ref=e4390]:
+                - paragraph [ref=e4391]:
+                  - generic [ref=e4392]: bu bavariya rostan qo'rqinchli...
+                - generic [ref=e4395]: "21"
+          - 'link "UK IT 25-01 UK IT 25-01 01:44 perseverance : https://www.instagram.com/reel/DWQx2lUgRoz/?igsh=MWxiMTZ1MHA4azVqMA==" [ref=e4397] [cursor=pointer]':
+            - /url: "#-1002907782146"
+            - img "UK IT 25-01" [ref=e4402]
+            - generic [ref=e4403]:
+              - generic [ref=e4404]:
+                - button "UK IT 25-01" [ref=e4406]
+                - generic [ref=e4407]: 
+                - generic [ref=e4409]: 01:44
+              - paragraph [ref=e4411]:
+                - generic [ref=e4412]: perseverance
+                - generic [ref=e4413]: ":"
+                - generic [ref=e4414]: https://www.instagram.com/reel/DWQx2lUgRoz/?igsh=MWxiMTZ1MHA4azVqMA==
+          - 'link "HUNTME | JOBS HUNTME | JOBS 01:30 🏢 Freight Connect Corp. 👔 Position: Sales Specialist 🌎 Location: Yunusobod, Toshkent, Uzbekistan 💼 Experience: Less than 1 year 👤 Gender: Any 💵 Salary: Discussed on the interview 📋 Job Requir... 106" [ref=e4416] [cursor=pointer]':
+            - /url: "#-1001234340940"
+            - img "HUNTME | JOBS" [ref=e4421]
+            - generic [ref=e4422]:
+              - generic [ref=e4423]:
+                - button "HUNTME | JOBS" [ref=e4425]
+                - generic [ref=e4426]: 
+                - generic [ref=e4428]: 01:30
+              - generic [ref=e4429]:
+                - paragraph [ref=e4430]:
+                  - generic [ref=e4432]:
+                    - img "🏢" [ref=e4433]
+                    - text: Freight Connect Corp.
+                    - img "👔" [ref=e4434]
+                    - text: "Position: Sales Specialist"
+                    - img "🌎" [ref=e4435]
+                    - text: "Location: Yunusobod, Toshkent, Uzbekistan"
+                    - img "💼" [ref=e4436]
+                    - text: "Experience: Less than 1 year"
+                    - img "👤" [ref=e4437]
+                    - text: "Gender: Any"
+                    - img "💵" [ref=e4438]
+                    - text: "Salary: Discussed on the interview"
+                    - img "📋" [ref=e4439]
+                    - text: Job Requir...
+                - generic [ref=e4442]: "106"
+          - link "ABUSER SKINS (dokon) ABUSER SKINS (dokon) 01:26 🌟 Sticker 53" [ref=e4444] [cursor=pointer]:
+            - /url: "#-1003261034157"
+            - img "ABUSER SKINS (dokon)" [ref=e4449]
+            - generic [ref=e4450]:
+              - generic [ref=e4451]:
+                - button "ABUSER SKINS (dokon)" [ref=e4453]
+                - generic [ref=e4460]: 
+                - generic [ref=e4462]: 01:26
+              - generic [ref=e4463]:
+                - paragraph [ref=e4464]:
+                  - generic [ref=e4466]:
+                    - img "🌟" [ref=e4467]
+                    - text: Sticker
+                - generic [ref=e4470]: "53"
+          - link "texno_go texno_go 01:06 Video 3" [ref=e4472] [cursor=pointer]:
+            - /url: "#-1001654330304"
+            - img "texno_go" [ref=e4477]
+            - generic [ref=e4478]:
+              - generic [ref=e4479]:
+                - button "texno_go" [ref=e4481]
+                - generic [ref=e4482]: 
+                - generic [ref=e4484]: 01:06
+              - generic [ref=e4485]:
+                - paragraph [ref=e4486]:
+                  - generic [ref=e4488]:
+                    - generic [ref=e4489]: 
+                    - text: Video
+                - generic [ref=e4492]: "3"
+          - 'link "ЛОУТАБ ЛОУТАБ 01:04 📖 ДНЕВНИК ЛОУТАБА (07.04) Вечерний дайджест, вспомним главное за сегодня: 🟣 🇲🇳 The MongolZ, 🇫🇷 3DMAX и 🇧🇷 MIBR вышли в плей-офф 😲 PGL Bucharest. 🟣 🥇 BC.Game, 🙇‍♂️ Inner Circle и 🇺🇸 NRG п... 46" [ref=e4521] [cursor=pointer]':
+            - /url: "#-1002452373267"
+            - img "ЛОУТАБ" [ref=e4526]
+            - generic [ref=e4528]:
+              - generic [ref=e4529]:
+                - button "ЛОУТАБ" [ref=e4531]
+                - generic [ref=e4532]: 
+                - generic [ref=e4534]: 01:04
+              - generic [ref=e4535]:
+                - paragraph [ref=e4536]:
+                  - generic [ref=e4538]:
+                    - img "📖" [ref=e6319]
+                    - text: "ДНЕВНИК ЛОУТАБА (07.04) Вечерний дайджест, вспомним главное за сегодня:"
+                    - img "🟣" [ref=e6321]
+                    - img "🇲🇳" [ref=e6323]
+                    - text: The MongolZ,
+                    - img "🇫🇷" [ref=e6325]
+                    - text: 3DMAX и
+                    - img "🇧🇷" [ref=e6327]
+                    - text: MIBR вышли в плей-офф
+                    - img "😲" [ref=e6329]
+                    - text: PGL Bucharest.
+                    - img "🟣" [ref=e6331]
+                    - img "🥇" [ref=e6333]
+                    - text: BC.Game,
+                    - img "🙇‍♂️" [ref=e6335]
+                    - text: Inner Circle и
+                    - img "🇺🇸" [ref=e6337]
+                    - text: NRG п...
+                - generic [ref=e4561]: "46"
+          - link "QULOQ News QULOQ News 01:01 ❗️ Пакистан попросил Трампа отодвинуть срок ультиматума на две недели Премьер-министр Пакистана Шехбаз Шариф попросил президента США Дональда Трампа продлить дедлайн на две недели, чтобы «дать диплома... 8" [ref=e4563] [cursor=pointer]:
+            - /url: "#-1001683263877"
+            - img "QULOQ News" [ref=e4568]
+            - generic [ref=e4569]:
+              - generic [ref=e4570]:
+                - button "QULOQ News" [ref=e4572]
+                - generic [ref=e4573]: 
+                - generic [ref=e4575]: 01:01
+              - generic [ref=e4576]:
+                - paragraph [ref=e4577]:
+                  - generic [ref=e4579]:
+                    - img "❗️" [ref=e4580]
+                    - text: Пакистан попросил Трампа отодвинуть срок ультиматума на две недели Премьер-министр Пакистана Шехбаз Шариф попросил президента США Дональда Трампа продлить дедлайн на две недели, чтобы «дать диплома...
+                - generic [ref=e4583]: "8"
+          - 'link "EGOISTO CHAT EGOISTO CHAT 00:57 Shaxzod : Axaxaxax 155" [ref=e4585] [cursor=pointer]':
+            - /url: "#-1002408136832"
+            - img "EGOISTO CHAT" [ref=e4590]
+            - generic [ref=e4591]:
+              - generic [ref=e4592]:
+                - button "EGOISTO CHAT" [ref=e4594]
+                - generic [ref=e4595]: 
+                - generic [ref=e4597]: 00:57
+              - generic [ref=e4598]:
+                - paragraph [ref=e4599]:
+                  - generic [ref=e4600]: Shaxzod
+                  - generic [ref=e4601]: ":"
+                  - generic [ref=e4602]: Axaxaxax
+                - generic [ref=e4605]: "155"
+          - 'link "CS2 ФИШКИ + FACEIT LOBBY CS2 ФИШКИ + FACEIT LOBBY 00:56 6-8 LVL FACEIT LOBBY ОБЩИЙ ЧАТ 💬 9-10 LVL FACEIT LOBBY .aj : uyneslarmi 7" [ref=e4607] [cursor=pointer]':
+            - /url: "#-1002446062550"
+            - img "CS2 ФИШКИ + FACEIT LOBBY" [ref=e4611]
+            - generic [ref=e4612]:
+              - generic [ref=e4613]:
+                - button "CS2 ФИШКИ + FACEIT LOBBY" [ref=e4615]
+                - generic [ref=e4616]: 
+                - generic [ref=e4618]: 00:56
+              - generic [ref=e4619]:
+                - generic:
+                  - generic:
+                    - generic [ref=e4622]: 6-8 LVL FACEIT LOBBY
+                    - generic:
+                      - generic:
+                        - generic: 
+                        - generic:
+                          - text: ОБЩИЙ ЧАТ
+                          - img "💬"
+                      - generic: 9-10 LVL FACEIT LOBBY
+                  - paragraph [ref=e4624]:
+                    - generic [ref=e4625]: .aj
+                    - generic [ref=e4626]: ":"
+                    - generic [ref=e4627]: uyneslarmi
+                - generic [ref=e4632]: "7"
+          - link "SPORT TV • LIVE SPORT TV • LIVE 00:50 📊 Birinchi taym statistikasi 🇪🇸 0:1 🇩🇪 🚀 @SPORT_TV ✅️" [ref=e4662] [cursor=pointer]:
+            - /url: "#-1001684270234"
+            - img "SPORT TV • LIVE" [ref=e4499]
+            - generic [ref=e4500]:
+              - generic [ref=e4501]:
+                - button "SPORT TV • LIVE" [ref=e4503]
+                - generic [ref=e4504]: 
+                - generic [ref=e4506]: 00:50
+              - paragraph [ref=e4508]:
+                - generic [ref=e4663]:
+                  - img "📊" [ref=e4664]
+                  - text: Birinchi taym statistikasi
+                  - img "🇪🇸" [ref=e4666]
+                  - text: 0:1
+                  - img "🇩🇪" [ref=e4668]
+                  - img "🚀" [ref=e4670]
+                  - text: "@SPORT_TV"
+                  - img "✅️" [ref=e4672]
+          - link "AbuTwitch AbuTwitch 00:50 2-taym ctda quvlimiz..." [ref=e4634] [cursor=pointer]:
+            - /url: "#-1003820379347"
+            - img "AbuTwitch" [ref=e4639]
+            - generic [ref=e4640]:
+              - generic [ref=e4641]:
+                - button "AbuTwitch" [ref=e4643]
+                - generic [ref=e4645]: 00:50
+              - paragraph [ref=e4647]:
+                - generic [ref=e4648]: 2-taym ctda quvlimiz...
+        - text:                                              
+        - generic [ref=e4673]:
+          - generic:
+            - link "Авенир шоп Авенир шоп Mar 27 Samsung Galaxy Watch 6 Classic Физический безель, Super AMOLED. Мониторинг здоровья 24/7. Wear OS, тысячи циферблатов. Цену уточняйте в комментариях 👇" [ref=e4675] [cursor=pointer]:
+              - /url: "#-1003783190354"
+              - generic "Авенир шоп" [ref=e4678]:
+                - generic [ref=e4680]: А
+              - generic [ref=e4681]:
+                - generic [ref=e4682]:
+                  - button "Авенир шоп" [ref=e4684]
+                  - generic [ref=e4686]: Mar 27
+                - generic [ref=e4687]:
+                  - paragraph [ref=e4688]:
+                    - generic [ref=e4690]:
+                      - text: Samsung Galaxy Watch 6 Classic Физический безель, Super AMOLED. Мониторинг здоровья 24/7. Wear OS, тысячи циферблатов. Цену уточняйте в комментариях
+                      - img "👇" [ref=e4691]
+                  - generic [ref=e4694]: 
+            - link "oybeff oybeff Sat Я ебал" [ref=e4696] [cursor=pointer]:
+              - /url: "#-1001657095153"
+              - img "oybeff" [ref=e4701]
+              - generic [ref=e4702]:
+                - generic [ref=e4703]:
+                  - button "oybeff" [ref=e4705]
+                  - generic [ref=e4707]: Sat
+                - generic [ref=e4708]:
+                  - paragraph [ref=e4709]:
+                    - generic [ref=e4711]: Я ебал
+                  - generic [ref=e4714]: 
+            - link "Scholarships Corner Scholarships Corner 02:14 Dreaming of studying in the UK but worried about high fees? The University of Sheffield is offering a £3,000 tuition fee discount for international students starting a master’s in September 2026! L... 13" [ref=e4716] [cursor=pointer]:
+              - /url: "#-1001487470813"
+              - img "Scholarships Corner" [ref=e4721]
+              - generic [ref=e4722]:
+                - generic [ref=e4723]:
+                  - button "Scholarships Corner" [ref=e4725]
+                  - generic [ref=e4726]: 
+                  - generic [ref=e4728]: 02:14
+                - generic [ref=e4729]:
+                  - paragraph [ref=e4730]:
+                    - generic [ref=e4732]: Dreaming of studying in the UK but worried about high fees? The University of Sheffield is offering a £3,000 tuition fee discount for international students starting a master’s in September 2026! L...
+                  - generic [ref=e4735]: "13"
+            - link "Библиотека Geek_book_Hub 💾 Библиотека Geek_book_Hub 💾 02:14 📎 Создаем_устройства_на_микроконтроллерах_Белов2007.djvu 18" [ref=e4737] [cursor=pointer]:
+              - /url: "#-1001519902550"
+              - img "Библиотека Geek_book_Hub 💾" [ref=e4742]
+              - generic [ref=e4743]:
+                - generic [ref=e4744]:
+                  - button "Библиотека Geek_book_Hub 💾" [ref=e4746]:
+                    - text: Библиотека Geek_book_Hub
+                    - img "💾" [ref=e4747]
+                  - generic [ref=e4748]: 
+                  - generic [ref=e4750]: 02:14
+                - generic [ref=e4751]:
+                  - paragraph [ref=e4752]:
+                    - generic [ref=e4754]:
+                      - img "📎" [ref=e4755]
+                      - text: Создаем_устройства_на_микроконтроллерах_Белов2007.djvu
+                  - generic [ref=e4758]: "18"
+            - link "UzDevice UzDevice 02:05 🎤 Voice Message" [ref=e5264] [cursor=pointer]:
+              - /url: "#-1002843755689"
+              - img "UzDevice" [ref=e4765]
+              - generic [ref=e4766]:
+                - generic [ref=e4767]:
+                  - button "UzDevice" [ref=e4769]
+                  - generic [ref=e4770]: 
+                  - generic [ref=e4772]: 02:05
+                - paragraph [ref=e4774]:
+                  - generic [ref=e4776]:
+                    - img "🎤" [ref=e4777]
+                    - text: Voice Message
+            - link "Хауди Хо - IT юмор, жизнь программиста Хауди Хо - IT юмор, жизнь программиста 02:03 Хорошие новости, ЦЕНЫ НА ОПЕРАТИВКУ начали стремительно падать 🚬 Скажем за это спасибо гуглу 🙏 68" [ref=e4782] [cursor=pointer]:
+              - /url: "#-1001385083539"
+              - img "Хауди Хо - IT юмор, жизнь программиста" [ref=e4787]
+              - generic [ref=e4788]:
+                - generic [ref=e4789]:
+                  - button "Хауди Хо - IT юмор, жизнь программиста" [ref=e4791]
+                  - generic [ref=e4792]: 
+                  - generic [ref=e4794]: 02:03
+                - generic [ref=e4795]:
+                  - paragraph [ref=e4796]:
+                    - generic [ref=e4798]:
+                      - text: Хорошие новости, ЦЕНЫ НА ОПЕРАТИВКУ начали стремительно падать
+                      - img "🚬" [ref=e4800]
+                      - text: Скажем за это спасибо гуглу
+                      - img "🙏" [ref=e4802]
+                  - generic [ref=e4805]: "68"
+            - link "PREP 2026 PREP 2026 01:58 1:8 boʻlishi mumkin edi xisob, ammo bu realku:) 54" [ref=e4807] [cursor=pointer]:
+              - /url: "#-1002083267764"
+              - img "PREP 2026" [ref=e4812]
+              - generic [ref=e4813]:
+                - generic [ref=e4814]:
+                  - button "PREP 2026" [ref=e4816]
+                  - generic [ref=e4817]: 
+                  - generic [ref=e4819]: 01:58
+                - generic [ref=e4820]:
+                  - paragraph [ref=e4821]:
+                    - generic [ref=e4822]: 1:8 boʻlishi mumkin edi xisob, ammo bu realku:)
+                  - generic [ref=e4825]: "54"
+            - link "Letters to the Beyond Letters to the Beyond 01:56 bu bavariya rostan qo'rqinchli... 21" [ref=e4827] [cursor=pointer]:
+              - /url: "#-1001754032193"
+              - img "Letters to the Beyond" [ref=e4832]
+              - generic [ref=e4833]:
+                - generic [ref=e4834]:
+                  - button "Letters to the Beyond" [ref=e4836]
+                  - generic [ref=e4837]: 
+                  - generic [ref=e4839]: 01:56
+                - generic [ref=e4840]:
+                  - paragraph [ref=e4841]:
+                    - generic [ref=e4842]: bu bavariya rostan qo'rqinchli...
+                  - generic [ref=e4845]: "21"
+            - 'link "HUNTME | JOBS HUNTME | JOBS 01:30 🏢 Freight Connect Corp. 👔 Position: Sales Specialist 🌎 Location: Yunusobod, Toshkent, Uzbekistan 💼 Experience: Less than 1 year 👤 Gender: Any 💵 Salary: Discussed on the interview 📋 Job Requir... 106" [ref=e4847] [cursor=pointer]':
+              - /url: "#-1001234340940"
+              - img "HUNTME | JOBS" [ref=e4852]
+              - generic [ref=e4853]:
+                - generic [ref=e4854]:
+                  - button "HUNTME | JOBS" [ref=e4856]
+                  - generic [ref=e4857]: 
+                  - generic [ref=e4859]: 01:30
+                - generic [ref=e4860]:
+                  - paragraph [ref=e4861]:
+                    - generic [ref=e4863]:
+                      - img "🏢" [ref=e4864]
+                      - text: Freight Connect Corp.
+                      - img "👔" [ref=e4865]
+                      - text: "Position: Sales Specialist"
+                      - img "🌎" [ref=e4866]
+                      - text: "Location: Yunusobod, Toshkent, Uzbekistan"
+                      - img "💼" [ref=e4867]
+                      - text: "Experience: Less than 1 year"
+                      - img "👤" [ref=e4868]
+                      - text: "Gender: Any"
+                      - img "💵" [ref=e4869]
+                      - text: "Salary: Discussed on the interview"
+                      - img "📋" [ref=e4870]
+                      - text: Job Requir...
+                  - generic [ref=e4873]: "106"
+            - link "ABUSER SKINS (dokon) ABUSER SKINS (dokon) 01:26 🌟 Sticker 53" [ref=e4875] [cursor=pointer]:
+              - /url: "#-1003261034157"
+              - img "ABUSER SKINS (dokon)" [ref=e4880]
+              - generic [ref=e4881]:
+                - generic [ref=e4882]:
+                  - button "ABUSER SKINS (dokon)" [ref=e4884]
+                  - generic [ref=e4891]: 
+                  - generic [ref=e4893]: 01:26
+                - generic [ref=e4894]:
+                  - paragraph [ref=e4895]:
+                    - generic [ref=e4897]:
+                      - img "🌟" [ref=e4898]
+                      - text: Sticker
+                  - generic [ref=e4901]: "53"
+            - link "texno_go texno_go 01:06 Video 3" [ref=e4903] [cursor=pointer]:
+              - /url: "#-1001654330304"
+              - img "texno_go" [ref=e4908]
+              - generic [ref=e4909]:
+                - generic [ref=e4910]:
+                  - button "texno_go" [ref=e4912]
+                  - generic [ref=e4913]: 
+                  - generic [ref=e4915]: 01:06
+                - generic [ref=e4916]:
+                  - paragraph [ref=e4917]:
+                    - generic [ref=e4919]:
+                      - generic [ref=e4920]: 
+                      - text: Video
+                  - generic [ref=e4923]: "3"
+            - 'link "ЛОУТАБ ЛОУТАБ 01:04 📖 ДНЕВНИК ЛОУТАБА (07.04) Вечерний дайджест, вспомним главное за сегодня: 🟣 🇲🇳 The MongolZ, 🇫🇷 3DMAX и 🇧🇷 MIBR вышли в плей-офф 😲 PGL Bucharest. 🟣 🥇 BC.Game, 🙇‍♂️ Inner Circle и 🇺🇸 NRG п... 46" [ref=e4925] [cursor=pointer]':
+              - /url: "#-1002452373267"
+              - img "ЛОУТАБ" [ref=e4930]
+              - generic [ref=e4932]:
+                - generic [ref=e4933]:
+                  - button "ЛОУТАБ" [ref=e4935]
+                  - generic [ref=e4936]: 
+                  - generic [ref=e4938]: 01:04
+                - generic [ref=e4939]:
+                  - paragraph [ref=e4940]:
+                    - generic [ref=e4942]:
+                      - img "📖" [ref=e6283]
+                      - text: "ДНЕВНИК ЛОУТАБА (07.04) Вечерний дайджест, вспомним главное за сегодня:"
+                      - img "🟣" [ref=e6285]
+                      - img "🇲🇳" [ref=e6287]
+                      - text: The MongolZ,
+                      - img "🇫🇷" [ref=e6289]
+                      - text: 3DMAX и
+                      - img "🇧🇷" [ref=e6291]
+                      - text: MIBR вышли в плей-офф
+                      - img "😲" [ref=e6293]
+                      - text: PGL Bucharest.
+                      - img "🟣" [ref=e6295]
+                      - img "🥇" [ref=e6297]
+                      - text: BC.Game,
+                      - img "🙇‍♂️" [ref=e6299]
+                      - text: Inner Circle и
+                      - img "🇺🇸" [ref=e6301]
+                      - text: NRG п...
+                  - generic [ref=e4965]: "46"
+            - link "QULOQ News QULOQ News 01:01 ❗️ Пакистан попросил Трампа отодвинуть срок ультиматума на две недели Премьер-министр Пакистана Шехбаз Шариф попросил президента США Дональда Трампа продлить дедлайн на две недели, чтобы «дать диплома... 8" [ref=e4967] [cursor=pointer]:
+              - /url: "#-1001683263877"
+              - img "QULOQ News" [ref=e4972]
+              - generic [ref=e4973]:
+                - generic [ref=e4974]:
+                  - button "QULOQ News" [ref=e4976]
+                  - generic [ref=e4977]: 
+                  - generic [ref=e4979]: 01:01
+                - generic [ref=e4980]:
+                  - paragraph [ref=e4981]:
+                    - generic [ref=e4983]:
+                      - img "❗️" [ref=e4984]
+                      - text: Пакистан попросил Трампа отодвинуть срок ультиматума на две недели Премьер-министр Пакистана Шехбаз Шариф попросил президента США Дональда Трампа продлить дедлайн на две недели, чтобы «дать диплома...
+                  - generic [ref=e4987]: "8"
+            - link "SPORT TV • LIVE SPORT TV • LIVE 00:50 📊 Birinchi taym statistikasi 🇪🇸 0:1 🇩🇪 🚀 @SPORT_TV ✅️" [ref=e4989] [cursor=pointer]:
+              - /url: "#-1001684270234"
+              - img "SPORT TV • LIVE" [ref=e4994]
+              - generic [ref=e4995]:
+                - generic [ref=e4996]:
+                  - button "SPORT TV • LIVE" [ref=e4998]
+                  - generic [ref=e4999]: 
+                  - generic [ref=e5001]: 00:50
+                - paragraph [ref=e5003]:
+                  - generic [ref=e5005]:
+                    - img "📊" [ref=e5006]
+                    - text: Birinchi taym statistikasi
+                    - img "🇪🇸" [ref=e5008]
+                    - text: 0:1
+                    - img "🇩🇪" [ref=e5010]
+                    - img "🚀" [ref=e5012]
+                    - text: "@SPORT_TV"
+                    - img "✅️" [ref=e5014]
+            - link "AbuTwitch AbuTwitch 00:50 2-taym ctda quvlimiz..." [ref=e5016] [cursor=pointer]:
+              - /url: "#-1003820379347"
+              - img "AbuTwitch" [ref=e5021]
+              - generic [ref=e5022]:
+                - generic [ref=e5023]:
+                  - button "AbuTwitch" [ref=e5025]
+                  - generic [ref=e5027]: 00:50
+                - paragraph [ref=e5029]:
+                  - generic [ref=e5030]: 2-taym ctda quvlimiz...
+            - 'link "N3tHunterLab N3tHunterLab 00:35 ⭐️ Ищем человека в сети: проверенные OSINT-инструменты с прямыми ссылками OSINT — алгоритм поиска, где один email или ник может привести к целой сети профилей. Вот самые рабочие сервисы с коротким оп..." [ref=e5032] [cursor=pointer]':
+              - /url: "#-1002993652702"
+              - img "N3tHunterLab" [ref=e5037]
+              - generic [ref=e5038]:
+                - generic [ref=e5039]:
+                  - button "N3tHunterLab" [ref=e5041]
+                  - generic [ref=e5042]: 
+                  - generic [ref=e5044]: 00:35
+                - paragraph [ref=e5046]:
+                  - generic [ref=e5048]:
+                    - img "⭐️" [ref=e5050]
+                    - text: "Ищем человека в сети: проверенные OSINT-инструменты с прямыми ссылками OSINT — алгоритм поиска, где один email или ник может привести к целой сети профилей. Вот самые рабочие сервисы с коротким оп..."
+            - link "Blockchain Texno - Bitcoin, kripto-aktivlar va blockchain texnologiyalari Blockchain Texno - Bitcoin, kripto-aktivlar va blockchain texnologiyalari 00:32 TON kelasi haftadagi eng katta token unlock (blokdan chiqarish)lar ro‘yxatida 2-o‘rinni egalladi. Bunday yirik unlocklar bozorda qo‘shimcha taklifni oshiradi va qisqa muddatda narxga bosim berishi mu... 8" [ref=e5052] [cursor=pointer]:
+              - /url: "#-1001626232788"
+              - img "Blockchain Texno - Bitcoin, kripto-aktivlar va blockchain texnologiyalari" [ref=e5057]
+              - generic [ref=e5058]:
+                - generic [ref=e5059]:
+                  - button "Blockchain Texno - Bitcoin, kripto-aktivlar va blockchain texnologiyalari" [ref=e5061]
+                  - generic [ref=e5062]: 
+                  - generic [ref=e5064]: 00:32
+                - generic [ref=e5065]:
+                  - paragraph [ref=e5066]:
+                    - generic [ref=e5068]: TON kelasi haftadagi eng katta token unlock (blokdan chiqarish)lar ro‘yxatida 2-o‘rinni egalladi. Bunday yirik unlocklar bozorda qo‘shimcha taklifni oshiradi va qisqa muddatda narxga bosim berishi mu...
+                  - generic [ref=e5071]: "8"
+            - link "Код Дурова Код Дурова 00:31 👍 Просто хорошая новость Яндекс и Департамент здравоохранения Москвы начали пилотный проект по использованию роверов в медицине. Роботы уже катаются по двум больницам, помогая медперсоналу. ↖️ htt... 19" [ref=e5073] [cursor=pointer]:
+              - /url: "#-1001043793945"
+              - img "Код Дурова" [ref=e5078]
+              - generic [ref=e5079]:
+                - generic [ref=e5080]:
+                  - generic [ref=e5081]:
+                    - button "Код Дурова" [ref=e5082]
+                    - img [ref=e5083]
+                  - generic [ref=e5086]: 
+                  - generic [ref=e5088]: 00:31
+                - generic [ref=e5089]:
+                  - paragraph [ref=e5090]:
+                    - generic [ref=e5092]:
+                      - img "👍" [ref=e5094]
+                      - text: Просто хорошая новость Яндекс и Департамент здравоохранения Москвы начали пилотный проект по использованию роверов в медицине. Роботы уже катаются по двум больницам, помогая медперсоналу.
+                      - img "↖️" [ref=e5098]
+                      - text: htt...
+                  - generic [ref=e5101]: "19"
+            - 'link "National Geographic National Geographic 00:13 Remember: health is number one... Perfect day to reset your body and mind. 🌿 Barbara O''Neill really made a huge difference for me and my family ... So grateful to her ... Thank you Barbara for this... 71" [ref=e5103] [cursor=pointer]':
+              - /url: "#-1001222973093"
+              - img "National Geographic" [ref=e5108]
+              - generic [ref=e5109]:
+                - generic [ref=e5110]:
+                  - button "National Geographic" [ref=e5112]
+                  - generic [ref=e5113]: 
+                  - generic [ref=e5115]: 00:13
+                - generic [ref=e5116]:
+                  - paragraph [ref=e5117]:
+                    - generic [ref=e5119]:
+                      - generic [ref=e5120]: 
+                      - text: "Remember: health is number one... Perfect day to reset your body and mind."
+                      - img "🌿" [ref=e5121]
+                      - text: Barbara O'Neill really made a huge difference for me and my family ... So grateful to her ... Thank you Barbara for this...
+                  - generic [ref=e5124]: "71"
+            - link "Kun.uz | Расмий канал Kun.uz | Расмий канал 00:09 Photo 10" [ref=e5126] [cursor=pointer]:
+              - /url: "#-1001001766948"
+              - img "Kun.uz | Расмий канал" [ref=e5131]
+              - generic [ref=e5132]:
+                - generic [ref=e5133]:
+                  - generic [ref=e5134]:
+                    - button "Kun.uz | Расмий канал" [ref=e5135]
+                    - img [ref=e5136]
+                  - generic [ref=e5139]: 
+                  - generic [ref=e5141]: 00:09
+                - generic [ref=e5142]:
+                  - paragraph [ref=e5143]:
+                    - generic [ref=e5145]: Photo
+                  - generic [ref=e5148]: "10"
+            - link "CS2NEWS | Counter-Strike 2 CS2NEWS | Counter-Strike 2 Tue 🇺🇸 FaZe Clan однажды — FaZeUP навсегда. 🇱🇻 broky является одним из двух игроков, кто имеет 100% выходов в финал мейджоров по CS2 (при условии сыграть на двух турнирах+). 🗿 И почему его собрали... 12" [ref=e5150] [cursor=pointer]:
+              - /url: "#-1001316460626"
+              - img "CS2NEWS | Counter-Strike 2" [ref=e5155]
+              - generic [ref=e5156]:
+                - generic [ref=e5157]:
+                  - button "CS2NEWS | Counter-Strike 2" [ref=e5159]
+                  - generic [ref=e5160]: 
+                  - generic [ref=e5162]: Tue
+                - generic [ref=e5163]:
+                  - paragraph [ref=e5164]:
+                    - generic [ref=e5166]:
+                      - img "🇺🇸" [ref=e5168]
+                      - text: FaZe Clan однажды — FaZeUP навсегда.
+                      - img "🇱🇻" [ref=e5170]
+                      - text: broky является одним из двух игроков, кто имеет 100% выходов в финал мейджоров по CS2 (при условии сыграть на двух турнирах+).
+                      - img "🗿" [ref=e5172]
+                      - text: И почему его собрали...
+                  - generic [ref=e5175]: "12"
+            - link "FACEIT FACEIT Tue 🧡 FACEIT Season 7 - EU (промежуточные итоги) Лидеры таблицы на этой неделе остаются прежними, но donk уже вовсю дышит в спину первому месту. Ему не хватает всего 114 Elo, чтобы вернуть себе лидерств... 1" [ref=e5177] [cursor=pointer]:
+              - /url: "#-1001271019771"
+              - img "FACEIT" [ref=e5182]
+              - generic [ref=e5183]:
+                - generic [ref=e5184]:
+                  - button "FACEIT" [ref=e5186]
+                  - generic [ref=e5187]: 
+                  - generic [ref=e5189]: Tue
+                - generic [ref=e5190]:
+                  - paragraph [ref=e5191]:
+                    - generic [ref=e5193]:
+                      - img "🧡" [ref=e5194]
+                      - text: FACEIT Season 7 - EU (промежуточные итоги) Лидеры таблицы на этой неделе остаются прежними, но donk уже вовсю дышит в спину первому месту. Ему не хватает всего 114 Elo, чтобы вернуть себе лидерств...
+                  - generic [ref=e5197]: "1"
+            - 'link "CodeGuard: OSINT CodeGuard: OSINT Tue 🔥 СТАРТУЙ В БЕЛЫЙ ХАКИНГ БЕСПЛАТНО! 🔥 Старт в пентест без вложений. Курс «Профессия — Белый Хакер» от образовательного центра CyberEd при поддержке Минцифры РФ — это официальный бесплатный вводный ... 3" [ref=e5199] [cursor=pointer]':
+              - /url: "#-1003358375595"
+              - 'img "CodeGuard: OSINT" [ref=e5204]'
+              - generic [ref=e5205]:
+                - generic [ref=e5206]:
+                  - 'button "CodeGuard: OSINT" [ref=e5208]'
+                  - generic [ref=e5209]: 
+                  - generic [ref=e5211]: Tue
+                - generic [ref=e5212]:
+                  - paragraph [ref=e5213]:
+                    - generic [ref=e5215]:
+                      - img "🔥" [ref=e5217]
+                      - text: СТАРТУЙ В БЕЛЫЙ ХАКИНГ БЕСПЛАТНО!
+                      - img "🔥" [ref=e5219]
+                      - text: Старт в пентест без вложений. Курс «Профессия — Белый Хакер» от образовательного центра CyberEd при поддержке Минцифры РФ — это официальный бесплатный вводный ...
+                  - generic [ref=e5222]: "3"
+            - link "Second Flowers – выгодные букеты Second Flowers – выгодные букеты Tue Photo 177" [ref=e5224] [cursor=pointer]:
+              - /url: "#-1001078847797"
+              - img "Second Flowers – выгодные букеты" [ref=e5229]
+              - generic [ref=e5230]:
+                - generic [ref=e5231]:
+                  - button "Second Flowers – выгодные букеты" [ref=e5233]
+                  - generic [ref=e5234]: 
+                  - generic [ref=e5236]: Tue
+                - generic [ref=e5237]:
+                  - paragraph [ref=e5238]:
+                    - generic [ref=e5240]: Photo
+                  - generic [ref=e5243]: "177"
+            - link "karimoffcs karimoffcs Tue Strim yoqaman ! 3" [ref=e5245] [cursor=pointer]:
+              - /url: "#-1002492605958"
+              - img "karimoffcs" [ref=e5250]
+              - generic [ref=e5251]:
+                - generic [ref=e5252]:
+                  - button "karimoffcs" [ref=e5254]
+                  - generic [ref=e5255]: 
+                  - generic [ref=e5257]: Tue
+                - generic [ref=e5258]:
+                  - paragraph [ref=e5259]:
+                    - generic [ref=e5260]: Strim yoqaman !
+                  - generic [ref=e5263]: "3"
+    - generic [ref=e653]:
+      - button "New Message" [ref=e654] [cursor=pointer]:
+        - generic [ref=e655]: 
+        - generic [ref=e656]: 
+      - generic:   
+  - img

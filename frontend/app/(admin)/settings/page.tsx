@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const SECTIONS = [
   { id: "profile", label: "Профиль" },
+  { id: "ai-provider", label: "AI Провайдер" },
   { id: "ai-agent", label: "AI Агент" },
   { id: "order-policies", label: "Заказы" },
   { id: "conflicts", label: "Конфликты" },
@@ -36,7 +37,28 @@ interface AiSettings {
   channel_show_price: boolean;
   timezone: string;
   currency: string;
+  ai_provider: string;
+  has_api_key: boolean;
+  ai_model_override: string | null;
 }
+
+interface ApiKeyStatus {
+  has_key: boolean;
+  provider: string;
+  model: string | null;
+}
+
+const OPENAI_MODELS = [
+  { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+  { value: "gpt-4o", label: "GPT-4o" },
+  { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
+];
+
+const ANTHROPIC_MODELS = [
+  { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+  { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
+];
 
 function Toggle({
   label,
@@ -117,6 +139,16 @@ export default function SettingsPage() {
   // Test notification
   const [testingNotif, setTestingNotif] = useState(false);
 
+  // API Key management
+  const [keyStatus, setKeyStatus] = useState<ApiKeyStatus | null>(null);
+  const [keyProvider, setKeyProvider] = useState("openai");
+  const [keyInput, setKeyInput] = useState("");
+  const [keyModel, setKeyModel] = useState("");
+  const [savingKey, setSavingKey] = useState(false);
+  const [testingKey, setTestingKey] = useState(false);
+  const [deletingKey, setDeletingKey] = useState(false);
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState(false);
+
   // Confirm reset dialog
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -156,6 +188,11 @@ export default function SettingsPage() {
 
   useEffect(() => {
     api.get<AiSettings>("/ai-settings").then(setSettings).catch(() => toast("Не удалось загрузить настройки", "error"));
+    api.get<ApiKeyStatus>("/ai-settings/api-key-status").then((status) => {
+      setKeyStatus(status);
+      if (status.provider) setKeyProvider(status.provider);
+      if (status.model) setKeyModel(status.model);
+    }).catch(() => {});
   }, []);
 
   const flushSave = useCallback(async (merged: AiSettings) => {
@@ -215,6 +252,65 @@ export default function SettingsPage() {
       toast(e?.detail || "Ошибка отправки", "error");
     }
     setTestingNotif(false);
+  };
+
+  // API Key handlers
+  const handleSaveKey = async () => {
+    if (!keyInput.trim()) { toast("Введите API ключ", "error"); return; }
+    setSavingKey(true);
+    try {
+      await api.put("/ai-settings/api-key", {
+        provider: keyProvider,
+        api_key: keyInput.trim(),
+        model: keyModel || null,
+      });
+      toast("API ключ сохранён и проверен", "success");
+      setKeyInput("");
+      // Refresh status
+      const status = await api.get<ApiKeyStatus>("/ai-settings/api-key-status");
+      setKeyStatus(status);
+      // Refresh settings to update has_api_key
+      const updated = await api.get<AiSettings>("/ai-settings");
+      setSettings(updated);
+    } catch (e: any) {
+      toast(e?.message || "Ошибка сохранения ключа", "error");
+    }
+    setSavingKey(false);
+  };
+
+  const handleTestKey = async () => {
+    if (!keyInput.trim()) { toast("Введите API ключ для проверки", "error"); return; }
+    setTestingKey(true);
+    try {
+      await api.post("/ai-settings/test-api-key", {
+        provider: keyProvider,
+        api_key: keyInput.trim(),
+        model: keyModel || null,
+      });
+      toast("Ключ валиден", "success");
+    } catch (e: any) {
+      toast(e?.message || "Ключ невалиден", "error");
+    }
+    setTestingKey(false);
+  };
+
+  const handleDeleteKey = async () => {
+    setDeletingKey(true);
+    try {
+      await api.delete("/ai-settings/api-key");
+      toast("API ключ удалён", "success");
+      setKeyInput("");
+      setKeyProvider("openai");
+      setKeyModel("");
+      const status = await api.get<ApiKeyStatus>("/ai-settings/api-key-status");
+      setKeyStatus(status);
+      const updated = await api.get<AiSettings>("/ai-settings");
+      setSettings(updated);
+    } catch (e: any) {
+      toast(e?.message || "Ошибка удаления", "error");
+    }
+    setDeletingKey(false);
+    setConfirmDeleteKey(false);
   };
 
   const resetSettings = async () => {
@@ -341,6 +437,121 @@ export default function SettingsPage() {
       {/* AI Settings */}
       {settings && (
         <>
+          {/* AI Provider & API Key */}
+          <div id="ai-provider" className="card p-6 max-w-2xl mt-6 scroll-mt-24">
+            <h2 className="text-lg font-bold text-slate-900 mb-1">AI Провайдер и API Ключ</h2>
+            <p className="text-xs text-slate-500 mb-4">Используйте свой API ключ для AI запросов. Без ключа используется платформенный ключ.</p>
+
+            {/* Status indicator */}
+            <div className="mb-4">
+              {keyStatus?.has_key ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  <span className="text-sm text-emerald-700 font-medium">Ключ настроен</span>
+                  <span className="text-xs text-emerald-600 ml-1">({keyStatus.provider}{keyStatus.model ? ` / ${keyStatus.model}` : ""})</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                  <svg className="w-4 h-4 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                  <span className="text-sm text-amber-700 font-medium">Используется платформенный ключ</span>
+                </div>
+              )}
+            </div>
+
+            {/* Provider selector */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Провайдер</label>
+                <div className="flex gap-2">
+                  {(["openai", "anthropic"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => { setKeyProvider(p); setKeyModel(""); }}
+                      className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                        keyProvider === p
+                          ? "bg-indigo-50 border-indigo-300 text-indigo-700 ring-1 ring-indigo-200"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {p === "openai" ? "OpenAI" : "Anthropic"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Model selector */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Модель</label>
+                <select
+                  value={keyModel}
+                  onChange={(e) => setKeyModel(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                >
+                  <option value="">По умолчанию</option>
+                  {(keyProvider === "openai" ? OPENAI_MODELS : ANTHROPIC_MODELS).map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">Если не выбрано, используется модель платформы по умолчанию.</p>
+              </div>
+
+              {/* API Key input */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">API Ключ</label>
+                <input
+                  type="password"
+                  placeholder={keyStatus?.has_key ? "••••••••••••••••••••" : keyProvider === "openai" ? "sk-..." : "sk-ant-..."}
+                  value={keyInput}
+                  onChange={(e) => setKeyInput(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                  autoComplete="off"
+                />
+                <p className="text-xs text-slate-400 mt-1">Ключ шифруется и никогда не отображается. Получить ключ: {keyProvider === "openai" ? "platform.openai.com" : "console.anthropic.com"}</p>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveKey}
+                  disabled={savingKey || !keyInput.trim()}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  {savingKey ? "Проверка и сохранение..." : "Сохранить ключ"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTestKey}
+                  disabled={testingKey || !keyInput.trim()}
+                  className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  {testingKey ? "Проверка..." : "Проверить ключ"}
+                </button>
+                {keyStatus?.has_key && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteKey(true)}
+                    disabled={deletingKey}
+                    className="px-4 py-2 bg-white border border-rose-200 text-rose-600 rounded-lg text-sm font-medium hover:bg-rose-50 disabled:opacity-50 transition-colors ml-auto"
+                  >
+                    {deletingKey ? "Удаление..." : "Удалить ключ"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <ConfirmDialog
+            open={confirmDeleteKey}
+            title="Удалить API ключ"
+            message="API ключ будет удалён. AI запросы будут использовать платформенный ключ по умолчанию."
+            confirmText="Удалить"
+            variant="danger"
+            onConfirm={handleDeleteKey}
+            onCancel={() => setConfirmDeleteKey(false)}
+          />
+
           {/* Presets */}
           <div className="card p-5 max-w-2xl mt-6">
             <h2 className="text-sm font-bold text-slate-900 mb-3">Быстрые пресеты</h2>

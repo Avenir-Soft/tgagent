@@ -1,0 +1,64 @@
+[    3806ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/hot-reloader/app/hot-reloader-app.js:196
+[    5876ms] [LOG] [Fast Refresh] done in 2069ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/report-hmr-latency.js:13
+[    7498ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3001/conversations:0
+[    8631ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:28004
+[    8771ms] TypeError: __webpack_modules__[moduleId] is not a function
+    at Object.__webpack_require__ [as require] (file:///Users/macbook/Desktop/tg agent/frontend/.next/server/webpack-runtime.js:25:42)
+    at Object.require (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:39:28541)
+    at globalThis.__next_require__ (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:39:29364)
+    at requireModule (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:318257)
+    at initializeModuleChunk (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:347649)
+    at getOutlinedModel (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:357408)
+    at <unknown> (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:365361)
+    at ResponseInstance._fromJSON (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:365452)
+    at JSON.parse (<anonymous>)
+    at initializeModelChunk (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:347040)
+    at resolveModelChunk (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:345328)
+    at processFullStringRow (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:384472)
+    at <unknown> (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:386875)
+    at processBinaryChunk (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:386947)
+    at progress (file:///Users/macbook/Desktop/tg agent/frontend/node_modules/next/dist/compiled/next-server/app-page.runtime.dev.js:2:388475)
+[    8755ms] [LOG] [HMR] connected @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:45
+[   62488ms] [ERROR] WebSocket connection to 'ws://localhost:3001/_next/webpack-hmr' failed:  @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[   63495ms] [ERROR] WebSocket connection to 'ws://localhost:3001/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[   64498ms] [ERROR] WebSocket connection to 'ws://localhost:3001/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[   65501ms] [ERROR] WebSocket connection to 'ws://localhost:3001/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[   67744ms] [LOG] [HMR] connected @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:45
+[   67772ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/_next/static/webpack/5a7c79bd41a8eb92.webpack.hot-update.json:0
+[   67772ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/hot-reloader-pages.js:347
+[   69694ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/hot-reloader-pages.js:206
+[   73855ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/_next/static/webpack/5a7c79bd41a8eb92.webpack.hot-update.json:0
+[   73855ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/hot-reloader-pages.js:347
+[   75462ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:25630
+[   75572ms] [ERROR] In HTML, %s cannot be a child of <%s>.%s
+This will cause a hydration error.%s <html> main  
+
+  ...
+    <LoadingBoundary loading={null}>
+      <HTTPAccessFallbackBoundary notFound={<SegmentViewNode>} forbidden={undefined} unauthorized={undefined}>
+        <HTTPAccessFallbackErrorBoundary pathname="/conversat..." notFound={<SegmentViewNode>} forbidden={undefined} ...>
+          <RedirectBoundary>
+            <RedirectErrorBoundary router={{...}}>
+              <InnerLayoutRouter url="/conversat..." tree={[...]} cacheNode={{lazyData:null, ...}} segmentPath={[...]}>
+                <SegmentViewNode type="layout" pagePath="(admin)/la...">
+                  <SegmentTrieNode>
+                  <ClientSegmentRoot Component={function AdminLayout} slots={{...}} params={{}}>
+                    <AdminLayout params={Promise}>
+                      <ToastProvider>
+                        <div className="flex min-h...">
+                          <Sidebar>
+                          <div className="flex-1 fle...">
+                            <header>
+>                           <main className="flex-1 p-4 md:p-8 overflow-auto">
+                              ...
+                                <SegmentViewNode type="layout" pagePath="(admin)/co...">
+                                  <SegmentTrieNode>
+                                  <RootLayout>
+>                                   <html lang="en">
+                        ...
+              ...
+ @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56
+[   75572ms] [ERROR] <%s> cannot contain a nested %s.
+See this log for the ancestor stack trace. main <html> @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56
+[   75574ms] [ERROR] You are mounting a new %s component when a previous one has not first unmounted. It is an error to render more than one %s component at a time and attributes and children of these components will likely fail in unpredictable ways. Please only render a single instance of <%s> and if you need to mount a new one, ensure any previous ones have unmounted first. html html html @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56
+[   75575ms] [ERROR] You are mounting a new %s component when a previous one has not first unmounted. It is an error to render more than one %s component at a time and attributes and children of these components will likely fail in unpredictable ways. Please only render a single instance of <%s> and if you need to mount a new one, ensure any previous ones have unmounted first. body body body @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56

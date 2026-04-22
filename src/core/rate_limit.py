@@ -39,7 +39,8 @@ async def check_tenant_rate_limit(tenant_id: str) -> None:
     Fail-open: if Redis is unavailable, requests are allowed through.
     """
     try:
-        from src.core.security import _redis
+        from src.core.redis import get_redis
+        _redis = get_redis()
 
         window = int(time.time()) // TENANT_RATE_WINDOW
         key = f"tenant_rl:{tenant_id}:{window}"

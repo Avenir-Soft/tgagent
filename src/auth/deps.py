@@ -53,7 +53,7 @@ async def get_current_user(
     # Set PostgreSQL GUC for Row-Level Security (transaction-scoped)
     # set_config() is a regular function — works with asyncpg bind params (SET LOCAL doesn't)
     from sqlalchemy import text
-    await db.execute(text("SELECT set_config('app.current_tenant_id', :tid, true)"), {"tid": str(user.tenant_id)})
+    await db.execute(text("SELECT set_config('app.current_tenant_id', :tid, false)"), {"tid": str(user.tenant_id)})
 
     # Per-tenant rate limit (Redis counter, fail-open)
     from src.core.rate_limit import check_tenant_rate_limit
@@ -74,5 +74,5 @@ def require_role(*roles: str):
 
 
 require_super_admin = require_role("super_admin")
-require_store_owner = require_role("super_admin", "store_owner", "owner")
-require_operator = require_role("super_admin", "store_owner", "owner", "operator", "admin")
+require_store_owner = require_role("super_admin", "store_owner")
+require_operator = require_role("super_admin", "store_owner", "operator")

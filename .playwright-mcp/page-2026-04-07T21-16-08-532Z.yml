@@ -1,0 +1,329 @@
+- generic [ref=e1]:
+  - generic:
+    - generic:
+      - generic: 
+  - generic [ref=e30]:
+    - generic [ref=e32]:
+      - generic [ref=e34]:
+        - generic [ref=e35]:
+          - button "Return to chat list" [ref=e3451] [cursor=pointer]
+          - generic:       
+        - generic [ref=e39]:
+          - generic [ref=e2800]: 
+          - textbox "Search" [active] [ref=e53]
+      - generic [ref=e54]:
+        - text:                                                      ...                                                
+        - generic [ref=e3453]:
+          - generic [ref=e3454]:
+            - generic [ref=e3456]: Chats
+            - generic [ref=e3458] [cursor=pointer]: Channels
+            - generic [ref=e3460] [cursor=pointer]: Apps
+            - generic [ref=e3462] [cursor=pointer]: Posts
+            - generic [ref=e3464] [cursor=pointer]: Media
+            - generic [ref=e3466] [cursor=pointer]: Links
+            - generic [ref=e3468] [cursor=pointer]: Files
+            - generic [ref=e3470] [cursor=pointer]: Music
+            - generic [ref=e3472] [cursor=pointer]: Voice
+          - generic [ref=e3474]:
+            - generic [ref=e3476]:
+              - generic [ref=e3477] [cursor=pointer]:
+                - img "Полвонбе" [ref=e3480]
+                - generic [ref=e3481]: Полвонбе
+              - generic [ref=e3482] [cursor=pointer]:
+                - img "Avenir | Manager" [ref=e3485]
+                - generic [ref=e3486]: Avenir | Manager
+              - generic [ref=e3487] [cursor=pointer]:
+                - img "Хамелон" [ref=e3490]
+                - generic [ref=e3491]: Хамелон
+              - generic [ref=e3492] [cursor=pointer]:
+                - generic "Sherzodbek Yakubov" [ref=e3493]:
+                  - generic [ref=e3495]: SY
+                - generic [ref=e3496]: Sherzodbek
+              - generic [ref=e3497] [cursor=pointer]:
+                - img "Хусан" [ref=e3500]
+                - generic [ref=e3501]: Хусан
+              - generic [ref=e3502] [cursor=pointer]:
+                - img "Madi" [ref=e3505]
+                - generic [ref=e3506]: Madi
+              - generic [ref=e3507] [cursor=pointer]:
+                - img "Ziyodulla Abdurakhmonov" [ref=e3510]
+                - generic [ref=e3511]: Ziyodulla
+              - generic [ref=e3512] [cursor=pointer]:
+                - generic "𝓜𝓾𝓱𝓪𝓶𝓶𝓪𝓭𝓼𝓸𝓭𝓲𝓺" [ref=e3513]:
+                  - generic [ref=e3515]: 𝓜
+                - generic [ref=e3516]: 𝓜𝓾𝓱𝓪𝓶𝓶𝓪𝓭𝓼𝓸𝓭𝓲𝓺
+              - generic [ref=e3517] [cursor=pointer]:
+                - img "Дониер Ака" [ref=e3520]
+                - generic [ref=e3521]: Дониер Ака
+              - generic [ref=e3522] [cursor=pointer]:
+                - generic "Хожакбар" [ref=e3523]:
+                  - generic [ref=e3525]: Х
+                - generic [ref=e3526]: Хожакбар
+              - generic [ref=e3527] [cursor=pointer]:
+                - img "Шохрух" [ref=e3530]
+                - generic [ref=e3531]: Шохрух
+              - generic [ref=e3532] [cursor=pointer]:
+                - generic "a" [ref=e3533]:
+                  - generic [ref=e3535]: A
+                - generic [ref=e3536]: a
+              - generic [ref=e3537] [cursor=pointer]:
+                - img "Elbek Giyozov" [ref=e3540]
+                - generic [ref=e3541]: Elbek Giyozov
+              - generic [ref=e3542] [cursor=pointer]:
+                - img "Мама" [ref=e3545]
+                - generic [ref=e3546]: Мама
+              - generic [ref=e3547] [cursor=pointer]:
+                - img "Коля" [ref=e3550]
+                - generic [ref=e3551]: Коля
+              - generic [ref=e3552] [cursor=pointer]:
+                - img "Obidxon" [ref=e3555]
+                - generic [ref=e3556]: Obidxon
+              - generic [ref=e3557] [cursor=pointer]:
+                - img "Linko Doniyor aka" [ref=e3560]
+                - generic [ref=e3561]: Linko Doniyor aka
+              - generic [ref=e3562] [cursor=pointer]:
+                - generic "Мохинур" [ref=e3563]:
+                  - generic [ref=e3565]: М
+                - generic [ref=e3566]: Мохинур
+              - generic [ref=e3567] [cursor=pointer]:
+                - img "Папа" [ref=e3570]
+                - generic [ref=e3571]: Папа
+            - generic [ref=e3572]:
+              - heading "Recent Clear" [level=3] [ref=e3573]:
+                - text: Recent
+                - button "Clear" [ref=e3574] [cursor=pointer]:
+                  - generic [ref=e3575]: 
+              - button "avenire shop avenire shop 1 subscriber" [ref=e3577] [cursor=pointer]:
+                - generic [ref=e3578]:
+                  - generic "avenire shop" [ref=e3579]:
+                    - generic [ref=e3581]: A
+                  - generic [ref=e3582]:
+                    - button "avenire shop" [ref=e3584]
+                    - generic [ref=e3586]: 1 subscriber
+              - button "Avenir | Manager Avenir | Manager last seen recently" [ref=e3588] [cursor=pointer]:
+                - generic [ref=e3589]:
+                  - img "Avenir | Manager" [ref=e3592]
+                  - generic [ref=e3593]:
+                    - button "Avenir | Manager" [ref=e3595]
+                    - generic [ref=e3597]: last seen recently
+      - generic [ref=e653]:
+        - button "New Message" [ref=e654] [cursor=pointer]:
+          - generic [ref=e655]: 
+          - generic [ref=e656]: 
+        - generic:   
+    - generic [ref=e657]:
+      - generic [ref=e1727]:
+        - generic [ref=e1728]:
+          - generic [ref=e3226] [cursor=pointer]:
+            - generic "avenire shop" [ref=e3227]:
+              - generic [ref=e3229]: A
+            - generic [ref=e3230]:
+              - button "avenire shop" [ref=e3232]
+              - generic [ref=e3233]: 1 subscriber
+          - generic [ref=e3241] [cursor=pointer]:
+            - generic [ref=e3243]: Pinned message
+            - paragraph [ref=e3246]:
+              - img "▫️" [ref=e3248]
+              - img "❤️" [ref=e3250]
+              - text: ⤿ авенир shop . t . me
+              - img "🥹" [ref=e3252]
+              - img "🥹" [ref=e3254]
+              - text: дешёвые тапы ⋮
+              - img "🔵" [ref=e3256]
+              - img "🥰" [ref=e3258]
+              - img "🤩" [ref=e3260]
+              - text: "наш шоп : моментальные тапы за звёзды до 2000 на одно гс"
+              - img "❤️" [ref=e3262]
+              - img "🥹" [ref=e3264]
+              - text: link
+              - img "🥹" [ref=e3266]
+              - text: price
+          - generic [ref=e1757]:
+            - button "Join Channel" [ref=e3268] [cursor=pointer]: Join Channel
+            - button "Search this chat" [ref=e1758] [cursor=pointer]:
+              - generic [ref=e1759]: 
+            - button "More actions" [ref=e1763] [cursor=pointer]:
+              - generic [ref=e1764]: 
+        - generic [ref=e1767]:
+          - generic [ref=e3273]:
+            - generic [ref=e3274] [cursor=pointer]: January 21
+            - generic [ref=e3275]:
+              - generic [ref=e3276]: Channel created
+              - button "Channel created" [ref=e3278]
+            - generic [ref=e3281]:
+              - generic [ref=e3285]:
+                - img "▫️" [ref=e3287]
+                - img "❤️" [ref=e3289]
+                - text: ⤿
+                - link "авенир shop" [ref=e3290] [cursor=pointer]:
+                  - /url: https://t.me/ktkwshop
+                - strong [ref=e3291]: . t . me
+                - img "🥹" [ref=e3293]
+                - img "🥹" [ref=e3295]
+                - emphasis [ref=e3296]: дешёвые тапы
+                - text: ⋮
+                - img "🔵" [ref=e3298]
+                - img "🥰" [ref=e3300]
+                - blockquote [ref=e3302]:
+                  - generic [ref=e3303]:
+                    - img "🤩" [ref=e3305]
+                    - strong [ref=e3306]: наш шоп
+                    - text: ": моментальные тапы за звёзды до 2000 на одно гс"
+                  - text: 
+                - img "❤️" [ref=e3308]
+                - img "🥹" [ref=e3310]
+                - link "link" [ref=e3311] [cursor=pointer]:
+                  - /url: http://t.me/avenireshop
+                - img "🥹" [ref=e3313]
+                - link "price" [ref=e3314] [cursor=pointer]:
+                  - /url: https://t.me/avenireshop/5
+                - generic [ref=e3315] [cursor=pointer]:
+                  - 'generic "Views: 105 Shares: 3" [ref=e3598]': "105"
+                  - generic [ref=e3317]: 
+                  - generic [ref=e3318]: 
+                  - generic [ref=e3319]: edited 03:46
+              - button "Forward" [ref=e3323] [cursor=pointer]:
+                - generic [ref=e3324]: 
+              - img "Red Heart" [ref=e3327] [cursor=pointer]
+            - generic [ref=e3330]:
+              - img "🔲" [ref=e3446] [cursor=pointer]
+              - generic [ref=e3333] [cursor=pointer]:
+                - 'generic "Views: 104" [ref=e3599]': "104"
+                - generic [ref=e3335]: 
+                - generic [ref=e3336]: 03:46
+                - img "Red Heart" [ref=e3339]
+              - button "Forward" [ref=e3343] [cursor=pointer]:
+                - generic [ref=e3344]: 
+            - generic [ref=e3347]:
+              - generic [ref=e3351]:
+                - img "🤩" [ref=e3353]
+                - img "▫️" [ref=e3355]
+                - img "🎁" [ref=e3357]
+                - text: ⋮
+                - strong [ref=e3358]: price
+                - img "🤩" [ref=e3360]
+                - blockquote [ref=e3362]:
+                  - generic [ref=e3363]:
+                    - text: ´ᬹ ◟𓎟‌𓎡 Гарантированные тапы от шопа ─────────────────────
+                    - text: 84- 25 ★ ˒ 40₽ ˒ 20₴
+                    - text: 100 - 50 ★ ˒ 75₽ ˒ 40₴
+                    - text: 150 - 75 ★ ˒ 100₽ ˒ 55₴
+                    - text: 200 - 100 ★ ˒ 150₽ ˒ 80₴
+                    - text: 250 - 150 ★˒ 175₽ ˒ 100₴
+                    - text: 275 - 175 ★ ˒ 200₽ ˒ 115₴
+                    - text: 300 - 200 ★ .225₽ ˒ 125₴
+                    - text: 350 - 250 ★ 275₽ ˒ 150₴
+                    - text: 400 - 275 ★ 350₽ ˒ 200₴
+                    - text: 450 - 300 ★ 400₽ ˒ 225₴
+                    - text: 500 - 350 ★ 450₽ ˒ 250₴
+                    - text: 550 - 375 ★ 500₽ ˒ 275₴
+                    - text: 600 - 400 ★ 550₽ ˒ 300₴
+                    - text: 650 - 425 ★ 600₽ ˒ 330₴
+                    - text: 700 - 450 ★ 650₽ ˒ 360₴
+                    - text: 750 - 500 ★ 700₽ ˒ 390₴
+                    - text: 800 - 525 ★ 750₽ ˒ 415₴
+                    - text: 850 - 550 ★ 800₽ ˒ 450₴
+                    - text: 900 - 575 ★ 850₽ ˒ 470₴
+                    - text: 950 - 600 ★ 875₽ ˒ 485₴
+                    - text: 1000 - 625 ★ 900₽ ˒ 500₴
+                    - text: 1100 - 650 ★ 950₽ ˒ 525₴
+                    - text: 1200 - 675 ★ 1000₽ ˒ 555₴
+                    - text: 1300 - 700 ★ 1100₽ ˒ 610₴
+                    - text: 1400 - 725 ★ 1200₽ ˒ 666₴
+                    - text: 1500 - 775 ★ 1300₽ ˒ 700₴
+                    - text: 1600 - 825 ★ 1450₽ ˒ 750₴
+                    - text: 1700 - 850 ★ 1550₽ ˒ 775₴
+                    - text: 1800 - 875 ★ 1650₽ ˒ 825₴
+                    - text: 1900 - 900 ★ 1750₽ ˒ 850₴
+                    - text: 2000 - 950 ★ 1875₽˒ 925₴
+                    - text: ࿚‌𓏲Не гарантированные тапы (сапп) ꜆꜆ 𓂃
+                    - text: ─────────────────────
+                    - text: ⡷‌ 、🝛፝. ︵ БЕЗ ОППА ︵ . 、
+                    - text: 666 гс - 150 ★ ˒ 200₽ ˒ 115₴
+                    - text: 1111 гс - 300 ★ ˒ 400₽ ˒ 225₴
+                    - text: 2222 - 500 ★ ˒ 650₽ ˒ 300₴
+                    - text: ─────────────────────
+                    - text: ⋮‌◟ С ОППОМ (активным)
+                    - text: 444 гс - 200 ★ ˒ 250₽ ˒ 140₴
+                    - text: 666 гс - 250 ★ ˒ 300₽ ˒ 165₴
+                    - text: 1111 - 350 ★˒ 400₽ ˒ 180₴
+                  - generic [ref=e3365] [cursor=pointer]: 
+                  - text: 
+                - img "▫️" [ref=e3367]
+                - img "😻" [ref=e3369]
+                - img "🥹" [ref=e3371]
+                - text: спк
+                - insertion [ref=e3372]: "::"
+                - text: с покрытием комиссии
+                - img "🤩" [ref=e3374]
+                - text: по поводу покупки писать @avenireshopbot
+                - img "🤩" [ref=e3376]
+                - generic [ref=e3377] [cursor=pointer]:
+                  - 'generic "Views: 133 Shares: 3" [ref=e3447]': "133"
+                  - generic [ref=e3379]: 
+                  - generic [ref=e3380]: 03:51
+              - button "Forward" [ref=e3384] [cursor=pointer]:
+                - generic [ref=e3385]: 
+              - img "Red Heart" [ref=e3388] [cursor=pointer]
+            - generic [ref=e3391]:
+              - img "🔲" [ref=e3448] [cursor=pointer]
+              - generic [ref=e3394] [cursor=pointer]:
+                - 'generic "Views: 105" [ref=e3449]': "105"
+                - generic [ref=e3396]: 
+                - generic [ref=e3397]: 03:52
+                - img "Red Heart" [ref=e3400]
+              - button "Forward" [ref=e3404] [cursor=pointer]:
+                - generic [ref=e3405]: 
+            - generic [ref=e3408]:
+              - generic [ref=e3410]:
+                - img "😄" [ref=e3411]
+                - img "👍" [ref=e3412]
+                - text: отзывы
+                - generic [ref=e3413] [cursor=pointer]:
+                  - 'generic "Views: 110" [ref=e3450]': "110"
+                  - generic [ref=e3415]: 
+                  - generic [ref=e3416]: 03:53
+              - button "Forward" [ref=e3420] [cursor=pointer]:
+                - generic [ref=e3421]: 
+              - button "avenire shop ㅤㅤвенечка | 友 Draich 23 comments" [ref=e3422] [cursor=pointer]:
+                - text: 
+                - generic [ref=e3423]:
+                  - generic "avenire shop" [ref=e3424]:
+                    - generic [ref=e3426]: A
+                  - img "ㅤㅤвенечка | 友" [ref=e3429]
+                  - img "Draich" [ref=e3432]
+                - generic [ref=e3433]:
+                  - generic [ref=e3434]: "23"
+                  - text: comments
+                - generic [ref=e3436]: 
+              - img [ref=e3437]
+              - img "Red Heart" [ref=e3443] [cursor=pointer]
+          - generic:
+            - generic:
+              - generic:
+                - button "Go to next unread reactions":
+                  - generic: 
+                - generic: 
+              - generic:
+                - button "Go to next mention":
+                  - generic: 
+                - generic: 
+              - generic:
+                - button "Go to bottom":
+                  - generic: 
+            - generic:
+              - generic:
+                - button "Exit select mode":
+                  - generic: 
+                - generic "MessagesSelected"
+      - generic [ref=e2058]:
+        - generic "avenire shop" [ref=e3444]:
+          - generic [ref=e3445]: A
+        - generic [ref=e2062]:
+          - generic [ref=e2065]: 
+          - textbox "Search" [ref=e2066]
+          - button [ref=e2069] [cursor=pointer]:
+            - generic [ref=e2070]: 
+        - button "Jump to Date" [ref=e2072] [cursor=pointer]:
+          - generic [ref=e2073]: 
+  - img

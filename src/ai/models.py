@@ -71,6 +71,17 @@ class AiSettings(PkMixin, TenantMixin, UpdatableMixin, Base):
         Boolean, nullable=False, server_default=text("true")
     )
 
+    # Per-tenant AI provider configuration
+    ai_provider: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'openai'")
+    )  # "openai" | "anthropic"
+    ai_api_key_encrypted: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # Fernet-encrypted API key (never exposed to frontend)
+    ai_model_override: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )  # Override model per tenant (e.g. "gpt-4o", "claude-sonnet-4-6")
+
 
 class AITraceLog(PkMixin, TenantMixin, TimestampMixin, Base):
     """Persistent AI trace log — stores full pipeline trace for each AI interaction."""

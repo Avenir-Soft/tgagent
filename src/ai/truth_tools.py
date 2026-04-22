@@ -35,9 +35,8 @@ _redis_cache = None
 async def _get_cache_redis():
     global _redis_cache
     if _redis_cache is None:
-        import redis.asyncio as aioredis
-        from src.core.config import settings as cfg
-        _redis_cache = aioredis.from_url(cfg.redis_url, decode_responses=True)
+        from src.core.redis import get_redis
+        _redis_cache = get_redis()
     return _redis_cache
 
 
@@ -721,7 +720,6 @@ async def create_order_draft(
     delivery_type: str | None = None,
 ) -> dict:
     """Create a draft order with one or more items. Reserves inventory."""
-    import secrets
     from decimal import Decimal
 
     if not variant_ids:
@@ -799,7 +797,8 @@ async def create_order_draft(
     grand_total += delivery_cost
 
     # Create order
-    order_number = f"ORD-{secrets.token_hex(4).upper()}"
+    from src.orders.service import generate_order_number
+    order_number = generate_order_number()
     order = Order(
         tenant_id=tenant_id,
         lead_id=lead_id,

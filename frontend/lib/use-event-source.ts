@@ -13,8 +13,9 @@ export interface SSEEvent {
 /**
  * React hook for Server-Sent Events.
  *
- * Connects to /events/stream with JWT auth via query param.
- * Auto-reconnects on error (EventSource built-in behavior).
+ * First obtains a short-lived SSE token via POST /events/token (using Bearer JWT),
+ * then connects to /events/stream with the short-lived token.
+ * Auto-reconnects on error with fresh token (EventSource built-in + token refresh).
  * Cleans up on unmount.
  *
  * @param conversationId — optional: also subscribe to per-conversation channel
@@ -22,6 +23,22 @@ export interface SSEEvent {
  * @returns { connected } — whether the SSE connection is open
  */
 export type SSEStatus = "connecting" | "connected" | "disconnected";
+
+async function fetchSseToken(): Promise<string | null> {
+  const jwt = localStorage.getItem("token");
+  if (!jwt) return null;
+  try {
+    const res = await fetch(`${API_BASE}/events/token`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.token || null;
+  } catch {
+    return null;
+  }
+}
 
 export function useEventSource(
   conversationId?: string,
@@ -32,65 +49,91 @@ export function useEventSource(
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
   const esRef = useRef<EventSource | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
+    mountedRef.current = true;
+    let cancelled = false;
 
-    const params = new URLSearchParams({ token });
-    if (conversationId) params.set("conversation_id", conversationId);
-
-    const url = `${API_BASE}/events/stream?${params.toString()}`;
-    setStatus("connecting");
-    const es = new EventSource(url);
-    esRef.current = es;
-
-    es.onopen = () => { setConnected(true); setStatus("connected"); };
-
-    // Generic message handler (events without explicit "event:" field)
-    es.onmessage = (e) => {
-      try {
-        const data: SSEEvent = JSON.parse(e.data);
-        onEventRef.current?.(data);
-      } catch {
-        // ignore non-JSON keepalives
+    async function connect() {
+      const sseToken = await fetchSseToken();
+      if (cancelled || !mountedRef.current) return;
+      if (!sseToken) {
+        setStatus("disconnected");
+        return;
       }
-    };
 
-    // Named event handlers — SSE routes events with "event: xxx" to addEventListener
-    const eventTypes = [
-      "new_message",
-      "conversation_updated",
-      "new_conversation",
-      "order_status_changed",
-      "telegram_status_changed",
-      "auth_expired",
-    ];
-    for (const type of eventTypes) {
-      es.addEventListener(type, ((e: MessageEvent) => {
+      const params = new URLSearchParams({ token: sseToken });
+      if (conversationId) params.set("conversation_id", conversationId);
+
+      const url = `${API_BASE}/events/stream?${params.toString()}`;
+      setStatus("connecting");
+      const es = new EventSource(url);
+      esRef.current = es;
+
+      es.onopen = () => { setConnected(true); setStatus("connected"); };
+
+      // Generic message handler (events without explicit "event:" field)
+      es.onmessage = (e) => {
         try {
           const data: SSEEvent = JSON.parse(e.data);
-          if (type === "auth_expired") {
-            es.close();
-            setConnected(false);
-            window.dispatchEvent(new CustomEvent("session-expired"));
-            return;
-          }
           onEventRef.current?.(data);
         } catch {
-          // ignore parse errors
+          // ignore non-JSON keepalives
         }
-      }) as EventListener);
+      };
+
+      // Named event handlers — SSE routes events with "event: xxx" to addEventListener
+      const eventTypes = [
+        "new_message",
+        "conversation_updated",
+        "new_conversation",
+        "order_status_changed",
+        "telegram_status_changed",
+        "auth_expired",
+      ];
+      for (const type of eventTypes) {
+        es.addEventListener(type, ((e: MessageEvent) => {
+          try {
+            const data: SSEEvent = JSON.parse(e.data);
+            if (type === "auth_expired") {
+              // SSE token expired — close and reconnect with fresh token
+              es.close();
+              setConnected(false);
+              if (!cancelled && mountedRef.current) {
+                setTimeout(connect, 1000);
+              }
+              return;
+            }
+            onEventRef.current?.(data);
+          } catch {
+            // ignore parse errors
+          }
+        }) as EventListener);
+      }
+
+      es.onerror = () => {
+        setConnected(false);
+        setStatus("connecting");
+        // If EventSource entered CLOSED state (e.g. 401 on expired token), reconnect with fresh token
+        if (es.readyState === EventSource.CLOSED) {
+          es.close();
+          if (!cancelled && mountedRef.current) {
+            setTimeout(() => connect(), 2000);
+          }
+        }
+      };
     }
 
-    es.onerror = () => {
-      setConnected(false);
-      setStatus("connecting"); // EventSource auto-reconnects
-    };
+    connect();
 
     return () => {
-      es.close();
-      esRef.current = null;
+      cancelled = true;
+      mountedRef.current = false;
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
       setConnected(false);
       setStatus("disconnected");
     };

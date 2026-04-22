@@ -5,7 +5,7 @@ lead status sync, Telegram notifications.
 """
 
 import logging
-import uuid as uuid_mod
+import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -91,7 +91,8 @@ _NOTIFICATION_HEADER = {
 
 
 def generate_order_number() -> str:
-    return f"ORD-{uuid_mod.uuid4().hex[:12].upper()}"
+    """Generate a cryptographically secure order number: ORD-XXXXXXXXXXXX (12 hex chars = 2^48 combinations)."""
+    return f"ORD-{secrets.token_hex(6).upper()}"
 
 
 async def build_orders_out(orders: list[Order], db: AsyncSession) -> list[OrderOut]:

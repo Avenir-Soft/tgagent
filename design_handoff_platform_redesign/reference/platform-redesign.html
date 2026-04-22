@@ -1,0 +1,2451 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1400" />
+<title>AI Closer · UX Audit & Redesign</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4f2ec; --paper-2:#faf8f2; --ink:#141210; --ink-2:#5a544c; --ink-3:#8a847a;
+    --line:#e3dfd4; --hair:#ded8c9;
+    --ink-blue:#1e3a5f; --signal-good:#2f6a3f; --signal-warn:#a36300; --signal-bad:#9c2a2a;
+  }
+  html,body{background:var(--paper);color:var(--ink);font-family:'Geist',system-ui,sans-serif;font-feature-settings:"ss01","cv11"}
+  .serif{font-family:'Instrument Serif',Georgia,serif;font-weight:400}
+  .mono{font-family:'Geist Mono',ui-monospace,monospace}
+  .tnum{font-variant-numeric:tabular-nums}
+  .hair{border-color:var(--hair)}
+  .editorial-rule{height:1px;background:var(--ink);opacity:.85}
+  .e-panel{background:#fff;border:1px solid var(--line)}
+  .e-accent{color:var(--ink-blue)}
+  .e-line{border-color:var(--line)}
+  .e-ink-2{color:var(--ink-2)} .e-ink-3{color:var(--ink-3)}
+  .kbd{font-family:'Geist Mono',ui-monospace,monospace;font-size:10px;padding:1px 5px;border-radius:4px;border:1px solid #0002;display:inline-flex;align-items:center;gap:2px}
+  code{font-family:'Geist Mono',ui-monospace,monospace;font-size:.9em;background:#0000000d;padding:1px 5px;border-radius:3px}
+
+  /* direction subtrees */
+  .dir-cockpit  { --accent:#22d3ee; }
+  .dir-editorial{ --accent:#1e3a5f; }
+  .dir-terminal { --accent:#ffb020; }
+  .c-panel{background:#13171c;border:1px solid #22272e}
+  .c-line{border-color:#22272e}
+  .c-accent{color:#22d3ee} .c-ink{color:#e6e8eb} .c-ink-2{color:#a7acb4} .c-ink-3{color:#6b7280}
+  .t-panel{background:#0f0f0c;border:1px solid #1e1e18}
+  .t-line{border-color:#1e1e18}
+  .t-accent{color:#ffb020} .t-ink{color:#ddd6b8} .t-ink-2{color:#9a9270} .t-ink-3{color:#5e5a45}
+
+  /* cockpit grid bg */
+  .cockpit-grid{background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:24px 24px}
+  .ph-stripes{background-image:repeating-linear-gradient(45deg,transparent 0 6px,rgba(255,255,255,.02) 6px 12px)}
+
+  /* reveal */
+  [data-reveal]{opacity:0;transform:translateY(6px);transition:opacity .5s ease,transform .5s ease}
+  [data-reveal].in{opacity:1;transform:none}
+
+  .hidden{display:none!important}
+
+  /* nav */
+  #nav .tab-btn{font-size:11px;letter-spacing:0.12em;text-transform:uppercase;padding:6px 12px;border-radius:6px;transition:all .15s}
+  #nav .tab-btn:hover{background:#00000010}
+  #dirSwitch button, #tweakDir button, #tweakDensity button, #tweakSidebar button{font-size:10.5px;padding:5px 10px;border-radius:5px;transition:all .15s;border:1px solid transparent}
+  #dirSwitch button:hover, #tweakDir button:hover{background:#00000010}
+
+  body[data-density="compact"] .tab-panel .grid-cols-12 > *{padding-top:.25rem}
+</style>
+</head>
+<body>
+
+<!-- masthead bar -->
+<header class="sticky top-0 z-40" style="background:rgba(244,242,236,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)">
+  <div class="max-w-[1400px] mx-auto px-6 h-12 flex items-center gap-6">
+    <div class="flex items-baseline gap-3">
+      <span class="serif text-[22px] leading-none">AI Closer</span>
+      <span class="mono text-[10px] uppercase tracking-[0.2em] text-[#8a847a]">ux audit · redesign</span>
+    </div>
+
+    <nav id="nav" class="flex items-center gap-1 ml-4">
+      <button class="tab-btn" data-tab="audit">Анализ</button>
+      <button class="tab-btn" data-tab="system">Система</button>
+      <button class="tab-btn" data-tab="mocks">Мокапы</button>
+      <button class="tab-btn" data-tab="proto">Прототип</button>
+      <button class="tab-btn" data-tab="full">Full Redesign</button>
+    </nav>
+
+    <div class="ml-auto flex items-center gap-3">
+      <span class="mono text-[10px] uppercase tracking-[0.18em] text-[#8a847a]">direction</span>
+      <div id="dirSwitch" class="flex items-center gap-1 rounded-md" style="border:1px solid var(--line);padding:2px">
+        <button data-dir="cockpit">Cockpit</button>
+        <button data-dir="editorial">Editorial</button>
+        <button data-dir="terminal">Terminal</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- tweaks state -->
+<script>
+window.TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "direction": "editorial",
+  "density": "compact",
+  "sidebar": "wide",
+  "defaultTab": "full"
+}/*EDITMODE-END*/;
+</script>
+
+<main class="px-6 py-10">
+  <section id="tab-audit"  class="tab-panel"></section>
+  <section id="tab-system" class="tab-panel hidden"></section>
+  <section id="tab-mocks"  class="tab-panel hidden"></section>
+  <section id="tab-proto"  class="tab-panel hidden"></section>
+  <section id="tab-full"   class="tab-panel hidden"></section>
+</main>
+
+<!-- tweaks panel -->
+<button id="tweaksOpen" class="fixed bottom-4 right-4 rounded-full w-11 h-11 flex items-center justify-center shadow-lg hidden z-50"
+        style="background:#141210;color:#faf8f2">⚙</button>
+<aside id="tweaks" class="fixed bottom-4 right-4 w-[280px] rounded-lg shadow-xl hidden z-50"
+       style="background:#faf8f2;border:1px solid var(--line)">
+  <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid var(--line)">
+    <span class="mono text-[10px] uppercase tracking-[0.18em] text-[#5a544c]">Tweaks</span>
+    <button id="tweaksClose" class="text-[14px] text-[#8a847a]">×</button>
+  </div>
+  <div class="p-4 space-y-4 text-[12px]">
+    <div>
+      <div class="mono text-[9px] uppercase tracking-[0.2em] text-[#8a847a] mb-1.5">Направление</div>
+      <div id="tweakDir" class="flex gap-1 rounded-md" style="border:1px solid var(--line);padding:2px">
+        <button data-dir="cockpit" class="flex-1">Cockpit</button>
+        <button data-dir="editorial" class="flex-1">Editorial</button>
+        <button data-dir="terminal" class="flex-1">Terminal</button>
+      </div>
+    </div>
+    <div>
+      <div class="mono text-[9px] uppercase tracking-[0.2em] text-[#8a847a] mb-1.5">Плотность</div>
+      <div id="tweakDensity" class="flex gap-1 rounded-md" style="border:1px solid var(--line);padding:2px">
+        <button data-d="compact" class="flex-1">Compact</button>
+        <button data-d="cozy" class="flex-1">Cozy</button>
+      </div>
+    </div>
+    <div>
+      <div class="mono text-[9px] uppercase tracking-[0.2em] text-[#8a847a] mb-1.5">Сайдбар (в прототипе)</div>
+      <div id="tweakSidebar" class="flex gap-1 rounded-md" style="border:1px solid var(--line);padding:2px">
+        <button data-s="wide" class="flex-1">Wide</button>
+        <button data-s="icon" class="flex-1">Icon</button>
+      </div>
+    </div>
+    <div class="text-[10.5px] text-[#8a847a] leading-snug pt-2" style="border-top:1px solid var(--line)">
+      Подсказка: переключайте Direction сверху справа, а плотность и сайдбар — здесь. Всё сохраняется.
+    </div>
+  </div>
+</aside>
+
+
+<script>
+/* === audit.js === */
+/* -------- audit.js — written UX critique -------- */
+window.buildAudit = function (root) {
+  root.innerHTML = `
+  <div class="max-w-[880px] mx-auto">
+
+    <!-- masthead -->
+    <div class="mb-12" data-reveal>
+      <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a] mb-3">UX Audit · v1</div>
+      <h1 class="serif text-[72px] leading-[0.96] tracking-tight">
+        AI Closer панель.<br/>
+        <span class="italic text-[#5a544c]">Что хорошо, что мешает,</span><br/>
+        и почему «не нравится».
+      </h1>
+      <div class="mt-6 text-[14px] text-[#5a544c] max-w-[640px] leading-relaxed">
+        Панель уже <em>не плохая</em> — у неё есть стиль, сетка, тёмный режим.
+        Но ощущение «ничего не так, но бесит» обычно значит: <b>нет иерархии, слишком много украшений,
+        и рабочая плотность ниже, чем нужно админу, который сам — единственный пользователь.</b>
+        Ниже — разбор по пунктам и что с этим делать.
+      </div>
+      <div class="mt-6 flex items-center gap-4 text-[11px] text-[#8a847a]">
+        <span>Stack: Next.js 15 · React 19 · Tailwind 4 · Inter</span>
+        <span>·</span>
+        <span>Screens: 7 platform routes + auth</span>
+        <span>·</span>
+        <span>User: 1 (super admin)</span>
+      </div>
+    </div>
+
+    <div class="editorial-rule mb-12"></div>
+
+    <!-- TL;DR -->
+    <section class="mb-16" data-reveal>
+      <div class="grid grid-cols-12 gap-8">
+        <div class="col-span-3">
+          <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a]">§ 01</div>
+          <div class="serif text-[28px] leading-tight mt-1">TL;DR</div>
+        </div>
+        <div class="col-span-9 space-y-4 text-[15px] leading-[1.65]">
+          <p>Шесть вещей, которые ломают ощущение:</p>
+          <ol class="space-y-3 pl-6" style="list-style: decimal;">
+            <li><b>Градиенты везде.</b> Логотип, primary‑кнопка, полосы графика, акцентный stat‑блок — всё в indigo→violet.
+              Это 2023‑й «AI SaaS» шаблон. Устаревает быстрее, чем кажется.</li>
+            <li><b>Сайдбар — всегда чёрный.</b> Даже в светлой теме. Получается «две программы в одной».</li>
+            <li><b>Карточки слишком пухлые.</b> На экране Обзор — пять больших stat‑карт
+              с гигантскими иконками, а внутри — «0», «0», «0». Админ‑панель должна смотреться как кабина, не как лендинг.</li>
+            <li><b>Нет иерархии.</b> Все заголовки разделов — <code>text-sm font-semibold text-slate-700</code>.
+              Глазу не за что зацепиться.</li>
+            <li><b>Статусные чипы слабо читаются.</b> <code>bg-*-50 + text-*-700 + border-*-200</code> даёт
+              «нежные» метки — но это админ‑статусы, они должны быть сигналами.</li>
+            <li><b>Нет типографической тонкой настройки.</b> Inter везде, без tabular‑nums,
+              без контраста между числами и подписями. Цифры — главное на этой панели, а выглядят как обычный текст.</li>
+          </ol>
+          <p class="text-[#5a544c] italic pt-2">Всё это — исправляется. И ни одно исправление не требует перевёрстки. Ниже — карта.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Heuristic sweep -->
+    <section class="mb-16" data-reveal>
+      <div class="grid grid-cols-12 gap-8">
+        <div class="col-span-3">
+          <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a]">§ 02</div>
+          <div class="serif text-[28px] leading-tight mt-1">Эвристика по экранам</div>
+        </div>
+        <div class="col-span-9 space-y-8">
+          ${[
+            {
+              name: 'Обзор (platform-overview)',
+              good: [
+                'Правильный набор метрик: тенанты, пользователи, сообщения 24ч, заказы, выручка.',
+                'Есть график сообщений за 7 дней.',
+                'Блок состояния системы (PG/Redis/TG/Backend) — это редко делают, и это правильно.',
+              ],
+              bad: [
+                'Первое, что видит админ — пять «0» в больших рамках. Нужно показывать контекст: Δ vs вчера, sparkline, последнее событие.',
+                'График не имеет оси Y, сетки, hover‑tooltip. Числа нарисованы поверх баров и перекрываются.',
+                'Blок «Метрики платформы» — просто пары «ключ: значение». Дублирует stat‑карты, но хуже.',
+                'Нет ссылки «посмотреть все» / drill‑down в stat‑картах (клик не ведёт никуда).',
+              ],
+            },
+            {
+              name: 'Тенанты (platform-tenants)',
+              good: [
+                'Есть поиск, сортировка, пагинация, bulk‑действия, модалка создания — полный джентльменский набор.',
+                'Статусы с цветом и локализацией.',
+                'Кнопка «Войти как Admin» — сильная фича, редко реализуется.',
+              ],
+              bad: [
+                'Таблица 9 колонок без визуальной структуры — название+slug можно объединить в «identity‑колонку».',
+                'Цифры «Товары/Диалоги/Пользователи» в центр‑выравнивании без tabular‑nums — прыгают от строки к строке.',
+                'Пагинация: Назад · [1] · Вперёд. Нет «строк на странице», нет перехода к последней.',
+                'Create‑модалка — 4 поля подряд без группировки. «Тенант» и «Первый админ» — это две разные вещи.',
+              ],
+            },
+            {
+              name: 'Пользователи (platform-users)',
+              good: [
+                'Фильтры по тенанту и роли, поиск, сортировка, bulk‑активировать/деактивировать.',
+                'Edit/Create через одну модалку — чисто.',
+              ],
+              bad: [
+                'Кружок‑тумблер для is_active внутри модалки — хорошо, но в таблице статус — точка + слово. Разные паттерны для одного свойства.',
+                'Chip для роли — три разных оттенка (violet/indigo/slate). super_admin=violet, store_owner=indigo — глаз не отличит с первого взгляда.',
+                'Ширина email‑колонки фиксированная → длинные email обрезаются без title.',
+              ],
+            },
+            {
+              name: 'AI Монитор (platform-ai-monitor)',
+              good: [
+                'Авто‑обновление 15с с индикатором — отлично.',
+                'KPI‑карты цветом по порогу (время < 1с / < 5с / > 5с) — правильный сигнал.',
+                'Лог с колонками «инструменты», «токены», «время» — всё нужное.',
+              ],
+              bad: [
+                'Колонка «Статус» показывает <i>модель</i>, не статус. Лейбл врёт.',
+                'Для строки в логе нет «раскрыть детали» — только truncate сообщения. Для разбора проблем нужен drawer с полным promt/response/trace.',
+                'Фильтр «все/успешные/ошибки/fallback» не работает на backend (клиентский filter по logs). Выглядит функцией, но молчит.',
+                'KPI «Проблемные %» определяется как «> 10с ИЛИ без tools». Это не «проблемные» — это грубая эвристика. Нужны явные флаги: timeout, tool_error, fallback.',
+              ],
+            },
+            {
+              name: 'Биллинг (platform-billing)',
+              good: [
+                'Есть диапазон дат, сводные KPI, построчная разбивка по тенантам.',
+                'Оценка стоимости — полезна.',
+              ],
+              bad: [
+                'Формула «~500 tok/call × $0.15/1M» захардкожена в UI. Если модель сменится — цифра станет вводящей в заблуждение.',
+                'Нет экспорта (CSV/PDF). Биллинг без экспорта — неполный.',
+                'Нет графика по дням / по тенантам — только таблица.',
+              ],
+            },
+            {
+              name: 'Логи (platform-logs)',
+              good: [
+                'Цветные chip‑ы по типу действия, раскрытие meta_json по клику.',
+                'Фильтры по тенанту и действию.',
+              ],
+              bad: [
+                'Раскрытая строка меняет высоту таблицы рывком — нет плавности.',
+                'Нет поиска по actor_id/entity_id/trace_id. Для audit log это ключевая функция.',
+                'Нет быстрого фильтра «сегодня / 24ч / 7д».',
+              ],
+            },
+            {
+              name: 'Настройки (platform-settings)',
+              good: [
+                'Хорошая форма с три‑колонной разметкой (label + description слева, control справа).',
+                'Явное предупреждение при включённом maintenance_mode.',
+              ],
+              bad: [
+                '«Сохранить» — один на всю форму. Если ошибка в одном поле — непонятно в каком.',
+                'Нет «сбросить к значениям по умолчанию».',
+                'Тумблер maintenance_mode — одного ранга с «макс. товаров на тенант». Это крит‑действие, должно быть отделено визуально.',
+              ],
+            },
+          ].map((s, i) => `
+            <article class="grid grid-cols-12 gap-6 pb-8 ${i < 6 ? 'border-b hair' : ''}">
+              <div class="col-span-12">
+                <div class="flex items-baseline justify-between">
+                  <h3 class="serif text-[24px] leading-tight">${s.name}</h3>
+                  <span class="mono text-[10px] text-[#8a847a] tracking-wider uppercase">screen ${String(i+1).padStart(2,'0')}/07</span>
+                </div>
+              </div>
+              <div class="col-span-6">
+                <div class="mono text-[10px] uppercase tracking-[0.15em] text-[#2f6a3f] mb-2">+ Работает</div>
+                <ul class="text-[13.5px] leading-[1.6] space-y-1.5">
+                  ${s.good.map(g => `<li class="flex gap-2"><span class="text-[#2f6a3f] select-none">+</span><span>${g}</span></li>`).join('')}
+                </ul>
+              </div>
+              <div class="col-span-6">
+                <div class="mono text-[10px] uppercase tracking-[0.15em] text-[#9c2a2a] mb-2">− Чинить</div>
+                <ul class="text-[13.5px] leading-[1.6] space-y-1.5">
+                  ${s.bad.map(b => `<li class="flex gap-2"><span class="text-[#9c2a2a] select-none">−</span><span>${b}</span></li>`).join('')}
+                </ul>
+              </div>
+            </article>
+          `).join('')}
+        </div>
+      </div>
+    </section>
+
+    <!-- Cross-cutting -->
+    <section class="mb-16" data-reveal>
+      <div class="grid grid-cols-12 gap-8">
+        <div class="col-span-3">
+          <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a]">§ 03</div>
+          <div class="serif text-[28px] leading-tight mt-1">Сквозные проблемы</div>
+        </div>
+        <div class="col-span-9 space-y-6 text-[14.5px] leading-[1.65]">
+
+          <div class="grid grid-cols-2 gap-4">
+            ${[
+              ['Типографика', 'Один Inter на всё, без дифференциации «число vs метка». Нет tabular‑nums в таблицах — цифры прыгают. Заголовки секций — <code>text-sm</code>, почти неотличимы от body.', 'Ввести ступени: display / title / body / meta / mono. Tabular‑nums по умолчанию для всех чисел.'],
+              ['Цвет', 'Семь оттенков статусов (emerald, indigo, violet, amber, rose, blue, sky) — палитра «на всякий случай». Градиенты усиливают ощущение неуверенности.', 'Свести к 3 ролевым цветам: ink (нейтраль), accent (один), signal (ok/warn/bad). Без градиентов.'],
+              ['Плотность', 'card‑padding p‑5/p‑6 везде → на 1440px влезает 5 строк таблицы без скролла. Вы — единственный пользователь, вам нужна плотность.', 'Compact‑режим по умолчанию. h‑8 строки, 12px текст. Cozy — опциональный.'],
+              ['Навигация', 'Сайдбар 260px, всегда развёрнут, всегда тёмный. Занимает 18% ширины на 1440px.', 'Узкий (72px icon‑only) по умолчанию, hover‑expand. Светлый для светлой темы.'],
+              ['Состояния', 'Skeleton есть. Empty state («нет тенантов. Создайте первый.») — без CTA. Error state — красный баннер, но без retry в большинстве мест.', 'Прошить единый паттерн: empty → primary CTA, error → retry, loading → skeleton с правильной формой.'],
+              ['Микровзаимодействие', 'Hover‑цвет только на строках таблиц. Кнопки — transition‑colors, без press‑state.', 'Press‑feedback (scale‑0.99), focus‑ring единого цвета, cmd+K палитра для super admin.'],
+            ].map(([t, problem, fix]) => `
+              <div class="e-panel p-5 rounded-lg">
+                <div class="serif text-[18px] leading-tight mb-2">${t}</div>
+                <div class="text-[12.5px] text-[#5a544c] leading-[1.55] mb-3">${problem}</div>
+                <div class="text-[11.5px] mono uppercase tracking-[0.12em] text-[#1e3a5f] mb-1">Fix</div>
+                <div class="text-[12.5px] leading-[1.55]">${fix}</div>
+              </div>
+            `).join('')}
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Direction matrix -->
+    <section class="mb-16" data-reveal>
+      <div class="grid grid-cols-12 gap-8">
+        <div class="col-span-3">
+          <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a]">§ 04</div>
+          <div class="serif text-[28px] leading-tight mt-1">Три направления</div>
+          <p class="mt-2 text-[12.5px] text-[#5a544c] leading-relaxed">Для одной панели, которую видите только вы — полезно посмотреть
+          три очень разных аскетических выбора, а не пять вариаций одного. Переключайте сверху справа.</p>
+        </div>
+        <div class="col-span-9 grid grid-cols-3 gap-4">
+
+          <!-- A Cockpit -->
+          <article class="e-panel rounded-lg overflow-hidden">
+            <div class="h-[180px] ph-stripes relative" style="background:#0b0d10; color:#22d3ee;">
+              <div class="absolute inset-0 cockpit-grid"></div>
+              <div class="absolute inset-0 p-4 flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                  <span class="mono text-[9px] tracking-[0.2em] uppercase text-[#6b7280]">A · COCKPIT</span>
+                  <span class="mono text-[9px] text-[#22d3ee]">● LIVE</span>
+                </div>
+                <div>
+                  <div class="mono text-[10px] text-[#a7acb4] mb-1">messages.24h</div>
+                  <div class="mono text-[34px] leading-none text-[#e6e8eb] tnum">1,482</div>
+                  <div class="mono text-[9px] text-[#4ade80] mt-1">▲ +18.2% · vs yesterday</div>
+                </div>
+              </div>
+            </div>
+            <div class="p-4">
+              <div class="serif text-[20px] leading-tight">Cockpit</div>
+              <p class="text-[12px] text-[#5a544c] mt-1 leading-[1.5]">
+                Плотный, графитный, данные‑первые. Один cyan‑акцент. Моно‑числа, тонкие линии, никаких градиентов.
+                Ощущение Vercel / Linear / Plane.
+              </p>
+              <div class="mono text-[10px] text-[#8a847a] mt-3 space-y-1">
+                <div>TYPE: Geist · Geist Mono</div>
+                <div>BG: #0b0d10 · ACCENT: #22d3ee</div>
+                <div>ROW: 32px · FONT: 12px</div>
+              </div>
+            </div>
+          </article>
+
+          <!-- B Editorial -->
+          <article class="e-panel rounded-lg overflow-hidden">
+            <div class="h-[180px] relative" style="background:#faf8f2;">
+              <div class="absolute inset-0 p-4 flex flex-col justify-between" style="color:#141210;">
+                <div class="flex items-center justify-between">
+                  <span class="mono text-[9px] tracking-[0.2em] uppercase text-[#8a847a]">B · EDITORIAL</span>
+                  <span class="mono text-[9px] text-[#1e3a5f]">ISSUE 04·21</span>
+                </div>
+                <div>
+                  <div class="text-[10px] text-[#5a544c] mb-0 uppercase tracking-[0.1em]">Messages, 24h</div>
+                  <div class="serif text-[48px] leading-none tnum">1,482</div>
+                  <div class="text-[10px] text-[#1e3a5f] mt-1 italic">up eighteen point two percent</div>
+                </div>
+              </div>
+            </div>
+            <div class="p-4">
+              <div class="serif text-[20px] leading-tight">Editorial</div>
+              <p class="text-[12px] text-[#5a544c] mt-1 leading-[1.5]">
+                Серифный display для чисел, тёплая бумага, ink‑blue акцент. Негативное пространство
+                вместо карточек. Stripe‑dashboard встречает печатный макет.
+              </p>
+              <div class="mono text-[10px] text-[#8a847a] mt-3 space-y-1">
+                <div>TYPE: Instrument Serif · Geist</div>
+                <div>BG: #f4f2ec · ACCENT: #1e3a5f</div>
+                <div>ROW: 44px · FONT: 13.5px</div>
+              </div>
+            </div>
+          </article>
+
+          <!-- C Terminal -->
+          <article class="e-panel rounded-lg overflow-hidden">
+            <div class="h-[180px] relative" style="background:#0a0a07; color:#ddd6b8;">
+              <div class="absolute inset-0 p-4 flex flex-col justify-between mono text-[11px]">
+                <div class="flex items-center justify-between text-[#9a9270]">
+                  <span class="tracking-[0.2em] uppercase text-[9px]">C · TERMINAL</span>
+                  <span class="text-[9px] text-[#ffb020]">[OK]</span>
+                </div>
+                <div class="text-[#ddd6b8] text-[11px] leading-[1.45]">
+                  <div class="text-[#5e5a45]">$ platform::stats --24h</div>
+                  <div>  messages   <span class="text-[#ffb020]">1482</span></div>
+                  <div>  orders     0</div>
+                  <div>  revenue    0 UZS</div>
+                  <div>  tenants    2/2</div>
+                </div>
+              </div>
+            </div>
+            <div class="p-4">
+              <div class="serif text-[20px] leading-tight">Terminal</div>
+              <p class="text-[12px] text-[#5a544c] mt-1 leading-[1.5]">
+                Моноширинный, амбер на почти‑чёрном, ops‑room. Для super admin‑а
+                который обожает <code>htop</code>. Только dark.
+              </p>
+              <div class="mono text-[10px] text-[#8a847a] mt-3 space-y-1">
+                <div>TYPE: Geist Mono</div>
+                <div>BG: #0a0a07 · ACCENT: #ffb020</div>
+                <div>ROW: 28px · FONT: 12px mono</div>
+              </div>
+            </div>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Roadmap -->
+    <section class="mb-16" data-reveal>
+      <div class="grid grid-cols-12 gap-8">
+        <div class="col-span-3">
+          <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a]">§ 05</div>
+          <div class="serif text-[28px] leading-tight mt-1">Порядок работы</div>
+        </div>
+        <div class="col-span-9">
+          <ol class="space-y-5 text-[14px] leading-[1.6]">
+            ${[
+              ['Выбрать направление', 'Прокликайте переключатель сверху. Лучший тест — открыть «Прототип» и провести день за одним из них.'],
+              ['Заменить токены', 'В <code>globals.css</code> и новом <code>theme.ts</code>: 3 ролевых цвета, 5 ступеней типографики, 2 режима плотности. Пропадёт половина цветов из classNames.'],
+              ['Перевести сайдбар', 'С чёрного «всегда» на семантический: в светлой теме — светлый; добавить 72px collapsed режим.'],
+              ['Пройтись по компонентам', 'Кнопки (3 типа), инпуты, select, switch, badge, chip, card, empty, pagination — каждая в одном месте. Сейчас они переизобретаются на каждой странице.'],
+              ['Plan по экранам', 'Обзор → Тенанты → AI Монитор. Это 80% вашего времени. Всё остальное наследует систему.'],
+              ['Командная палитра (⌘K)', 'Для админа‑одиночки ⌘K важнее чем навигация. Поиск тенантов, переход к логам, переключение темы, impersonate.'],
+            ].map((step, i) => `
+              <li class="grid grid-cols-[48px_1fr] gap-4">
+                <span class="mono text-[11px] tracking-[0.15em] uppercase text-[#8a847a] pt-0.5">${String(i+1).padStart(2,'0')}</span>
+                <div>
+                  <div class="font-semibold">${step[0]}</div>
+                  <div class="text-[#5a544c] text-[13px] mt-0.5">${step[1]}</div>
+                </div>
+              </li>
+            `).join('')}
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <div class="editorial-rule mb-8"></div>
+    <footer class="text-[11px] mono text-[#8a847a] flex items-center justify-between">
+      <span>END OF AUDIT · 5 sections · ~2,800 words</span>
+      <span>Next: <button class="underline decoration-dotted" onclick="document.querySelector('[data-tab=system]').click()">Система →</button></span>
+    </footer>
+
+  </div>
+  `;
+};
+
+</script>
+
+<script>
+/* === system.js === */
+/* -------- system.js — component library in 3 directions -------- */
+window.buildSystem = function (root) {
+  const dirs = ['cockpit', 'editorial', 'terminal'];
+  const pal = {
+    cockpit:  { bg:'#0b0d10', panel:'#13171c', line:'#22272e', ink:'#e6e8eb', ink2:'#a7acb4', ink3:'#6b7280', accent:'#22d3ee', good:'#4ade80', warn:'#facc15', bad:'#f87171', mono:true },
+    editorial:{ bg:'#f4f2ec', panel:'#ffffff', line:'#e3dfd4', ink:'#141210', ink2:'#5a544c', ink3:'#8a847a', accent:'#1e3a5f', good:'#2f6a3f', warn:'#a36300', bad:'#9c2a2a', serif:true },
+    terminal: { bg:'#0a0a07', panel:'#0f0f0c', line:'#1e1e18', ink:'#ddd6b8', ink2:'#9a9270', ink3:'#5e5a45', accent:'#ffb020', good:'#7fd174', warn:'#ffb020', bad:'#ff5f5f', mono:true },
+  };
+
+  function renderCard(d) {
+    const p = pal[d];
+    const font = p.mono ? "'Geist Mono',ui-monospace,monospace" : p.serif ? "'Geist',system-ui,sans-serif" : "'Geist',system-ui,sans-serif";
+    const lbl = p.mono ? 'mono uppercase tracking-[0.15em] text-[10px]' : 'uppercase tracking-[0.12em] text-[10px]';
+    const num = p.serif ? 'serif text-[40px] leading-none tnum' : 'mono text-[28px] tnum';
+    return `
+    <div class="rounded-lg overflow-hidden border" style="background:${p.bg};border-color:${p.line};color:${p.ink};font-family:${font}">
+      <div class="px-4 py-3 border-b" style="border-color:${p.line}">
+        <div class="flex items-center justify-between">
+          <span class="${lbl}" style="color:${p.ink3}">Direction · ${d}</span>
+          <span class="mono text-[9px]" style="color:${p.accent}">● live</span>
+        </div>
+      </div>
+      <div class="p-5 space-y-5">
+
+        <!-- buttons -->
+        <div>
+          <div class="${lbl} mb-2" style="color:${p.ink3}">BUTTONS</div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button style="background:${p.accent};color:${d==='editorial'?'#fff':'#000'};padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500">Primary</button>
+            <button style="border:1px solid ${p.line};color:${p.ink};padding:6px 12px;border-radius:6px;font-size:12px;background:transparent">Secondary</button>
+            <button style="color:${p.ink2};padding:6px 12px;border-radius:6px;font-size:12px;background:transparent">Ghost</button>
+            <button style="color:${p.bad};border:1px solid ${p.bad}33;padding:6px 12px;border-radius:6px;font-size:12px;background:transparent">Destructive</button>
+          </div>
+        </div>
+
+        <!-- input -->
+        <div>
+          <div class="${lbl} mb-2" style="color:${p.ink3}">INPUT · SELECT · SWITCH</div>
+          <div class="grid grid-cols-3 gap-2">
+            <input placeholder="Search…" style="background:${p.panel};border:1px solid ${p.line};color:${p.ink};padding:6px 10px;border-radius:6px;font-size:12px;outline:none" />
+            <select style="background:${p.panel};border:1px solid ${p.line};color:${p.ink};padding:6px 10px;border-radius:6px;font-size:12px"><option>All tenants</option></select>
+            <div class="flex items-center gap-2 text-[12px]" style="color:${p.ink2}">
+              <span class="relative inline-flex h-5 w-9 items-center rounded-full" style="background:${p.accent}">
+                <span class="inline-block h-3.5 w-3.5 rounded-full bg-white" style="transform:translateX(16px)"></span>
+              </span>
+              Active
+            </div>
+          </div>
+        </div>
+
+        <!-- badges -->
+        <div>
+          <div class="${lbl} mb-2" style="color:${p.ink3}">BADGES · STATUS</div>
+          <div class="flex items-center gap-2 flex-wrap text-[11px]">
+            <span style="background:${p.good}22;color:${p.good};padding:2px 8px;border-radius:999px;border:1px solid ${p.good}44">● Active</span>
+            <span style="background:${p.warn}22;color:${p.warn};padding:2px 8px;border-radius:999px;border:1px solid ${p.warn}44">● Onboarding</span>
+            <span style="background:${p.bad}22;color:${p.bad};padding:2px 8px;border-radius:999px;border:1px solid ${p.bad}44">● Suspended</span>
+            <span style="background:${p.accent}22;color:${p.accent};padding:2px 8px;border-radius:999px;border:1px solid ${p.accent}44">● Trial</span>
+          </div>
+        </div>
+
+        <!-- stat -->
+        <div>
+          <div class="${lbl} mb-2" style="color:${p.ink3}">STAT CARD</div>
+          <div style="border:1px solid ${p.line};border-radius:8px;padding:14px;background:${p.panel}">
+            <div class="${lbl}" style="color:${p.ink3}">Messages · 24h</div>
+            <div class="${num} mt-1" style="color:${p.ink}">1,482</div>
+            <div class="flex items-center gap-3 mt-2 text-[10px]" style="color:${p.ink2}">
+              <span style="color:${p.good}">▲ +18.2%</span>
+              <span>vs yesterday</span>
+            </div>
+            <div class="mt-3 flex items-end gap-0.5 h-6">
+              ${[30,42,28,60,45,80,72].map(h=>`<span style="flex:1;background:${p.accent};opacity:.85;height:${h}%;border-radius:1px"></span>`).join('')}
+            </div>
+          </div>
+        </div>
+
+        <!-- table -->
+        <div>
+          <div class="${lbl} mb-2" style="color:${p.ink3}">TABLE ROW</div>
+          <div style="border:1px solid ${p.line};border-radius:8px;overflow:hidden;background:${p.panel}">
+            <div class="grid grid-cols-[1fr_90px_80px_70px] gap-3 px-4 py-2.5 text-[10px] border-b" style="border-color:${p.line};color:${p.ink3}">
+              <span class="${lbl}">TENANT</span><span class="${lbl} text-right">MSG</span><span class="${lbl} text-right">ORD</span><span class="${lbl} text-right">STATUS</span>
+            </div>
+            ${[['Easy Tour','1,248','12','active'],['TechnoUz Demo','182','0','trial'],['Delta Shop','3','0','onboard']].map(r=>`
+              <div class="grid grid-cols-[1fr_90px_80px_70px] gap-3 px-4 py-2.5 text-[12px] border-b" style="border-color:${p.line};color:${p.ink}">
+                <span>${r[0]}</span>
+                <span class="tnum text-right">${r[1]}</span>
+                <span class="tnum text-right" style="color:${p.ink2}">${r[2]}</span>
+                <span class="text-right" style="color:${p.good};font-size:10px">● ${r[3]}</span>
+              </div>`).join('')}
+          </div>
+        </div>
+
+      </div>
+    </div>`;
+  }
+
+  root.innerHTML = `
+    <div class="max-w-[1400px] mx-auto">
+      <div class="mb-8" data-reveal>
+        <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a] mb-2">Design System · three directions</div>
+        <h2 class="serif text-[48px] leading-[1] tracking-tight">Компоненты</h2>
+        <p class="mt-3 text-[13.5px] text-[#5a544c] max-w-[640px] leading-relaxed">
+          Базовый набор в трёх эстетиках. Одинаковые компоненты — другая душа.
+          Buttons · inputs · switches · status badges · stat card · table row.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4" data-reveal>
+        ${dirs.map(renderCard).join('')}
+      </div>
+
+      <div class="mt-10 e-panel rounded-lg p-6" data-reveal>
+        <div class="serif text-[22px] leading-tight mb-3">Token map</div>
+        <div class="grid grid-cols-4 gap-x-8 gap-y-3 text-[12px] mono">
+          ${['bg','panel','line','ink','ink-2','ink-3','accent','good','warn','bad'].map(t => `
+            <div class="text-[#5a544c]">--${t}</div>
+            ${dirs.map(d => `<div style="color:${pal[d][t.replace('-','')]||pal[d][t]||'#000'}">${pal[d][t.replace('-','')]||pal[d][t]||'—'}</div>`).join('')}
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+</script>
+
+<script>
+/* === mocks.js === */
+/* -------- mocks.js — Before vs After for 7 platform screens -------- */
+window.buildMocks = function (root) {
+
+  const screens = [
+    {
+      key:'overview',
+      title:'Обзор платформы',
+      before:`
+        <div class="grid grid-cols-5 gap-3">
+          ${[['Тенанты','2','всего'],['Пользователи','4',''],['Сообщений 24ч','8',''],['Заказов 24ч','0',''],['Выручка 24ч','0','UZS']].map(([l,v,s])=>`
+            <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-3">
+              <div class="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">${l}</div>
+              <div class="text-[22px] font-bold text-white mt-1">${v}</div>
+              <div class="text-[9px] text-slate-500">${s}</div>
+            </div>`).join('')}
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 mt-3">
+          <div class="text-[11px] font-semibold text-slate-300 mb-3">Сообщения за 7 дней</div>
+          <div class="flex items-end gap-1 h-20">${[0,134,86,8,8,0,0].map(v=>`<div class="flex-1 rounded-t" style="background:linear-gradient(to top,#6366f1,#8b5cf6);height:${Math.max(v/134*100,2)}%"></div>`).join('')}</div>
+        </div>`,
+      after: (d) => {
+        if (d==='cockpit') return `
+          <div class="grid grid-cols-12 gap-2">
+            ${[['TENANTS','2','total','+0 wk'],['USERS','4','active','+1 wk'],['MSG 24H','8','of 236 week','-94%'],['ORD 24H','0','—','0'],['REV 24H','0','UZS','0']].map(([l,v,s,d])=>`
+              <div class="col-span-12 md:col-span-[2.4] c-panel rounded-md p-3" style="flex:1;min-width:0">
+                <div class="mono text-[9px] uppercase tracking-[0.18em] c-ink-3">${l}</div>
+                <div class="mono text-[26px] leading-none tnum c-ink mt-1">${v}</div>
+                <div class="flex items-center gap-2 mt-1.5 text-[9.5px] mono"><span class="c-accent">${d}</span><span class="c-ink-3">${s}</span></div>
+                <div class="mt-2 flex items-end gap-0.5 h-4">${[30,42,28,60,45,80,72].map(h=>`<span style="flex:1;background:#22d3ee;opacity:.7;height:${h}%;border-radius:1px"></span>`).join('')}</div>
+              </div>`).join('')}
+          </div>
+          <div class="c-panel rounded-md mt-2 p-3">
+            <div class="flex items-center justify-between mb-3">
+              <span class="mono text-[10px] uppercase tracking-[0.15em] c-ink-2">messages · 7d</span>
+              <span class="mono text-[10px] c-accent">236 total · avg 34/day</span>
+            </div>
+            <div class="flex items-end gap-1 h-24">${[0,134,86,8,8,0,0].map((v,i)=>`<div class="flex-1 relative"><div style="background:#22d3ee;opacity:.8;height:${Math.max(v/134*100,2)}%;border-radius:1px 1px 0 0"></div><div class="mono text-[8px] c-ink-3 text-center mt-1">${['Ср','Чт','Пт','Сб','Вс','Пн','Вт'][i]}</div></div>`).join('')}</div>
+          </div>`;
+        if (d==='editorial') return `
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-5">
+              <div class="text-[10px] uppercase tracking-[0.15em] e-ink-3">Messages, last 24 hours</div>
+              <div class="serif text-[96px] leading-[0.9] tnum">8</div>
+              <div class="text-[12px] e-ink-2 italic mt-2">down from 86 yesterday · quiet day</div>
+            </div>
+            <div class="col-span-7 grid grid-cols-2 gap-4">
+              ${[['Tenants','2','·'],['Users','4','+1'],['Orders, 24h','0','—'],['Revenue, 24h','0 UZS','—']].map(([l,v,s])=>`
+                <div class="border-b e-line pb-3">
+                  <div class="text-[10px] uppercase tracking-[0.12em] e-ink-3">${l}</div>
+                  <div class="flex items-baseline gap-2 mt-0.5"><span class="serif text-[34px] leading-none tnum">${v}</span><span class="text-[11px] e-ink-3">${s}</span></div>
+                </div>`).join('')}
+            </div>
+          </div>
+          <div class="mt-6 border-t e-line pt-5">
+            <div class="text-[10px] uppercase tracking-[0.12em] e-ink-3 mb-2">Activity · this week</div>
+            <div class="flex items-end gap-2 h-24">${[0,134,86,8,8,0,0].map((v,i)=>`<div class="flex-1 flex flex-col items-center gap-1"><span class="text-[9px] e-ink-3 tnum">${v||''}</span><div class="w-full" style="background:#1e3a5f;opacity:.85;height:${Math.max(v/134*100,1)}%"></div><span class="text-[9px] e-ink-3">${['Ср','Чт','Пт','Сб','Вс','Пн','Вт'][i]}</span></div>`).join('')}</div>
+          </div>`;
+        // terminal
+        return `
+          <div class="t-panel rounded p-3 mono text-[12px] leading-[1.55]">
+            <div class="t-ink-3">$ platform::overview --range=24h --tz=Asia/Tashkent</div>
+            <div class="mt-2 grid grid-cols-[140px_1fr_60px] gap-x-4">
+              ${[['tenants.total','2','·'],['users.total','4','+1'],['messages.24h','8','↓94%'],['orders.24h','0','—'],['revenue.24h','0 UZS','—'],['health','ok · pg ok · redis ok · tg ok','✓']].map(([k,v,d])=>`
+                <span class="t-ink-3">${k}</span><span class="t-accent">${v}</span><span class="t-ink-2 text-right">${d}</span>`).join('')}
+            </div>
+            <div class="t-ink-3 mt-3">$ platform::timeseries --metric=messages --days=7</div>
+            <pre class="mt-1 t-ink text-[11px] leading-[1.2]">Ср 04-15 │ 
+Чт 04-16 │████████████████████████████████████████ 134
+Пт 04-17 │██████████████████████████ 86
+Сб 04-18 │██ 8
+Вс 04-19 │██ 8
+Пн 04-20 │ 0
+Вт 04-21 │ 0</pre>
+          </div>`;
+      }
+    },
+    {
+      key:'tenants',
+      title:'Тенанты',
+      before: `
+        <div class="space-y-2">
+          <div class="flex items-center justify-between"><div class="text-white text-lg font-bold">Тенанты <span class="text-slate-500 text-sm">2</span></div><button class="px-3 py-1.5 rounded-lg text-white text-xs font-semibold" style="background:linear-gradient(to right,#6366f1,#8b5cf6)">+ Создать</button></div>
+          <input class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-500" placeholder="Поиск…"/>
+          <div class="bg-slate-800/60 border border-slate-700 rounded-xl overflow-hidden">
+            <div class="grid grid-cols-[20px_1fr_100px_90px_70px_70px_80px_90px_70px] gap-2 px-3 py-2 text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-700">
+              <span></span><span>Название</span><span>Slug</span><span>Статус</span><span class="text-center">Тов</span><span class="text-center">Диал</span><span class="text-center">Польз</span><span>Создан</span><span></span>
+            </div>
+            ${[['Easy Tour','easy-tour','active',1,148,2,'15 апр'],['TechnoUz','technouz','trial',0,3,1,'19 апр']].map(r=>`
+              <div class="grid grid-cols-[20px_1fr_100px_90px_70px_70px_80px_90px_70px] gap-2 px-3 py-2.5 text-[12px] border-b border-slate-700 text-slate-200 items-center">
+                <input type="checkbox"/><span>${r[0]}</span><span class="font-mono text-slate-500 text-[10px]">${r[1]}</span>
+                <span class="px-2 py-0.5 rounded-full text-[10px]" style="background:#10b98120;color:#34d399">${r[2]}</span>
+                <span class="text-center">${r[3]}</span><span class="text-center">${r[4]}</span><span class="text-center">${r[5]}</span>
+                <span class="text-slate-500 text-[10px]">${r[6]}</span><span class="text-indigo-400 text-[11px]">Подробнее</span>
+              </div>`).join('')}
+          </div>
+        </div>`,
+      after: (d) => {
+        const p = d==='cockpit' ? 'c' : d==='editorial' ? 'e' : 't';
+        const panel = p==='c' ? 'c-panel' : p==='e' ? 'e-panel' : 't-panel';
+        const line = p==='c' ? 'c-line' : p==='e' ? 'e-line' : 't-line';
+        const ink2 = p==='c' ? 'c-ink-2' : p==='e' ? 'e-ink-2' : 't-ink-2';
+        const ink3 = p==='c' ? 'c-ink-3' : p==='e' ? 'e-ink-3' : 't-ink-3';
+        const accent = p==='c' ? 'c-accent' : p==='e' ? 'e-accent' : 't-accent';
+        const font = d==='editorial' ? 'serif text-[28px]' : 'mono text-[22px]';
+        return `
+        <div class="space-y-3">
+          <div class="flex items-baseline justify-between">
+            <div>
+              <div class="${font} tnum">Tenants</div>
+              <div class="text-[11px] ${ink3} mono uppercase tracking-[0.15em] mt-0.5">2 total · 0 suspended · 1 trial</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 text-[11px] ${ink2}"><span class="kbd" style="background:rgba(0,0,0,.15);border:1px solid currentColor">⌘K</span> search anything</div>
+              <button class="text-[11px] px-3 py-1.5 rounded-md" style="background:${d==='cockpit'?'#22d3ee':d==='editorial'?'#1e3a5f':'#ffb020'};color:${d==='editorial'?'#fff':'#000'}">+ New tenant</button>
+            </div>
+          </div>
+          <div class="${panel} rounded-md">
+            <div class="grid grid-cols-[20px_minmax(0,2fr)_80px_70px_70px_70px_90px] gap-3 px-3 py-2 text-[9px] mono uppercase tracking-[0.15em] ${ink3} border-b ${line}">
+              <span></span><span>Identity</span><span>Status</span><span class="text-right">Prod</span><span class="text-right">Dialog</span><span class="text-right">User</span><span class="text-right">Created</span>
+            </div>
+            ${[['Easy Tour','easy-tour','active','Active',148,1248,2,'Apr 15'],['TechnoUz Demo Store','technouz','trial','Trial',3,8,1,'Apr 19']].map(r=>`
+              <div class="grid grid-cols-[20px_minmax(0,2fr)_80px_70px_70px_70px_90px] gap-3 px-3 py-2.5 text-[12px] border-b ${line} items-center">
+                <input type="checkbox" class="accent-current"/>
+                <div class="min-w-0"><div class="truncate">${r[0]}</div><div class="mono text-[10px] ${ink3}">${r[1]}</div></div>
+                <span class="text-[10px]" style="color:${r[2]==='active'?(d==='cockpit'?'#4ade80':d==='editorial'?'#2f6a3f':'#7fd174'):(d==='cockpit'?'#22d3ee':d==='editorial'?'#1e3a5f':'#ffb020')}">● ${r[3]}</span>
+                <span class="text-right tnum ${ink2}">${r[4]}</span>
+                <span class="text-right tnum ${ink2}">${r[5].toLocaleString()}</span>
+                <span class="text-right tnum ${ink2}">${r[6]}</span>
+                <span class="text-right ${ink3} text-[10px] mono">${r[7]}</span>
+              </div>`).join('')}
+            <div class="px-3 py-2 flex items-center justify-between text-[10px] ${ink3}">
+              <span class="mono">1–2 of 2</span>
+              <div class="flex items-center gap-1"><button class="kbd">←</button><button class="kbd">→</button></div>
+            </div>
+          </div>
+        </div>`;
+      }
+    },
+    {
+      key:'ai',
+      title:'AI Монитор',
+      before:`<div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 text-slate-300 text-[12px]">5 большие KPI‑карты (CALLS / TIME / TOKENS / ISSUES%) + таблица 7 колонок с "статусом" который на самом деле показывает модель. Фильтр "успешные/ошибки" работает только клиентски и не влияет на выдачу.</div>`,
+      after: (d) => `
+        <div class="space-y-3">
+          <div class="grid grid-cols-4 gap-2">
+            ${[['CALLS','1,248','last hour'],['P95 LATENCY','2.4s','▲ +12%'],['TOKENS','328K','$0.49'],['TIMEOUTS','2','0.16%']].map(([l,v,s])=>`
+              <div class="${d==='cockpit'?'c-panel':d==='editorial'?'e-panel':'t-panel'} rounded-md p-3">
+                <div class="mono text-[9px] uppercase tracking-[0.18em] ${d==='cockpit'?'c-ink-3':d==='editorial'?'e-ink-3':'t-ink-3'}">${l}</div>
+                <div class="mono text-[22px] leading-none tnum mt-1">${v}</div>
+                <div class="mono text-[9px] mt-1 ${d==='cockpit'?'c-ink-3':d==='editorial'?'e-ink-3':'t-ink-3'}">${s}</div>
+              </div>`).join('')}
+          </div>
+          <div class="${d==='cockpit'?'c-panel':d==='editorial'?'e-panel':'t-panel'} rounded-md">
+            <div class="grid grid-cols-[70px_100px_1fr_100px_60px_60px_50px] gap-3 px-3 py-2 text-[9px] mono uppercase tracking-[0.15em] border-b" style="border-color:currentColor;opacity:.6"><span>TIME</span><span>TENANT</span><span>USER MSG</span><span>TOOLS</span><span class="text-right">MS</span><span class="text-right">TOK</span><span>STATUS</span></div>
+            ${[['14:02:19','Easy Tour','Сколько стоит тур в Самарканд?','search_product · format','842','312','ok'],['14:02:04','Easy Tour','Есть свободные даты на май?','check_availability','1,244','188','ok'],['14:01:47','TechnoUz','добрый день','—','11,204','42','⚠ slow']].map(r=>`
+              <div class="grid grid-cols-[70px_100px_1fr_100px_60px_60px_50px] gap-3 px-3 py-2 text-[11px] items-center border-b" style="border-color:currentColor;opacity:.95">
+                <span class="mono text-[10px] opacity-70">${r[0]}</span>
+                <span class="text-[11px]">${r[1]}</span>
+                <span class="truncate opacity-85">${r[2]}</span>
+                <span class="mono text-[10px] opacity-70">${r[3]}</span>
+                <span class="tnum text-right ${parseInt(r[4].replace(',',''))>5000?'':''}" style="color:${parseInt(r[4].replace(',',''))>5000?'#f87171':'inherit'}">${r[4]}</span>
+                <span class="tnum text-right opacity-70">${r[5]}</span>
+                <span class="text-[10px]" style="color:${r[6].includes('slow')?'#facc15':'#4ade80'}">${r[6]}</span>
+              </div>`).join('')}
+          </div>
+        </div>`
+    }
+  ];
+
+  root.innerHTML = `
+    <div class="max-w-[1400px] mx-auto">
+      <div class="mb-8" data-reveal>
+        <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a] mb-2">Before → After</div>
+        <h2 class="serif text-[48px] leading-[1] tracking-tight">Мокапы экранов</h2>
+        <p class="mt-3 text-[13.5px] text-[#5a544c] max-w-[640px] leading-relaxed">
+          Три критически важных экрана. Слева — текущее состояние, справа — редизайн
+          в активном направлении. Переключайте направление сверху.
+        </p>
+      </div>
+
+      ${screens.map((s, i) => `
+        <section class="mb-10" data-reveal>
+          <div class="flex items-baseline justify-between mb-3">
+            <div class="flex items-baseline gap-3">
+              <span class="mono text-[10px] uppercase tracking-[0.18em] text-[#8a847a]">SCREEN ${String(i+1).padStart(2,'0')}</span>
+              <h3 class="serif text-[24px] leading-tight">${s.title}</h3>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="text-[10px] uppercase tracking-[0.15em] text-[#9c2a2a] mono mb-2">BEFORE · current</div>
+              <div class="rounded-lg p-5" style="background:#060a13;min-height:280px">${s.before}</div>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase tracking-[0.15em] text-[#2f6a3f] mono mb-2">AFTER · redesign</div>
+              <div class="rounded-lg p-5 after-slot" data-key="${s.key}" style="min-height:280px"></div>
+            </div>
+          </div>
+        </section>
+      `).join('')}
+    </div>`;
+
+  function rerenderAfter() {
+    const d = window.__DIR__ || 'cockpit';
+    root.querySelectorAll('.after-slot').forEach(slot => {
+      const key = slot.dataset.key;
+      const s = screens.find(x => x.key === key);
+      if (!s) return;
+      const p = { cockpit:{bg:'#0b0d10',ink:'#e6e8eb'}, editorial:{bg:'#faf8f2',ink:'#141210'}, terminal:{bg:'#0a0a07',ink:'#ddd6b8'} }[d];
+      slot.style.background = p.bg; slot.style.color = p.ink;
+      slot.classList.remove('dir-cockpit','dir-editorial','dir-terminal');
+      slot.classList.add('dir-'+d);
+      slot.innerHTML = s.after(d);
+    });
+  }
+
+  rerenderAfter();
+  document.addEventListener('dir-change', rerenderAfter);
+};
+
+</script>
+
+<script>
+/* === proto.js === */
+/* -------- proto.js — clickable prototype with sidebar + content -------- */
+window.buildProto = function (root) {
+  const routes = [
+    { key:'overview', group:'ОБЗОР', label:'Обзор' },
+    { key:'tenants',  group:'УПРАВЛЕНИЕ', label:'Тенанты' },
+    { key:'users',    group:'УПРАВЛЕНИЕ', label:'Пользователи' },
+    { key:'ai',       group:'МОНИТОРИНГ', label:'AI Монитор' },
+    { key:'billing',  group:'МОНИТОРИНГ', label:'Биллинг' },
+    { key:'logs',     group:'МОНИТОРИНГ', label:'Логи' },
+    { key:'settings', group:'СИСТЕМА', label:'Настройки' },
+  ];
+
+  function render() {
+    const d = window.__DIR__ || 'cockpit';
+    const sidebarWide = (document.body.dataset.sidebar || 'wide') === 'wide';
+    const dense = (document.body.dataset.density || 'compact') === 'compact';
+    const active = root.dataset.route || 'overview';
+    const tone = { cockpit:{bg:'#0b0d10',panel:'#13171c',line:'#22272e',ink:'#e6e8eb',ink2:'#a7acb4',ink3:'#6b7280',accent:'#22d3ee'},
+                   editorial:{bg:'#f4f2ec',panel:'#ffffff',line:'#e3dfd4',ink:'#141210',ink2:'#5a544c',ink3:'#8a847a',accent:'#1e3a5f'},
+                   terminal:{bg:'#0a0a07',panel:'#0f0f0c',line:'#1e1e18',ink:'#ddd6b8',ink2:'#9a9270',ink3:'#5e5a45',accent:'#ffb020'} }[d];
+    const grouped = {}; routes.forEach(r => { (grouped[r.group] ||= []).push(r); });
+
+    const sidebarW = sidebarWide ? 220 : 56;
+
+    const sidebar = `
+      <aside style="width:${sidebarW}px;background:${tone.panel};border-right:1px solid ${tone.line};height:100%;overflow:hidden" class="flex flex-col">
+        <div class="px-3 py-3 flex items-center gap-2" style="border-bottom:1px solid ${tone.line}">
+          <div class="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-bold" style="background:${tone.accent};color:${d==='editorial'?'#fff':'#000'}">AC</div>
+          ${sidebarWide?`<div class="leading-tight"><div class="text-[12px] font-semibold" style="color:${tone.ink}">AI Closer</div><div class="text-[9px] mono uppercase tracking-wider" style="color:${tone.ink3}">platform</div></div>`:''}
+        </div>
+        <nav class="flex-1 py-2 px-2 space-y-3 overflow-y-auto">
+          ${Object.entries(grouped).map(([group, items]) => `
+            ${sidebarWide?`<div class="px-2 text-[9px] mono uppercase tracking-[0.18em]" style="color:${tone.ink3}">${group}</div>`:''}
+            <div class="space-y-0.5">
+              ${items.map(r => `
+                <button data-goto="${r.key}" class="w-full flex items-center gap-2 ${sidebarWide?'px-2':'justify-center'} py-1.5 rounded-md text-[12px]"
+                  style="background:${r.key===active?tone.accent+'22':'transparent'};color:${r.key===active?tone.accent:tone.ink2};${r.key===active?'outline:1px solid '+tone.accent+'55':''}">
+                  <span style="font-size:10px">■</span>${sidebarWide?`<span>${r.label}</span>`:''}
+                </button>`).join('')}
+            </div>
+          `).join('')}
+        </nav>
+        <div class="p-2" style="border-top:1px solid ${tone.line}">
+          <div class="flex items-center gap-2 px-2 py-1.5 rounded-md" style="background:${tone.bg}">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold" style="background:${tone.accent}33;color:${tone.accent}">SA</div>
+            ${sidebarWide?`<div class="flex-1 min-w-0"><div class="text-[11px] truncate" style="color:${tone.ink}">superadmin@…</div><div class="text-[9px] mono" style="color:${tone.ink3}">super admin</div></div>`:''}
+          </div>
+        </div>
+      </aside>`;
+
+    // top bar
+    const topbar = `
+      <div class="flex items-center gap-3 px-4 py-2" style="border-bottom:1px solid ${tone.line};background:${tone.panel}">
+        <span class="mono text-[10px] uppercase tracking-[0.18em]" style="color:${tone.ink3}">Platform</span>
+        <span style="color:${tone.ink3}">›</span>
+        <span class="text-[12px]" style="color:${tone.ink}">${routes.find(r=>r.key===active).label}</span>
+        <div class="ml-auto flex items-center gap-2">
+          <div class="flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] mono" style="background:${tone.bg};border:1px solid ${tone.line};color:${tone.ink3}"><span>⌘K</span><span style="color:${tone.ink2}">search everything</span></div>
+          <button class="text-[10.5px] px-2 py-1 rounded-md" style="color:${tone.ink2};border:1px solid ${tone.line}">${d==='terminal'?'☽':'☀'} theme</button>
+        </div>
+      </div>`;
+
+    // content varies by route
+    let content = '';
+    if (active === 'overview') {
+      content = `
+        <div class="p-4 space-y-3">
+          <div class="grid grid-cols-5 gap-2">
+            ${[['TENANTS','2','·'],['USERS','4','+1 wk'],['MSG 24H','8','↓94%'],['ORD 24H','0','—'],['REV 24H','0','UZS']].map(([l,v,s])=>`
+              <div class="rounded-md p-3" style="background:${tone.panel};border:1px solid ${tone.line}">
+                <div class="mono text-[9px] uppercase tracking-[0.18em]" style="color:${tone.ink3}">${l}</div>
+                <div class="${d==='editorial'?'serif text-[32px]':'mono text-[22px]'} tnum mt-1" style="color:${tone.ink}">${v}</div>
+                <div class="text-[9px] mono mt-1" style="color:${tone.ink3}">${s}</div>
+                <div class="mt-2 flex items-end gap-0.5 h-4">${[30,42,28,60,45,80,72].map(h=>`<span style="flex:1;background:${tone.accent};opacity:.75;height:${h}%;border-radius:1px"></span>`).join('')}</div>
+              </div>`).join('')}
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="col-span-2 rounded-md p-4" style="background:${tone.panel};border:1px solid ${tone.line}">
+              <div class="flex items-center justify-between mb-3">
+                <span class="mono text-[10px] uppercase tracking-[0.15em]" style="color:${tone.ink2}">messages · 7d</span>
+                <span class="mono text-[10px]" style="color:${tone.accent}">236 total · avg 34/d</span>
+              </div>
+              <div class="flex items-end gap-1 h-28">${[0,134,86,8,8,0,0].map((v,i)=>`<div class="flex-1 flex flex-col items-center gap-1"><span class="text-[9px] mono" style="color:${tone.ink3}">${v||''}</span><div class="w-full" style="background:${tone.accent};opacity:.85;height:${Math.max(v/134*100,1)}%;border-radius:1px 1px 0 0"></div><span class="text-[9px] mono" style="color:${tone.ink3}">${['Ср','Чт','Пт','Сб','Вс','Пн','Вт'][i]}</span></div>`).join('')}</div>
+            </div>
+            <div class="rounded-md p-4" style="background:${tone.panel};border:1px solid ${tone.line}">
+              <div class="mono text-[10px] uppercase tracking-[0.15em] mb-3" style="color:${tone.ink2}">system health</div>
+              ${[['postgres','ok','4ms'],['redis','ok','1ms'],['telegram','ok','—'],['backend','ok','12ms']].map(([s,st,l])=>`
+                <div class="flex items-center justify-between py-1.5 text-[11px]" style="border-bottom:1px dashed ${tone.line}">
+                  <span style="color:${tone.ink}">${s}</span>
+                  <span style="color:#4ade80" class="mono">● ${st} <span style="color:${tone.ink3}">${l}</span></span>
+                </div>`).join('')}
+            </div>
+          </div>
+        </div>`;
+    } else if (active === 'tenants') {
+      content = `
+        <div class="p-4 space-y-3">
+          <div class="flex items-center gap-2">
+            <input placeholder="Поиск по названию или slug…" class="flex-1 rounded-md px-3 py-2 text-[12px]" style="background:${tone.panel};border:1px solid ${tone.line};color:${tone.ink};outline:none"/>
+            <select class="rounded-md px-3 py-2 text-[12px]" style="background:${tone.panel};border:1px solid ${tone.line};color:${tone.ink}"><option>Все статусы</option></select>
+            <button class="rounded-md px-3 py-2 text-[12px]" style="background:${tone.accent};color:${d==='editorial'?'#fff':'#000'}">+ Новый</button>
+          </div>
+          <div class="rounded-md overflow-hidden" style="background:${tone.panel};border:1px solid ${tone.line}">
+            <div class="grid grid-cols-[20px_minmax(0,2fr)_80px_80px_80px_80px_100px] gap-3 px-3 py-2 text-[9px] mono uppercase tracking-[0.15em]" style="color:${tone.ink3};border-bottom:1px solid ${tone.line}">
+              <span></span><span>Identity</span><span>Status</span><span class="text-right">Prod</span><span class="text-right">Dialog</span><span class="text-right">User</span><span class="text-right">Created</span>
+            </div>
+            ${[['Easy Tour','easy-tour','active',148,1248,2,'Apr 15'],['TechnoUz Demo Store','technouz','trial',3,8,1,'Apr 19']].map(r=>`
+              <div class="grid grid-cols-[20px_minmax(0,2fr)_80px_80px_80px_80px_100px] gap-3 px-3 py-2 text-[12px] items-center" style="border-bottom:1px solid ${tone.line};color:${tone.ink}">
+                <input type="checkbox"/>
+                <div class="min-w-0"><div>${r[0]}</div><div class="mono text-[10px]" style="color:${tone.ink3}">${r[1]}</div></div>
+                <span class="text-[10px]" style="color:${r[2]==='active'?'#4ade80':tone.accent}">● ${r[2]}</span>
+                <span class="text-right tnum" style="color:${tone.ink2}">${r[3]}</span>
+                <span class="text-right tnum" style="color:${tone.ink2}">${r[4].toLocaleString()}</span>
+                <span class="text-right tnum" style="color:${tone.ink2}">${r[5]}</span>
+                <span class="text-right mono text-[10px]" style="color:${tone.ink3}">${r[6]}</span>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    } else {
+      content = `<div class="p-8 text-center" style="color:${tone.ink2}">
+        <div class="${d==='editorial'?'serif text-[28px]':'mono text-[18px]'} mb-2">${routes.find(r=>r.key===active).label}</div>
+        <div class="text-[12px]">Экран реализован в полном прототипе. Переключите на «Обзор» или «Тенанты» чтобы увидеть интерактив.</div>
+      </div>`;
+    }
+
+    root.innerHTML = `
+      <div class="max-w-[1400px] mx-auto">
+        <div class="mb-4" data-reveal>
+          <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a] mb-2">Clickable prototype · live</div>
+          <h2 class="serif text-[48px] leading-[1] tracking-tight">Прототип</h2>
+          <p class="mt-3 text-[13.5px] text-[#5a544c] max-w-[640px] leading-relaxed">
+            Переключайте направление, плотность и ширину сайдбара в Tweaks (⚙ справа внизу). Кликайте по пунктам меню.
+          </p>
+        </div>
+
+        <div class="rounded-xl overflow-hidden shadow-lg" style="background:${tone.bg};color:${tone.ink};border:1px solid ${tone.line};height:680px">
+          <div class="flex h-full">
+            ${sidebar}
+            <div class="flex-1 flex flex-col min-w-0">
+              ${topbar}
+              <div class="flex-1 overflow-auto" style="background:${tone.bg}">${content}</div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    root.querySelectorAll('[data-goto]').forEach(b => {
+      b.addEventListener('click', () => { root.dataset.route = b.dataset.goto; render(); });
+    });
+  }
+
+  render();
+  document.addEventListener('dir-change', render);
+  document.addEventListener('density-change', render);
+  document.addEventListener('sidebar-change', render);
+};
+
+</script>
+
+<script>
+/* === full.js === */
+/* =========================================================
+   full.js — полный редизайн всех страниц супер-админ панели
+   Токены (светлая + тёмная), шелл, и 10 экранов.
+   ========================================================= */
+(function () {
+
+/* ---------- TOKENS ---------- */
+const T = {
+  dark: {
+    bg:'#0a0d12', bg2:'#0f1319', panel:'#131821', panel2:'#171d27',
+    line:'#232a36', line2:'#2b3442', hair:'#1b2230',
+    ink:'#e7ecf3', ink2:'#9aa3b2', ink3:'#6a7386', ink4:'#4a5264',
+    accent:'#7c8cff', accentSoft:'#7c8cff1a', accentRing:'#7c8cff55',
+    good:'#4ade80', goodSoft:'#4ade801a',
+    warn:'#f5b454', warnSoft:'#f5b4541a',
+    bad:'#f87171',  badSoft:'#f871711a',
+    info:'#60a5fa', infoSoft:'#60a5fa1a',
+    shadow:'0 1px 0 #ffffff06 inset, 0 8px 24px -12px #00000066',
+  },
+  light: {
+    bg:'#f6f5f0', bg2:'#faf8f2', panel:'#ffffff', panel2:'#fbfaf5',
+    line:'#e3dfd4', line2:'#d6d1c4', hair:'#ece7d9',
+    ink:'#141210', ink2:'#5a544c', ink3:'#8a847a', ink4:'#b2ab9f',
+    accent:'#2a4a7f', accentSoft:'#2a4a7f14', accentRing:'#2a4a7f55',
+    good:'#2f6a3f', goodSoft:'#2f6a3f14',
+    warn:'#9c6b00', warnSoft:'#9c6b0014',
+    bad:'#9c2a2a',  badSoft:'#9c2a2a14',
+    info:'#1e5a9c', infoSoft:'#1e5a9c14',
+    shadow:'0 1px 0 #00000008 inset, 0 4px 14px -8px #00000018',
+  }
+};
+
+/* ---------- SIDENAV ---------- */
+const ROUTES = [
+  {g:'ОБЗОР', items:[['overview','Обзор','◇']]},
+  {g:'УПРАВЛЕНИЕ', items:[['tenants','Тенанты','▤'],['users','Пользователи','◎']]},
+  {g:'МОНИТОРИНГ', items:[['ai','AI Монитор','◈'],['billing','Биллинг','₿'],['logs','Логи','⌯']]},
+  {g:'СИСТЕМА', items:[['settings','Настройки','⚙']]},
+];
+
+const PAGES = [
+  ['login','Login · вход'],
+  ['overview','Обзор'],
+  ['tenants','Тенанты'],
+  ['tenant_create','Создание тенанта'],
+  ['tenant_detail','Тенант · детали'],
+  ['users','Пользователи'],
+  ['ai','AI Монитор'],
+  ['billing','Биллинг'],
+  ['logs','Аудит логи'],
+  ['settings','Настройки'],
+];
+
+/* ---------- HELPERS ---------- */
+const css = (t) => `
+  background:${t.bg}; color:${t.ink};
+  --bg:${t.bg}; --bg2:${t.bg2}; --panel:${t.panel}; --panel2:${t.panel2};
+  --line:${t.line}; --line2:${t.line2}; --hair:${t.hair};
+  --ink:${t.ink}; --ink2:${t.ink2}; --ink3:${t.ink3}; --ink4:${t.ink4};
+  --accent:${t.accent}; --accentSoft:${t.accentSoft}; --accentRing:${t.accentRing};
+  --good:${t.good}; --warn:${t.warn}; --bad:${t.bad}; --info:${t.info};
+  --goodSoft:${t.goodSoft}; --warnSoft:${t.warnSoft}; --badSoft:${t.badSoft}; --infoSoft:${t.infoSoft};
+  --shadow:${t.shadow};
+  font-family:'Geist',system-ui,sans-serif;
+`;
+
+function sidebar(active, theme) {
+  return `
+  <aside class="fr-sidebar">
+    <div class="fr-brand">
+      <div class="fr-logo">AC</div>
+      <div>
+        <div class="fr-brand-t">AI Closer</div>
+        <div class="fr-brand-s">platform · super admin</div>
+      </div>
+    </div>
+    <nav class="fr-nav">
+      ${ROUTES.map(grp => `
+        <div class="fr-nav-g">${grp.g}</div>
+        ${grp.items.map(([k,label,ic]) => `
+          <div class="fr-nav-i ${active===k?'on':''}">
+            <span class="fr-nav-ic">${ic}</span>
+            <span>${label}</span>
+            ${active===k?`<span class="fr-nav-dot"></span>`:''}
+          </div>`).join('')}
+      `).join('')}
+    </nav>
+    <div class="fr-user">
+      <div class="fr-avatar">SA</div>
+      <div class="min-w-0">
+        <div class="fr-user-t">superadmin@gmail.com</div>
+        <div class="fr-user-s">Super Admin · owner</div>
+      </div>
+      <button class="fr-ic-btn" title="Выйти">⏻</button>
+    </div>
+  </aside>`;
+}
+
+function topbar(crumbs, right='') {
+  return `
+  <header class="fr-top">
+    <div class="fr-crumbs">
+      ${crumbs.map((c,i) => `
+        <span class="${i===crumbs.length-1?'fr-crumb-last':'fr-crumb'}">${c}</span>
+        ${i<crumbs.length-1?`<span class="fr-crumb-sep">/</span>`:''}
+      `).join('')}
+    </div>
+    <div class="fr-top-right">
+      <div class="fr-cmdk">
+        <span class="fr-kbd">⌘</span><span class="fr-kbd">K</span>
+        <span class="fr-cmdk-t">поиск по всему</span>
+      </div>
+      ${right}
+    </div>
+  </header>`;
+}
+
+function shell(active, crumbs, content, right='') {
+  return `
+  <div class="fr-shell">
+    ${sidebar(active)}
+    <div class="fr-main">
+      ${topbar(crumbs, right)}
+      <div class="fr-content">${content}</div>
+    </div>
+  </div>`;
+}
+
+/* ---------- KPI CARD ---------- */
+function kpi({label, value, sub, delta, trend, tone='accent'}) {
+  const bars = (trend || [30,42,28,60,45,80,72]).map(h =>
+    `<span style="flex:1;background:var(--${tone});opacity:.8;height:${h}%;border-radius:1px"></span>`).join('');
+  return `
+  <div class="fr-kpi">
+    <div class="fr-kpi-l">${label}</div>
+    <div class="fr-kpi-v">${value}</div>
+    <div class="fr-kpi-row">
+      ${delta ? `<span class="fr-delta" style="color:var(--${delta.startsWith('▲')||delta.startsWith('+')?'good':'bad'})">${delta}</span>` : ''}
+      <span class="fr-kpi-s">${sub||''}</span>
+    </div>
+    <div class="fr-spark">${bars}</div>
+  </div>`;
+}
+
+/* ---------- PAGES ---------- */
+const P = {};
+
+/* Login */
+P.login = () => `
+<div class="fr-login-page">
+  <div class="fr-login-bg">
+    <div class="fr-login-grid"></div>
+    <div class="fr-login-glow"></div>
+  </div>
+  <div class="fr-login-card">
+    <div class="fr-login-brand">
+      <div class="fr-login-logo">AC</div>
+      <div class="fr-login-t">AI Closer · Platform</div>
+      <div class="fr-login-s">Вход для супер-администратора</div>
+    </div>
+    <div class="fr-field"><label>Email</label><input value="superadmin@gmail.com"/></div>
+    <div class="fr-field"><label>Пароль <a class="fr-link">Забыли?</a></label>
+      <div class="fr-input-wrap"><input type="password" value="●●●●●●●●●●"/><button class="fr-input-x">👁</button></div>
+    </div>
+    <button class="fr-btn fr-btn-primary fr-btn-full">Войти в панель</button>
+    <div class="fr-login-meta">
+      <span class="fr-dot fr-dot-good"></span>
+      <span>Все системы работают · 4 сервиса ok</span>
+    </div>
+  </div>
+  <div class="fr-login-foot">v 2.4.1 · Asia/Tashkent · build 04.21</div>
+</div>`;
+
+/* Overview */
+P.overview = () => `
+${shell('overview', ['Платформа','Обзор'], `
+  <div class="fr-page">
+    <div class="fr-page-h">
+      <div>
+        <h1 class="fr-h1">Обзор платформы</h1>
+        <div class="fr-h-sub">Последнее обновление: <span class="fr-tnum">14:32:06</span> · <span class="fr-link">обновить ↻</span></div>
+      </div>
+      <div class="fr-seg">
+        <button class="fr-seg-b on">24ч</button>
+        <button class="fr-seg-b">7д</button>
+        <button class="fr-seg-b">30д</button>
+      </div>
+    </div>
+
+    <div class="fr-kpi-grid fr-kpi-5">
+      ${kpi({label:'ТЕНАНТЫ', value:'2', sub:'всего · 0 suspended', delta:'+0 нед', tone:'accent'})}
+      ${kpi({label:'ПОЛЬЗОВАТЕЛИ', value:'4', sub:'активных', delta:'+1 нед', tone:'accent'})}
+      ${kpi({label:'СООБЩЕНИЙ 24Ч', value:'8', sub:'из 236 за неделю', delta:'▼ -94%', tone:'warn', trend:[10,134,86,8,8,3,8]})}
+      ${kpi({label:'ЗАКАЗОВ 24Ч', value:'0', sub:'—', delta:'', tone:'accent'})}
+      ${kpi({label:'ВЫРУЧКА 24Ч', value:'0', sub:'UZS', delta:'', tone:'accent'})}
+    </div>
+
+    <div class="fr-row-2">
+      <div class="fr-card fr-card-chart">
+        <div class="fr-card-h">
+          <div>
+            <div class="fr-card-t">Сообщения · 7 дней</div>
+            <div class="fr-card-s">236 всего · avg 33.7/день · пик 134 в Чт</div>
+          </div>
+          <div class="fr-seg">
+            <button class="fr-seg-b on">Сообщ.</button>
+            <button class="fr-seg-b">Диалоги</button>
+            <button class="fr-seg-b">Заказы</button>
+          </div>
+        </div>
+        <div class="fr-chart">
+          <div class="fr-chart-y">
+            ${[140,105,70,35,0].map(v=>`<div class="fr-chart-y-l">${v}</div>`).join('')}
+          </div>
+          <div class="fr-chart-body">
+            <div class="fr-chart-grid">${[0,1,2,3].map(()=>`<div></div>`).join('')}</div>
+            <div class="fr-chart-bars">
+              ${[['Ср 15',0],['Чт 16',134],['Пт 17',86],['Сб 18',8],['Вс 19',8],['Пн 20',0],['Вт 21',0]].map(([d,v]) => `
+                <div class="fr-chart-col" title="${d}: ${v}">
+                  <span class="fr-chart-v">${v||''}</span>
+                  <div class="fr-chart-bar" style="height:${Math.max(v/140*100, 1)}%"></div>
+                  <span class="fr-chart-x">${d}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fr-card">
+        <div class="fr-card-h">
+          <div class="fr-card-t">Состояние системы</div>
+          <span class="fr-chip fr-chip-good">все работает</span>
+        </div>
+        <div class="fr-health">
+          ${[['PostgreSQL','ok','4ms','primary · 14.2'],['Redis','ok','1ms','cluster · 7.2'],['Telegram Bot','ok','12ms','2 tenants'],['Backend API','ok','8ms','uptime 23d']].map(([s,st,l,m])=>`
+            <div class="fr-health-row">
+              <span class="fr-dot fr-dot-good"></span>
+              <div class="min-w-0">
+                <div class="fr-health-t">${s}</div>
+                <div class="fr-health-s">${m}</div>
+              </div>
+              <span class="fr-tnum fr-tok fr-right">${l}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="fr-row-2">
+      <div class="fr-card">
+        <div class="fr-card-h"><div class="fr-card-t">Топ тенанты · 24ч</div><a class="fr-link">все →</a></div>
+        <table class="fr-table">
+          <thead><tr><th>ТЕНАНТ</th><th class="fr-r">СООБЩ.</th><th class="fr-r">ЗАКАЗЫ</th><th class="fr-r">ДИАЛОГИ</th></tr></thead>
+          <tbody>
+            <tr><td><span class="fr-rank">1</span>Easy Tour</td><td class="fr-r fr-tnum">5</td><td class="fr-r fr-tnum fr-dim">0</td><td class="fr-r fr-tnum fr-dim">2</td></tr>
+            <tr><td><span class="fr-rank">2</span>TechnoUz Demo Store</td><td class="fr-r fr-tnum">3</td><td class="fr-r fr-tnum fr-dim">0</td><td class="fr-r fr-tnum fr-dim">1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="fr-card">
+        <div class="fr-card-h"><div class="fr-card-t">Последние события</div><a class="fr-link">аудит лог →</a></div>
+        <div class="fr-events">
+          ${[['01:38:14','impersonate','superadmin → admin@gmail.com','TechnoUz'],
+             ['23:50','impersonate','superadmin → easytour@admin.com','Easy Tour'],
+             ['14:34','ai.reply','comment_smart_reply','TechnoUz'],
+             ['14:22','ai.reply','comment_smart_reply','TechnoUz'],
+             ['13:12','tenant.update','Easy Tour · статус изменён','Easy Tour']
+          ].map(r=>`
+            <div class="fr-event">
+              <span class="fr-tnum fr-dim fr-mono">${r[0]}</span>
+              <span class="fr-chip fr-chip-mono">${r[1]}</span>
+              <span class="fr-truncate">${r[2]}</span>
+              <span class="fr-dim fr-right">${r[3]}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>
+`)}`;
+
+/* Tenants list */
+P.tenants = () => `
+${shell('tenants', ['Платформа','Тенанты'], `
+  <div class="fr-page">
+    <div class="fr-page-h">
+      <div>
+        <h1 class="fr-h1">Тенанты <span class="fr-count">2</span></h1>
+        <div class="fr-h-sub">Активных 2 · Trial 0 · Suspended 0 · Всего 2</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="fr-btn fr-btn-ghost">Экспорт CSV</button>
+        <button class="fr-btn fr-btn-primary">+ Новый тенант</button>
+      </div>
+    </div>
+
+    <div class="fr-toolbar">
+      <div class="fr-search">
+        <span class="fr-search-ic">⌕</span>
+        <input placeholder="Поиск по названию или slug…"/>
+      </div>
+      <div class="fr-seg">
+        <button class="fr-seg-b on">Все · 2</button>
+        <button class="fr-seg-b">Active · 2</button>
+        <button class="fr-seg-b">Trial · 0</button>
+        <button class="fr-seg-b">Suspended · 0</button>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <span class="fr-dim fr-sm">Строк:</span>
+        <select class="fr-select fr-select-xs"><option>25</option><option>50</option><option>100</option></select>
+      </div>
+    </div>
+
+    <div class="fr-card fr-p0">
+      <table class="fr-table fr-table-bordered">
+        <thead><tr>
+          <th class="fr-check"><input type="checkbox"/></th>
+          <th>НАЗВАНИЕ · SLUG</th>
+          <th>СТАТУС</th>
+          <th class="fr-r">ТОВАРЫ</th>
+          <th class="fr-r">ДИАЛОГИ</th>
+          <th class="fr-r">ЗАКАЗЫ</th>
+          <th class="fr-r">ПОЛЬЗ.</th>
+          <th class="fr-r">СОЗДАН</th>
+          <th class="fr-r"></th>
+        </tr></thead>
+        <tbody>
+          ${[['Easy Tour','easy-tour','active',13,5,2,1,'17 апр'],
+             ['TechnoUz Demo Store','technouz-demo','active',24,10,6,3,'18 мар']].map(r=>`
+            <tr>
+              <td><input type="checkbox"/></td>
+              <td>
+                <div class="fr-ident">
+                  <div class="fr-ident-av">${r[0].slice(0,2)}</div>
+                  <div class="min-w-0">
+                    <div class="fr-ident-t">${r[0]}</div>
+                    <div class="fr-ident-s fr-mono">${r[1]}</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="fr-chip fr-chip-good">● Активен</span></td>
+              <td class="fr-r fr-tnum">${r[3]}</td>
+              <td class="fr-r fr-tnum">${r[4]}</td>
+              <td class="fr-r fr-tnum">${r[5]}</td>
+              <td class="fr-r fr-tnum">${r[6]}</td>
+              <td class="fr-r fr-tnum fr-dim">${r[7]}</td>
+              <td class="fr-r"><a class="fr-link">Открыть →</a></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="fr-pager">
+        <span class="fr-dim">Показано 1–2 из 2</span>
+        <div class="flex items-center gap-1">
+          <button class="fr-page-b" disabled>‹</button>
+          <button class="fr-page-b on">1</button>
+          <button class="fr-page-b" disabled>›</button>
+        </div>
+      </div>
+    </div>
+  </div>
+`)}`;
+
+/* Tenant create modal */
+P.tenant_create = () => `
+${shell('tenants', ['Платформа','Тенанты','Новый'], `
+  <div class="fr-page fr-page-modal-bg">
+    <div class="fr-modal">
+      <div class="fr-modal-h">
+        <div>
+          <div class="fr-modal-t">Новый тенант</div>
+          <div class="fr-modal-s">Создаст организацию и первого владельца · можно отредактировать позже</div>
+        </div>
+        <button class="fr-ic-btn">×</button>
+      </div>
+
+      <div class="fr-modal-section">
+        <div class="fr-section-h">Организация</div>
+        <div class="fr-field"><label>Название</label><input placeholder="My Store"/></div>
+        <div class="fr-field"><label>Slug <span class="fr-dim fr-sm">· используется в URL, только латиница</span></label>
+          <div class="fr-input-wrap"><span class="fr-input-pre fr-mono">aicloser.app /</span><input placeholder="my-store" value="my-store"/></div>
+        </div>
+        <div class="fr-row-2-5050">
+          <div class="fr-field"><label>Статус</label>
+            <select class="fr-select"><option>Trial · 14 дней</option><option>Active</option></select>
+          </div>
+          <div class="fr-field"><label>AI модель</label>
+            <select class="fr-select"><option>GPT-4o Mini (по умолчанию)</option><option>GPT-4o</option></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="fr-modal-section">
+        <div class="fr-section-h">Первый администратор</div>
+        <div class="fr-row-2-5050">
+          <div class="fr-field"><label>Email</label><input placeholder="admin@store.com"/></div>
+          <div class="fr-field"><label>Пароль · мин. 8</label><input type="password" placeholder="••••••••"/></div>
+        </div>
+        <label class="fr-check-row"><input type="checkbox" checked/> Отправить приглашение на email</label>
+      </div>
+
+      <div class="fr-modal-f">
+        <button class="fr-btn fr-btn-ghost">Отмена</button>
+        <button class="fr-btn fr-btn-primary">Создать тенант</button>
+      </div>
+    </div>
+  </div>
+`)}`;
+
+/* Tenant detail */
+P.tenant_detail = () => `
+${shell('tenants', ['Платформа','Тенанты','TechnoUz Demo Store'], `
+  <div class="fr-page">
+    <div class="fr-page-h">
+      <div class="flex items-center gap-3">
+        <button class="fr-ic-btn">←</button>
+        <div class="fr-ident fr-ident-lg">
+          <div class="fr-ident-av fr-ident-av-lg">TD</div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <h1 class="fr-h1">TechnoUz Demo Store</h1>
+              <span class="fr-chip fr-chip-good">● Активен</span>
+            </div>
+            <div class="fr-h-sub"><span class="fr-mono">slug: technouz-demo</span> · создан 18 мар 2026 · владелец admin@technouz-demo.com</div>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="fr-btn fr-btn-ghost">✎ Редактировать</button>
+        <button class="fr-btn fr-btn-warn">↳ Войти как Admin</button>
+      </div>
+    </div>
+
+    <div class="fr-tabs">
+      ${['Обзор','Пользователи · 3','Товары · 24','Диалоги · 10','Заказы · 6','Биллинг','Настройки'].map((t,i)=>`
+        <button class="fr-tab ${i===0?'on':''}">${t}</button>`).join('')}
+    </div>
+
+    <div class="fr-kpi-grid fr-kpi-4">
+      ${kpi({label:'ТОВАРЫ', value:'24', sub:'48 вариантов', delta:'+3 нед'})}
+      ${kpi({label:'ДИАЛОГИ', value:'10', sub:'активных 2', delta:'+4 нед'})}
+      ${kpi({label:'ЗАКАЗЫ', value:'6', sub:'·', delta:'+1 нед'})}
+      ${kpi({label:'ВЫРУЧКА · 30Д', value:'134 390 099', sub:'UZS · ≈ $10 760', delta:'▲ +22%', tone:'good'})}
+    </div>
+
+    <div class="fr-card">
+      <div class="fr-card-h">
+        <div class="fr-card-t">Пользователи тенанта <span class="fr-count">3</span></div>
+        <button class="fr-btn fr-btn-ghost fr-btn-sm">+ Добавить</button>
+      </div>
+      <table class="fr-table">
+        <thead><tr><th>EMAIL</th><th>ИМЯ</th><th>РОЛЬ</th><th>СТАТУС</th><th class="fr-r">ПОСЛ. ВХОД</th><th class="fr-r">СОЗДАН</th><th class="fr-r"></th></tr></thead>
+        <tbody>
+          ${[['superadmin@gmail.com','Super Admin','super_admin','active','2 мин назад','20 апр'],
+             ['admin@technouz-demo.com','Sales Admin','super_admin','active','4 часа назад','18 мар'],
+             ['admin@gmail.com','Store Owner','store_owner','active','вчера','18 мар']].map(r=>`
+            <tr>
+              <td><span class="fr-mono">${r[0]}</span></td>
+              <td>${r[1]}</td>
+              <td><span class="fr-chip fr-chip-${r[2]==='super_admin'?'accent':'info'}">${r[2]}</span></td>
+              <td><span class="fr-dot fr-dot-good"></span> ${r[3]}</td>
+              <td class="fr-r fr-dim fr-tnum">${r[4]}</td>
+              <td class="fr-r fr-dim fr-tnum">${r[5]}</td>
+              <td class="fr-r"><a class="fr-link">↳ войти</a></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="fr-row-2">
+      <div class="fr-card">
+        <div class="fr-card-h"><div class="fr-card-t">Активность · 30 дней</div></div>
+        <div class="fr-chart fr-chart-sm">
+          <div class="fr-chart-body">
+            <div class="fr-chart-bars">
+              ${Array.from({length:30},(_,i)=>{const v=Math.round(20+40*Math.sin(i/3)+Math.random()*30);return `<div class="fr-chart-col"><div class="fr-chart-bar" style="height:${v}%"></div></div>`}).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fr-card">
+        <div class="fr-card-h"><div class="fr-card-t">Конфигурация</div></div>
+        <dl class="fr-dl">
+          ${[['AI модель','GPT-4o Mini'],['Язык','Русский'],['Часовой пояс','Asia/Tashkent'],['Макс. сообщений/день','∞'],['Макс. товаров','500'],['Telegram Bot','@technouz_demo_bot'],['Канал','id: -100234…']].map(r=>`
+            <div><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('')}
+        </dl>
+      </div>
+    </div>
+  </div>
+`)}`;
+
+/* Users */
+P.users = () => `
+${shell('users', ['Платформа','Пользователи'], `
+  <div class="fr-page">
+    <div class="fr-page-h">
+      <div>
+        <h1 class="fr-h1">Пользователи <span class="fr-count">4</span></h1>
+        <div class="fr-h-sub">Super Admin · 2 · Store Owner · 2 · деактивированных 0</div>
+      </div>
+      <button class="fr-btn fr-btn-primary">+ Создать пользователя</button>
+    </div>
+
+    <div class="fr-toolbar">
+      <div class="fr-search"><span class="fr-search-ic">⌕</span><input placeholder="Поиск по email или имени…"/></div>
+      <select class="fr-select"><option>Все тенанты</option></select>
+      <select class="fr-select"><option>Все роли</option></select>
+      <select class="fr-select"><option>Все статусы</option></select>
+      <div class="ml-auto flex items-center gap-2">
+        <span class="fr-dim fr-sm">Выбрано 0 · </span>
+        <button class="fr-btn fr-btn-ghost fr-btn-sm" disabled>Активировать</button>
+        <button class="fr-btn fr-btn-ghost fr-btn-sm" disabled>Деактивировать</button>
+      </div>
+    </div>
+
+    <div class="fr-card fr-p0">
+      <table class="fr-table fr-table-bordered">
+        <thead><tr>
+          <th class="fr-check"><input type="checkbox"/></th>
+          <th>EMAIL · ИМЯ</th>
+          <th>РОЛЬ</th>
+          <th>ТЕНАНТ</th>
+          <th>СТАТУС</th>
+          <th class="fr-r">ПОСЛЕДНИЙ ВХОД</th>
+          <th class="fr-r">СОЗДАН</th>
+          <th class="fr-r"></th>
+        </tr></thead>
+        <tbody>
+          ${[['superadmin@gmail.com','Super Admin','super_admin','TechnoUz Demo Store','active','2 мин назад','20 апр'],
+             ['easytour@admin.com','Easy Tour Admin','store_owner','Easy Tour','active','1 час','17 апр'],
+             ['admin@technouz-demo.com','Sales Admin','super_admin','TechnoUz Demo Store','active','4 часа','18 мар'],
+             ['admin@gmail.com','Store Owner','store_owner','TechnoUz Demo Store','active','вчера','18 мар']].map(r=>`
+            <tr>
+              <td><input type="checkbox"/></td>
+              <td>
+                <div class="fr-ident">
+                  <div class="fr-ident-av">${r[1].split(' ').map(x=>x[0]).join('').slice(0,2)}</div>
+                  <div class="min-w-0">
+                    <div class="fr-ident-t"><span class="fr-mono">${r[0]}</span></div>
+                    <div class="fr-ident-s">${r[1]}</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="fr-chip fr-chip-${r[2]==='super_admin'?'accent':'info'}">${r[2]}</span></td>
+              <td>${r[3]}</td>
+              <td><span class="fr-dot fr-dot-good"></span> ${r[4]}</td>
+              <td class="fr-r fr-dim fr-tnum">${r[5]}</td>
+              <td class="fr-r fr-dim fr-tnum">${r[6]}</td>
+              <td class="fr-r"><a class="fr-link">✎</a></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="fr-pager">
+        <span class="fr-dim">Показано 1–4 из 4</span>
+        <div class="flex items-center gap-1">
+          <button class="fr-page-b" disabled>‹</button>
+          <button class="fr-page-b on">1</button>
+          <button class="fr-page-b" disabled>›</button>
+        </div>
+      </div>
+    </div>
+  </div>
+`)}`;
+
+/* AI Monitor */
+P.ai = () => `
+${shell('ai', ['Платформа','AI Монитор'], `
+  <div class="fr-page">
+    <div class="fr-page-h">
+      <div>
+        <h1 class="fr-h1">AI Монитор <span class="fr-count">50</span></h1>
+        <div class="fr-h-sub">
+          <span class="fr-dot fr-dot-good fr-pulse"></span>
+          Авто-обновление · каждые <span class="fr-tnum">15с</span> · следующее через <span class="fr-tnum">7с</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="fr-btn fr-btn-ghost">⏸ Пауза</button>
+        <button class="fr-btn fr-btn-ghost">↻ Обновить</button>
+      </div>
+    </div>
+
+    <div class="fr-kpi-grid fr-kpi-4">
+      ${kpi({label:'ВЫЗОВОВ · 1Ч', value:'1,248', sub:'50 на странице', delta:'▲ +18%'})}
+      ${kpi({label:'P95 LATENCY', value:'5.05s', sub:'нормальный · лимит 10с', delta:'▲ +12%', tone:'warn'})}
+      ${kpi({label:'ТОКЕНОВ · 1Ч', value:'439,761', sub:'prompt + completion · $0.66', delta:''})}
+      ${kpi({label:'TIMEOUT / ERR', value:'2.4%', sub:'29 timeouts · 1 tool_error', delta:'▼ -0.2%', tone:'bad'})}
+    </div>
+
+    <div class="fr-toolbar">
+      <select class="fr-select"><option>Все тенанты</option></select>
+      <select class="fr-select"><option>Все статусы</option></select>
+      <select class="fr-select"><option>Все модели</option></select>
+      <select class="fr-select"><option>Последний час</option></select>
+      <div class="ml-auto fr-dim fr-sm">Показаны успешные · ошибки · медленные (>5с)</div>
+    </div>
+
+    <div class="fr-card fr-p0">
+      <table class="fr-table fr-table-bordered fr-ai-table">
+        <thead><tr>
+          <th class="fr-r">ВРЕМЯ</th>
+          <th>ТЕНАНТ</th>
+          <th>USER MSG</th>
+          <th>ИНСТРУМЕНТЫ</th>
+          <th class="fr-r">MS</th>
+          <th class="fr-r">ТОКЕНЫ</th>
+          <th>СТАТУС</th>
+          <th>МОДЕЛЬ</th>
+          <th class="fr-r"></th>
+        </tr></thead>
+        <tbody>
+          ${[
+            ['12:35:50','Easy Tour','Привет хочу бронировать тур тузкан можете помочь?','get_product_candidates',6981,12519,'ok','gpt-4o-mini'],
+            ['12:03:58','Easy Tour','скиньте фотку','—',10060,6761,'slow','gpt-4o-mini'],
+            ['11:48:06','Easy Tour','можете показать кампинги и скинуть фотки…','get_product_candidates',5371,14376,'ok','gpt-4o-mini'],
+            ['11:47:33','Easy Tour','привет какие туры у вас есть?','list_categories',4983,13716,'ok','gpt-4o-mini'],
+            ['11:20:17','Easy Tour','можете показать фотки?','—',1422,6572,'ok','gpt-4o-mini'],
+            ['10:28:24','Easy Tour','да','get_variant_candidates',4599,13851,'ok','gpt-4o-mini'],
+            ['10:27:38','Easy Tour','тузкан туда тур есть?','get_product_candidates',9669,12479,'ok','gpt-4o-mini'],
+            ['10:26:48','Easy Tour','привет','—',182,0,'—','—'],
+            ['09:14:52','Easy Tour','есть тур в тузкон дайте информацию…','get_variant_candidates · get_product_candidates',18636,21930,'slow','gpt-4o-mini'],
+            ['09:13:17','Easy Tour','ошибка валидации параметров','get_product_candidates',842,512,'error','gpt-4o-mini'],
+          ].map(r=>{
+            const slow = r[4] > 5000;
+            const err = r[6] === 'error';
+            const none = r[6] === '—';
+            const tone = err?'bad':slow?'warn':none?'dim':'good';
+            return `
+            <tr class="fr-ai-row ${err?'fr-ai-err':''}">
+              <td class="fr-r fr-mono fr-sm fr-dim fr-tnum">${r[0]}</td>
+              <td>${r[1]}</td>
+              <td class="fr-truncate">${r[2]}</td>
+              <td class="fr-mono fr-xs fr-dim">${r[3]}</td>
+              <td class="fr-r fr-tnum" style="color:${slow?'var(--warn)':err?'var(--bad)':'var(--ink)'}">${r[4].toLocaleString()}</td>
+              <td class="fr-r fr-tnum fr-dim">${r[5].toLocaleString()}</td>
+              <td><span class="fr-chip fr-chip-${tone}">${err?'● error':slow?'● slow':none?'— no call':'● ok'}</span></td>
+              <td class="fr-mono fr-xs fr-dim">${r[7]}</td>
+              <td class="fr-r"><a class="fr-link">↗</a></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div class="fr-pager">
+        <span class="fr-dim">Показано 10 из 50 · последний час</span>
+        <div class="flex items-center gap-1">
+          <button class="fr-page-b">‹</button>
+          <button class="fr-page-b on">1</button>
+          <button class="fr-page-b">2</button>
+          <button class="fr-page-b">3</button>
+          <span class="fr-dim">…</span>
+          <button class="fr-page-b">5</button>
+          <button class="fr-page-b">›</button>
+        </div>
+      </div>
+    </div>
+  </div>
+`)}`;
+
+/* Billing */
+P.billing = () => `
+${shell('billing', ['Платформа','Биллинг'], `
+  <div class="fr-page">
+    <div class="fr-page-h">
+      <div>
+        <h1 class="fr-h1">Биллинг</h1>
+        <div class="fr-h-sub">Период: 22 мар — 21 апр · 30 дней</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="fr-btn fr-btn-ghost">Экспорт CSV</button>
+        <button class="fr-btn fr-btn-ghost">Экспорт PDF</button>
+      </div>
+    </div>
+
+    <div class="fr-card">
+      <div class="fr-card-h">
+        <div class="fr-card-t">Период</div>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="fr-field fr-field-inline"><label>С</label><input type="date" value="2026-03-22"/></div>
+        <div class="fr-field fr-field-inline"><label>По</label><input type="date" value="2026-04-21"/></div>
+        <div class="fr-seg">
+          <button class="fr-seg-b">7д</button>
+          <button class="fr-seg-b on">30д</button>
+          <button class="fr-seg-b">90д</button>
+          <button class="fr-seg-b">YTD</button>
+        </div>
+        <button class="fr-btn fr-btn-primary fr-btn-sm">Обновить</button>
+      </div>
+    </div>
+
+    <div class="fr-kpi-grid fr-kpi-5">
+      ${kpi({label:'СООБЩЕНИЙ', value:'829', sub:'вх. + исх.', delta:'▲ +14%'})}
+      ${kpi({label:'AI ВЫЗОВОВ', value:'493', sub:'≈ 59% от сообщений', delta:'▲ +8%'})}
+      ${kpi({label:'ЗАКАЗОВ', value:'7', sub:'конв. 0.84%'})}
+      ${kpi({label:'ДИАЛОГОВ', value:'11', sub:'avg 0.64 заказа/диалог'})}
+      ${kpi({label:'СТОИМОСТЬ', value:'$0.04', sub:'≈ 500 tok/call · gpt-4o-mini', delta:'', tone:'accent'})}
+    </div>
+
+    <div class="fr-row-2">
+      <div class="fr-card fr-card-chart">
+        <div class="fr-card-h">
+          <div class="fr-card-t">AI вызовы · 30 дней</div>
+          <div class="fr-dim fr-sm">итого 493 · avg 16/день</div>
+        </div>
+        <div class="fr-chart fr-chart-sm">
+          <div class="fr-chart-body">
+            <div class="fr-chart-bars">
+              ${Array.from({length:30},(_,i)=>{const v=Math.round(30+50*Math.sin(i/4)+Math.random()*30);return `<div class="fr-chart-col"><div class="fr-chart-bar" style="height:${v}%"></div></div>`}).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fr-card">
+        <div class="fr-card-h"><div class="fr-card-t">Распределение по моделям</div></div>
+        <div class="fr-dist">
+          ${[['gpt-4o-mini',478,0.04,'accent'],['gpt-4o',15,0.002,'info']].map(([m,c,cost,tone])=>`
+            <div class="fr-dist-row">
+              <span class="fr-chip fr-chip-${tone} fr-mono fr-xs">${m}</span>
+              <div class="fr-dist-bar"><div style="width:${c/493*100}%;background:var(--${tone})"></div></div>
+              <span class="fr-tnum fr-right">${c}</span>
+              <span class="fr-tnum fr-dim fr-right">${cost.toFixed(3)}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="fr-card fr-p0">
+      <div class="fr-card-h fr-px"><div class="fr-card-t">Использование по тенантам</div><a class="fr-link">все →</a></div>
+      <table class="fr-table fr-table-bordered">
+        <thead><tr><th>ТЕНАНТ</th><th class="fr-r">СООБЩЕНИЯ</th><th class="fr-r">AI ВЫЗОВЫ</th><th class="fr-r">ЗАКАЗЫ</th><th class="fr-r">ДИАЛОГИ</th><th class="fr-r">ТОКЕНЫ</th><th class="fr-r">СТОИМОСТЬ</th></tr></thead>
+        <tbody>
+          <tr><td><div class="fr-ident"><div class="fr-ident-av">ET</div><div><div class="fr-ident-t">Easy Tour</div><div class="fr-ident-s fr-mono">easy-tour</div></div></div></td>
+            <td class="fr-r fr-tnum">230</td><td class="fr-r fr-tnum">478</td><td class="fr-r fr-tnum">2</td><td class="fr-r fr-tnum">5</td><td class="fr-r fr-tnum fr-dim">239,000</td><td class="fr-r fr-tnum" style="color:var(--accent)">$0.04</td></tr>
+          <tr><td><div class="fr-ident"><div class="fr-ident-av">TD</div><div><div class="fr-ident-t">TechnoUz Demo Store</div><div class="fr-ident-s fr-mono">technouz-demo</div></div></div></td>
+            <td class="fr-r fr-tnum">599</td><td class="fr-r fr-tnum">15</td><td class="fr-r fr-tnum">5</td><td class="fr-r fr-tnum">6</td><td class="fr-r fr-tnum fr-dim">7,500</td><td class="fr-r fr-tnum fr-dim">$0.00</td></tr>
+        </tbody>
+        <tfoot><tr><td class="fr-bold">Всего</td><td class="fr-r fr-tnum fr-bold">829</td><td class="fr-r fr-tnum fr-bold">493</td><td class="fr-r fr-tnum fr-bold">7</td><td class="fr-r fr-tnum fr-bold">11</td><td class="fr-r fr-tnum fr-bold">246,500</td><td class="fr-r fr-tnum fr-bold" style="color:var(--accent)">$0.04</td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+`)}`;
+
+/* Logs */
+P.logs = () => `
+${shell('logs', ['Платформа','Логи'], `
+  <div class="fr-page">
+    <div class="fr-page-h">
+      <div>
+        <h1 class="fr-h1">Аудит логи <span class="fr-count">50</span></h1>
+        <div class="fr-h-sub">Записей 8,432 всего · retention 90 дней</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="fr-btn fr-btn-ghost">Экспорт</button>
+        <button class="fr-btn fr-btn-ghost">↻</button>
+      </div>
+    </div>
+
+    <div class="fr-toolbar">
+      <div class="fr-search"><span class="fr-search-ic">⌕</span><input placeholder="actor email · entity id · trace id…"/></div>
+      <select class="fr-select"><option>Все тенанты</option></select>
+      <select class="fr-select"><option>Все действия</option></select>
+      <div class="fr-seg">
+        <button class="fr-seg-b">1ч</button>
+        <button class="fr-seg-b on">24ч</button>
+        <button class="fr-seg-b">7д</button>
+        <button class="fr-seg-b">30д</button>
+        <button class="fr-seg-b">custom</button>
+      </div>
+    </div>
+
+    <div class="fr-card fr-p0">
+      <table class="fr-table fr-table-bordered fr-logs-table">
+        <thead><tr>
+          <th class="fr-r">ВРЕМЯ</th>
+          <th>АКТОР</th>
+          <th>ДЕЙСТВИЕ</th>
+          <th>СУЩНОСТЬ</th>
+          <th>ТЕНАНТ</th>
+          <th class="fr-r">TRACE</th>
+          <th class="fr-r"></th>
+        </tr></thead>
+        <tbody>
+          <tr class="fr-log-row fr-log-expanded">
+            <td class="fr-r fr-mono fr-sm fr-dim fr-tnum">01:38:14</td>
+            <td><div class="fr-actor"><div class="fr-ident-av fr-ident-av-sm">SA</div><div><div class="fr-mono fr-sm">superadmin@gmail.com</div><div class="fr-xs fr-dim">user · ip 94.158.22.14</div></div></div></td>
+            <td><span class="fr-chip fr-chip-accent">impersonate</span></td>
+            <td><span class="fr-mono fr-xs">User <span class="fr-dim">0c20337</span></span></td>
+            <td>TechnoUz Demo Store</td>
+            <td class="fr-r fr-mono fr-xs fr-dim">7a21b…</td>
+            <td class="fr-r"><a class="fr-link">скрыть ▴</a></td>
+          </tr>
+          <tr class="fr-log-detail"><td colspan="7">
+            <div class="fr-detail-grid">
+              <div><dt>admin_email</dt><dd class="fr-mono">superadmin@gmail.com</dd></div>
+              <div><dt>target_tenant</dt><dd>TechnoUz Demo Store <span class="fr-dim fr-mono">technouz-demo</span></dd></div>
+              <div><dt>target_user</dt><dd class="fr-mono">admin@gmail.com</dd></div>
+              <div><dt>reason</dt><dd class="fr-dim">не указана</dd></div>
+              <div><dt>ip</dt><dd class="fr-mono">94.158.22.14 · Tashkent, UZ</dd></div>
+              <div><dt>ua</dt><dd class="fr-mono fr-xs fr-dim">Mozilla/5.0 (Mac) Chrome/131</dd></div>
+              <div><dt>session_id</dt><dd class="fr-mono fr-xs">sess_7a21b9c4…</dd></div>
+              <div><dt>duration</dt><dd class="fr-tnum">22 мин · ещё активна</dd></div>
+            </div>
+            <div class="fr-detail-f"><a class="fr-link">скопировать JSON</a> · <a class="fr-link">завершить сессию</a></div>
+          </td></tr>
+
+          ${[['23:50:12','SA','superadmin@gmail.com','impersonate','User 15806161','Easy Tour','ok'],
+             ['23:49:01','SA','superadmin@gmail.com','impersonate','User 0c20337','TechnoUz Demo Store','ok'],
+             ['14:34:22','AI','system','comment_smart_reply','Comment · 482','TechnoUz Demo Store','ok'],
+             ['14:31:08','AI','system','comment_smart_reply','Comment · 481','TechnoUz Demo Store','ok'],
+             ['14:30:44','AI','system','comment_smart_reply','Comment · 480','TechnoUz Demo Store','ok'],
+             ['14:24:17','AI','system','comment_smart_reply','Comment · 479','TechnoUz Demo Store','ok'],
+             ['14:22:05','AI','system','comment_smart_reply','Comment · 478','TechnoUz Demo Store','ok'],
+             ['13:12:33','SA','superadmin@gmail.com','tenant.update','Tenant · easy-tour','Easy Tour','ok'],
+             ['12:44:10','OW','admin@gmail.com','product.create','Product · 24','TechnoUz Demo Store','ok'],
+             ['12:40:05','OW','admin@gmail.com','product.update','Product · 23','TechnoUz Demo Store','ok']
+          ].map(r=>{
+            const isAi = r[1]==='AI';
+            const chip = r[3].startsWith('comment')?'info': r[3]==='impersonate'?'accent': r[3].startsWith('tenant')?'warn':'good';
+            return `
+            <tr class="fr-log-row">
+              <td class="fr-r fr-mono fr-sm fr-dim fr-tnum">${r[0]}</td>
+              <td><div class="fr-actor"><div class="fr-ident-av fr-ident-av-sm" style="${isAi?'background:var(--accentSoft);color:var(--accent)':''}">${r[1]}</div><div><div class="fr-mono fr-sm">${r[2]}</div><div class="fr-xs fr-dim">${isAi?'ai · background':'user'}</div></div></div></td>
+              <td><span class="fr-chip fr-chip-${chip} fr-mono fr-xs">${r[3]}</span></td>
+              <td><span class="fr-mono fr-xs fr-dim">${r[4]}</span></td>
+              <td>${r[5]}</td>
+              <td class="fr-r fr-mono fr-xs fr-dim">${Math.random().toString(16).slice(2,7)}…</td>
+              <td class="fr-r"><a class="fr-link">раскрыть ▾</a></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div class="fr-pager">
+        <span class="fr-dim">Показано 11 из 8,432 · последние 24ч</span>
+        <div class="flex items-center gap-1">
+          <button class="fr-page-b" disabled>‹</button>
+          <button class="fr-page-b on">1</button>
+          <button class="fr-page-b">2</button>
+          <button class="fr-page-b">3</button>
+          <span class="fr-dim">…</span>
+          <button class="fr-page-b">›</button>
+        </div>
+      </div>
+    </div>
+  </div>
+`)}`;
+
+/* Settings */
+P.settings = () => `
+${shell('settings', ['Платформа','Настройки'], `
+  <div class="fr-page">
+    <div class="fr-page-h">
+      <div>
+        <h1 class="fr-h1">Настройки платформы</h1>
+        <div class="fr-h-sub">Глобальные значения для новых тенантов · изменения логируются</div>
+      </div>
+      <div class="fr-dim fr-sm">Изменено 12 мар 2026 · <span class="fr-mono">superadmin@gmail.com</span></div>
+    </div>
+
+    <div class="fr-settings-layout">
+      <nav class="fr-set-nav">
+        <a class="on">AI</a>
+        <a>Локализация</a>
+        <a>Лимиты</a>
+        <a>Регистрация</a>
+        <a>Критические</a>
+        <a>Интеграции</a>
+      </nav>
+
+      <div class="fr-settings-body">
+
+        <section class="fr-card">
+          <div class="fr-card-h"><div class="fr-card-t">AI</div><div class="fr-dim fr-sm">применяется к новым тенантам</div></div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Модель по умолчанию</div><div class="fr-set-s">Основная LLM для новых тенантов</div></div>
+            <div class="fr-set-r"><select class="fr-select"><option>GPT-4o Mini · $0.15 / 1M</option><option>GPT-4o · $2.50 / 1M</option></select></div>
+          </div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Временный fallback</div><div class="fr-set-s">При недоступности основной модели</div></div>
+            <div class="fr-set-r"><select class="fr-select"><option>GPT-4o Mini</option></select></div>
+          </div>
+        </section>
+
+        <section class="fr-card">
+          <div class="fr-card-h"><div class="fr-card-t">Локализация</div></div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Язык по умолчанию</div><div class="fr-set-s">Язык AI для новых тенантов</div></div>
+            <div class="fr-set-r"><select class="fr-select"><option>Русский</option><option>O'zbek</option><option>English</option></select></div>
+          </div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Часовой пояс</div></div>
+            <div class="fr-set-r"><select class="fr-select"><option>Asia/Tashkent (UTC+5)</option></select></div>
+          </div>
+        </section>
+
+        <section class="fr-card">
+          <div class="fr-card-h"><div class="fr-card-t">Лимиты</div><button class="fr-link">сбросить к умолчаниям</button></div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Макс. товаров на тенант</div><div class="fr-set-s">Лимит товаров в каталоге</div></div>
+            <div class="fr-set-r"><input class="fr-input fr-input-num" value="500"/> <span class="fr-dim fr-sm">шт</span></div>
+          </div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Макс. пользователей</div><div class="fr-set-s">Лимит админов на тенант</div></div>
+            <div class="fr-set-r"><input class="fr-input fr-input-num" value="10"/> <span class="fr-dim fr-sm">чел</span></div>
+          </div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Макс. AI сообщений / день</div><div class="fr-set-s">Защита от превышения биллинга</div></div>
+            <div class="fr-set-r"><input class="fr-input fr-input-num" value="5000"/> <span class="fr-dim fr-sm">/день</span></div>
+          </div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Триал</div><div class="fr-set-s">Дни бесплатного использования</div></div>
+            <div class="fr-set-r"><input class="fr-input fr-input-num" value="14"/> <span class="fr-dim fr-sm">дней</span></div>
+          </div>
+        </section>
+
+        <section class="fr-card">
+          <div class="fr-card-h"><div class="fr-card-t">Регистрация</div></div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Регистрация новых тенантов</div><div class="fr-set-s">Разрешить самостоятельную регистрацию через landing</div></div>
+            <div class="fr-set-r"><button class="fr-switch"></button></div>
+          </div>
+        </section>
+
+        <section class="fr-card fr-card-danger">
+          <div class="fr-card-h">
+            <div>
+              <div class="fr-card-t" style="color:var(--bad)">⚠ Критические действия</div>
+              <div class="fr-dim fr-sm">эти настройки влияют на всех пользователей · требуется подтверждение</div>
+            </div>
+          </div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Режим обслуживания</div><div class="fr-set-s">Отключает AI обработку на всей платформе · пользователи увидят баннер</div></div>
+            <div class="fr-set-r"><button class="fr-switch"></button></div>
+          </div>
+          <div class="fr-set-row">
+            <div class="fr-set-l"><div class="fr-set-t">Read-only режим</div><div class="fr-set-s">Блокирует любые изменения данных</div></div>
+            <div class="fr-set-r"><button class="fr-switch"></button></div>
+          </div>
+        </section>
+
+        <div class="fr-settings-foot">
+          <div class="fr-dim fr-sm">Несохранённых изменений нет</div>
+          <div class="flex items-center gap-2">
+            <button class="fr-btn fr-btn-ghost">Отмена</button>
+            <button class="fr-btn fr-btn-primary">Сохранить настройки</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+`)}`;
+
+/* ---------- STYLES ---------- */
+const STYLES = `
+.fr-root{padding:0;background:var(--bg);min-height:100%}
+.fr-root *{box-sizing:border-box}
+.fr-root button,.fr-root input,.fr-root select{font:inherit;color:inherit}
+.fr-tnum{font-variant-numeric:tabular-nums}
+.fr-mono{font-family:'Geist Mono',ui-monospace,monospace}
+.fr-sm{font-size:11.5px}
+.fr-xs{font-size:10.5px}
+.fr-dim{color:var(--ink3)}
+.fr-bold{font-weight:600}
+.fr-right{text-align:right}
+.fr-r{text-align:right}
+.fr-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px;display:inline-block;vertical-align:middle}
+.fr-link{color:var(--accent);cursor:pointer;text-decoration:none;border-bottom:1px dotted var(--accentRing)}
+.fr-link:hover{border-bottom-style:solid}
+.min-w-0{min-width:0}
+
+/* shell */
+.fr-shell{display:grid;grid-template-columns:232px 1fr;min-height:800px;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:var(--shadow)}
+.fr-sidebar{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.fr-brand{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.fr-logo{width:30px;height:30px;border-radius:7px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700;letter-spacing:.5px}
+.fr-brand-t{font-size:13px;font-weight:600;color:var(--ink);line-height:1.1}
+.fr-brand-s{font-size:9.5px;text-transform:uppercase;letter-spacing:0.15em;color:var(--ink3);margin-top:2px;font-family:'Geist Mono',monospace}
+.fr-nav{flex:1;padding:10px 8px;overflow:auto}
+.fr-nav-g{font-size:9.5px;text-transform:uppercase;letter-spacing:0.16em;color:var(--ink4);padding:10px 10px 6px;font-family:'Geist Mono',monospace}
+.fr-nav-i{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;font-size:12.5px;color:var(--ink2);cursor:pointer;position:relative}
+.fr-nav-i:hover{background:var(--bg2);color:var(--ink)}
+.fr-nav-i.on{background:var(--accentSoft);color:var(--accent)}
+.fr-nav-ic{width:16px;text-align:center;font-size:12px;opacity:.9}
+.fr-nav-dot{position:absolute;right:10px;top:50%;width:4px;height:4px;border-radius:50%;background:var(--accent);transform:translateY(-50%)}
+.fr-user{padding:10px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.fr-avatar{width:30px;height:30px;border-radius:50%;background:var(--accentSoft);color:var(--accent);display:grid;place-items:center;font-size:11px;font-weight:600}
+.fr-user-t{font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px}
+.fr-user-s{font-size:9.5px;text-transform:uppercase;letter-spacing:0.1em;color:var(--ink3);font-family:'Geist Mono',monospace;margin-top:1px}
+.fr-ic-btn{width:28px;height:28px;border-radius:6px;background:transparent;border:0;color:var(--ink2);cursor:pointer;display:grid;place-items:center}
+.fr-ic-btn:hover{background:var(--bg2);color:var(--ink)}
+
+/* top */
+.fr-main{display:flex;flex-direction:column;min-width:0}
+.fr-top{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--bg)}
+.fr-crumbs{display:flex;align-items:center;gap:8px;font-size:12px}
+.fr-crumb{color:var(--ink3)}
+.fr-crumb-last{color:var(--ink);font-weight:500}
+.fr-crumb-sep{color:var(--ink4)}
+.fr-top-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.fr-cmdk{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.fr-kbd{font-family:'Geist Mono',monospace;font-size:10px;padding:1px 5px;border-radius:4px;border:1px solid var(--line2);color:var(--ink2);background:var(--bg2)}
+.fr-cmdk-t{font-size:11px;color:var(--ink3)}
+
+.fr-content{padding:20px 18px;overflow:auto}
+.fr-page{display:flex;flex-direction:column;gap:14px}
+.fr-page-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.fr-h1{font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--ink);margin:0;display:flex;align-items:center;gap:8px}
+.fr-count{font-size:11px;background:var(--accentSoft);color:var(--accent);padding:2px 7px;border-radius:999px;font-weight:500}
+.fr-h-sub{font-size:11.5px;color:var(--ink3);margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+
+/* card */
+.fr-card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px 14px;box-shadow:var(--shadow)}
+.fr-card.fr-p0{padding:0;overflow:hidden}
+.fr-card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.fr-card-h.fr-px{padding:13px 14px 10px}
+.fr-card-t{font-size:12px;font-weight:600;color:var(--ink);letter-spacing:0}
+.fr-card-s{font-size:10.5px;color:var(--ink3);margin-top:2px;font-family:'Geist Mono',monospace;letter-spacing:0.02em}
+.fr-row-2{display:grid;grid-template-columns:1.5fr 1fr;gap:12px}
+.fr-row-2-5050{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fr-card-chart{padding-bottom:8px}
+.fr-card-danger{border-color:color-mix(in oklab, var(--bad) 50%, var(--line))}
+
+/* kpi */
+.fr-kpi-grid{display:grid;gap:10px}
+.fr-kpi-4{grid-template-columns:repeat(4,1fr)}
+.fr-kpi-5{grid-template-columns:repeat(5,1fr)}
+.fr-kpi{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:12px 13px;display:flex;flex-direction:column;gap:4px;box-shadow:var(--shadow)}
+.fr-kpi-l{font-size:9.5px;text-transform:uppercase;letter-spacing:0.18em;color:var(--ink3);font-family:'Geist Mono',monospace;font-weight:500}
+.fr-kpi-v{font-size:26px;line-height:1;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-0.02em;margin-top:2px}
+.fr-kpi-row{display:flex;align-items:center;gap:8px;font-size:10.5px;font-family:'Geist Mono',monospace}
+.fr-delta{font-weight:500}
+.fr-kpi-s{color:var(--ink3)}
+.fr-spark{display:flex;align-items:flex-end;gap:2px;height:16px;margin-top:6px;opacity:.75}
+
+/* chart */
+.fr-chart{display:grid;grid-template-columns:36px 1fr;gap:8px;height:180px;margin-top:6px}
+.fr-chart-sm{height:90px}
+.fr-chart-y{display:flex;flex-direction:column;justify-content:space-between;font-size:9.5px;color:var(--ink4);font-family:'Geist Mono',monospace;text-align:right;padding:4px 0}
+.fr-chart-body{position:relative;border-left:1px solid var(--line);border-bottom:1px solid var(--line)}
+.fr-chart-grid{position:absolute;inset:0;display:grid;grid-template-rows:repeat(4,1fr);pointer-events:none}
+.fr-chart-grid>div{border-top:1px dashed var(--hair)}
+.fr-chart-bars{position:absolute;inset:6px 4px 0 4px;display:flex;align-items:flex-end;gap:6px}
+.fr-chart-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;position:relative}
+.fr-chart-col:hover .fr-chart-bar{opacity:1;background:var(--accent)}
+.fr-chart-bar{width:100%;min-height:1px;background:var(--accent);opacity:.7;border-radius:2px 2px 0 0;transition:opacity .15s,background .15s}
+.fr-chart-v{font-size:9.5px;color:var(--ink3);font-family:'Geist Mono',monospace;font-variant-numeric:tabular-nums}
+.fr-chart-x{font-size:9.5px;color:var(--ink3);font-family:'Geist Mono',monospace;position:absolute;bottom:-18px}
+
+/* table */
+.fr-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.fr-table thead th{font-size:9.5px;text-transform:uppercase;letter-spacing:0.15em;color:var(--ink3);font-family:'Geist Mono',monospace;font-weight:500;text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.fr-table tbody td{padding:10px 12px;border-bottom:1px solid var(--hair);color:var(--ink);vertical-align:middle}
+.fr-table tbody tr:last-child td{border-bottom:0}
+.fr-table tbody tr:hover td{background:var(--bg2)}
+.fr-table tfoot td{padding:10px 12px;border-top:1px solid var(--line);font-size:12px;background:var(--panel2)}
+.fr-table-bordered{background:var(--panel)}
+.fr-check{width:32px}
+.fr-check input{accent-color:var(--accent)}
+.fr-rank{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--bg2);border:1px solid var(--line);color:var(--ink3);font-size:10px;font-family:'Geist Mono',monospace;margin-right:8px}
+
+.fr-ident{display:flex;align-items:center;gap:10px;min-width:0}
+.fr-ident-lg .fr-ident-av-lg{width:40px;height:40px;font-size:13px}
+.fr-ident-av{width:28px;height:28px;border-radius:6px;background:var(--accentSoft);color:var(--accent);display:grid;place-items:center;font-size:10.5px;font-weight:600;flex-shrink:0}
+.fr-ident-av-sm{width:24px;height:24px;font-size:9.5px;border-radius:5px}
+.fr-ident-t{color:var(--ink);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
+.fr-ident-s{color:var(--ink3);font-size:10.5px;margin-top:1px}
+
+/* chips */
+.fr-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:500;line-height:1.4;border:1px solid transparent}
+.fr-chip-good{background:var(--goodSoft);color:var(--good);border-color:color-mix(in oklab,var(--good) 30%, transparent)}
+.fr-chip-warn{background:var(--warnSoft);color:var(--warn);border-color:color-mix(in oklab,var(--warn) 30%, transparent)}
+.fr-chip-bad{background:var(--badSoft);color:var(--bad);border-color:color-mix(in oklab,var(--bad) 30%, transparent)}
+.fr-chip-accent{background:var(--accentSoft);color:var(--accent);border-color:color-mix(in oklab,var(--accent) 30%, transparent)}
+.fr-chip-info{background:var(--infoSoft);color:var(--info);border-color:color-mix(in oklab,var(--info) 30%, transparent)}
+.fr-chip-dim{background:var(--bg2);color:var(--ink3);border-color:var(--line)}
+.fr-chip-mono{background:var(--bg2);color:var(--ink2);border-color:var(--line);font-family:'Geist Mono',monospace;font-size:10px}
+.fr-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ink3);margin-right:2px;vertical-align:middle}
+.fr-dot-good{background:var(--good);box-shadow:0 0 0 2px color-mix(in oklab,var(--good) 25%, transparent)}
+.fr-pulse{animation:fr-pulse 2s ease-in-out infinite}
+@keyframes fr-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* buttons */
+.fr-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:6px;font-size:12px;font-weight:500;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;transition:.12s}
+.fr-btn:hover{background:var(--bg2);border-color:var(--line2)}
+.fr-btn-sm{padding:4px 9px;font-size:11.5px}
+.fr-btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.fr-btn-primary:hover{filter:brightness(1.1);background:var(--accent)}
+.fr-btn-warn{background:var(--warn);color:#1a1205;border-color:var(--warn);font-weight:600}
+.fr-btn-warn:hover{filter:brightness(1.05)}
+.fr-btn-ghost{background:transparent}
+.fr-btn-full{width:100%;justify-content:center;padding:9px 11px;font-size:13px}
+
+/* segmented */
+.fr-seg{display:inline-flex;padding:2px;background:var(--bg2);border:1px solid var(--line);border-radius:7px}
+.fr-seg-b{padding:4px 10px;font-size:11px;border-radius:5px;background:transparent;border:0;color:var(--ink3);cursor:pointer}
+.fr-seg-b.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px #0002}
+.fr-seg-b:hover:not(.on){color:var(--ink)}
+
+/* inputs */
+.fr-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.fr-field label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink3);font-family:'Geist Mono',monospace;display:flex;align-items:center;justify-content:space-between}
+.fr-field input,.fr-field select,.fr-input{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12.5px;color:var(--ink);outline:none}
+.fr-field input:focus,.fr-select:focus,.fr-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
+.fr-input-wrap{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:6px;background:var(--bg);overflow:hidden}
+.fr-input-wrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
+.fr-input-wrap input{border:0;background:transparent;flex:1;padding:8px 10px;font-size:12.5px;outline:none}
+.fr-input-pre{padding:8px 10px;color:var(--ink3);font-size:11px;background:var(--bg2);border-right:1px solid var(--line)}
+.fr-input-x{background:transparent;border:0;color:var(--ink3);padding:0 10px;cursor:pointer}
+.fr-input-num{width:100px}
+.fr-select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--ink);cursor:pointer}
+.fr-select-xs{padding:4px 8px;font-size:11px}
+.fr-field-inline{flex-direction:row;align-items:center;gap:8px;margin:0}
+.fr-field-inline label{letter-spacing:0.1em}
+.fr-check-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);cursor:pointer}
+.fr-check-row input{accent-color:var(--accent)}
+
+/* search */
+.fr-search{position:relative;min-width:280px}
+.fr-search-ic{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--ink3);font-size:12px}
+.fr-search input{width:100%;padding:7px 10px 7px 30px;background:var(--panel);border:1px solid var(--line);border-radius:7px;font-size:12px;color:var(--ink);outline:none}
+.fr-search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
+
+/* toolbar */
+.fr-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* pager */
+.fr-pager{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--line);background:var(--panel2);font-size:11.5px}
+.fr-page-b{width:28px;height:26px;border-radius:5px;background:transparent;border:1px solid var(--line);color:var(--ink2);font-size:11px;cursor:pointer;display:inline-grid;place-items:center}
+.fr-page-b.on{background:var(--accentSoft);color:var(--accent);border-color:var(--accent)}
+.fr-page-b:disabled{opacity:.4;cursor:not-allowed}
+
+/* events/health/dl */
+.fr-events{display:flex;flex-direction:column;gap:2px}
+.fr-event{display:grid;grid-template-columns:60px auto 1fr auto;gap:10px;padding:7px 0;border-bottom:1px dashed var(--hair);font-size:12px;align-items:center}
+.fr-event:last-child{border:0}
+.fr-health{display:flex;flex-direction:column;gap:2px}
+.fr-health-row{display:grid;grid-template-columns:16px 1fr auto;gap:10px;padding:8px 0;border-bottom:1px dashed var(--hair);align-items:center}
+.fr-health-row:last-child{border:0}
+.fr-health-t{font-size:12.5px;color:var(--ink)}
+.fr-health-s{font-size:10.5px;color:var(--ink3);font-family:'Geist Mono',monospace;margin-top:1px}
+.fr-tok{font-family:'Geist Mono',monospace;font-size:11px;color:var(--ink2)}
+.fr-dl{display:grid;grid-template-columns:1fr;gap:0;margin:0}
+.fr-dl>div{display:grid;grid-template-columns:150px 1fr;padding:7px 0;border-bottom:1px dashed var(--hair)}
+.fr-dl>div:last-child{border:0}
+.fr-dl dt{font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:0.12em;font-family:'Geist Mono',monospace}
+.fr-dl dd{font-size:12px;color:var(--ink);margin:0}
+
+/* tabs */
+.fr-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-top:-4px}
+.fr-tab{padding:9px 13px;font-size:12px;color:var(--ink3);background:transparent;border:0;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px}
+.fr-tab:hover{color:var(--ink)}
+.fr-tab.on{color:var(--ink);border-bottom-color:var(--accent)}
+
+/* ai table */
+.fr-ai-table tbody td{padding:8px 12px}
+.fr-ai-err td{background:color-mix(in oklab, var(--bad) 6%, transparent)}
+
+/* logs table */
+.fr-logs-table tbody td{padding:9px 12px}
+.fr-actor{display:flex;align-items:center;gap:8px}
+.fr-log-expanded td{background:var(--bg2)}
+.fr-log-detail td{padding:12px 14px !important;background:var(--bg2);border-top:1px dashed var(--line)}
+.fr-detail-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px 30px}
+.fr-detail-grid>div{display:grid;grid-template-columns:110px 1fr;align-items:center;padding-bottom:4px;border-bottom:1px dashed var(--hair)}
+.fr-detail-grid dt{font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:0.14em;font-family:'Geist Mono',monospace}
+.fr-detail-grid dd{font-size:12px;margin:0}
+.fr-detail-f{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:11.5px}
+
+/* dist */
+.fr-dist{display:flex;flex-direction:column;gap:6px}
+.fr-dist-row{display:grid;grid-template-columns:100px 1fr 50px 60px;gap:8px;align-items:center;font-size:11.5px}
+.fr-dist-bar{height:6px;background:var(--bg2);border-radius:3px;overflow:hidden}
+.fr-dist-bar>div{height:100%}
+
+/* settings */
+.fr-settings-layout{display:grid;grid-template-columns:180px 1fr;gap:14px}
+.fr-set-nav{display:flex;flex-direction:column;gap:2px;position:sticky;top:10px;align-self:start}
+.fr-set-nav a{padding:7px 10px;font-size:12px;color:var(--ink3);border-radius:6px;cursor:pointer;border-left:2px solid transparent}
+.fr-set-nav a:hover{color:var(--ink);background:var(--bg2)}
+.fr-set-nav a.on{color:var(--accent);border-left-color:var(--accent);background:var(--accentSoft)}
+.fr-settings-body{display:flex;flex-direction:column;gap:12px}
+.fr-set-row{display:grid;grid-template-columns:1fr auto;gap:20px;padding:12px 0;border-top:1px dashed var(--hair);align-items:center}
+.fr-set-row:first-of-type{border-top:0;padding-top:4px}
+.fr-set-t{font-size:12.5px;color:var(--ink);font-weight:500}
+.fr-set-s{font-size:10.5px;color:var(--ink3);margin-top:2px;max-width:380px}
+.fr-set-r{display:flex;align-items:center;gap:8px}
+.fr-switch{width:36px;height:20px;border-radius:999px;background:var(--bg2);border:1px solid var(--line);position:relative;cursor:pointer}
+.fr-switch::after{content:"";position:absolute;top:1px;left:1px;width:16px;height:16px;border-radius:50%;background:var(--ink3);transition:.15s}
+.fr-switch.on{background:var(--accent);border-color:var(--accent)}
+.fr-switch.on::after{transform:translateX(16px);background:#fff}
+.fr-settings-foot{display:flex;align-items:center;justify-content:space-between;padding-top:6px}
+
+/* modal */
+.fr-page-modal-bg{position:relative;min-height:400px}
+.fr-page-modal-bg::before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);border-radius:8px;pointer-events:none}
+.fr-modal{position:relative;max-width:480px;margin:24px auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 20px 60px -20px #000a}
+.fr-modal-h{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}
+.fr-modal-t{font-size:15px;font-weight:600;color:var(--ink)}
+.fr-modal-s{font-size:11.5px;color:var(--ink3);margin-top:3px}
+.fr-modal-section{padding:12px 18px;border-bottom:1px solid var(--line)}
+.fr-section-h{font-size:10px;text-transform:uppercase;letter-spacing:0.16em;color:var(--ink3);font-family:'Geist Mono',monospace;margin-bottom:10px}
+.fr-modal-f{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px}
+
+/* login */
+.fr-login-page{position:relative;min-height:560px;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px}
+.fr-login-bg{position:absolute;inset:0;overflow:hidden}
+.fr-login-grid{position:absolute;inset:0;background-image:linear-gradient(var(--hair) 1px,transparent 1px),linear-gradient(90deg,var(--hair) 1px,transparent 1px);background-size:36px 36px;opacity:.35}
+.fr-login-glow{position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,var(--accent) 0%,transparent 60%);opacity:.08;top:-100px;left:50%;transform:translateX(-50%)}
+.fr-login-card{position:relative;width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:28px;box-shadow:0 20px 60px -20px #000c}
+.fr-login-brand{text-align:center;margin-bottom:22px}
+.fr-login-logo{width:42px;height:42px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:14px;font-weight:700;margin:0 auto 12px;letter-spacing:.5px}
+.fr-login-t{font-size:17px;font-weight:600;color:var(--ink)}
+.fr-login-s{font-size:11.5px;color:var(--ink3);margin-top:3px}
+.fr-login-meta{margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;color:var(--ink3);padding-top:14px;border-top:1px dashed var(--hair)}
+.fr-login-foot{position:relative;margin-top:20px;font-size:10.5px;color:var(--ink4);font-family:'Geist Mono',monospace}
+`;
+
+/* ---------- BUILD ---------- */
+window.buildFull = function (root) {
+
+  root.innerHTML = `
+    <div class="max-w-[1400px] mx-auto">
+      <div class="mb-4" data-reveal>
+        <div class="text-[10.5px] font-semibold tracking-[0.18em] uppercase text-[#8a847a] mb-2">Full Redesign · 10 pages · dark + light</div>
+        <div class="flex items-baseline justify-between gap-4 flex-wrap">
+          <h2 class="serif text-[48px] leading-[1] tracking-tight">Полный редизайн</h2>
+          <div class="flex items-center gap-2">
+            <span class="mono text-[10px] uppercase tracking-[0.18em] text-[#8a847a]">theme</span>
+            <div id="frThemeSwitch" class="flex items-center gap-1 rounded-md" style="border:1px solid var(--line);padding:2px">
+              <button data-theme="dark" class="on" style="font-size:10.5px;padding:5px 10px;border-radius:5px;background:#141210;color:#faf8f2">Dark</button>
+              <button data-theme="light" style="font-size:10.5px;padding:5px 10px;border-radius:5px">Light</button>
+            </div>
+          </div>
+        </div>
+        <p class="mt-3 text-[13.5px] text-[#5a544c] max-w-[720px] leading-relaxed">
+          Все 10 страниц супер-админ панели в новой системе. Тёмная тема по умолчанию — как у вас сейчас,
+          но с починенной иерархией, tabular‑nums, одной accent‑шкалой, осями графиков, drill‑down в KPI,
+          отдельным drawer для деталей в логах и AI-мониторе. Светлая версия — один переключатель.
+        </p>
+      </div>
+
+      <div id="frSubnav" class="flex items-center gap-1 flex-wrap mb-4 sticky top-12 z-30 py-2" style="background:rgba(244,242,236,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)">
+        ${PAGES.map(([k,l],i) => `
+          <button class="fr-subnav-b ${i===0?'on':''}" data-page="${k}">
+            <span class="fr-subnav-n">${String(i+1).padStart(2,'0')}</span>
+            <span>${l}</span>
+          </button>`).join('')}
+      </div>
+
+      <div id="frCanvas" class="rounded-xl overflow-hidden" data-reveal></div>
+    </div>
+
+    <style>
+      .fr-subnav-b{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;font-size:11px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink2);cursor:pointer;font-family:'Geist',system-ui,sans-serif}
+      .fr-subnav-b:hover{background:var(--bg2);color:var(--ink)}
+      .fr-subnav-b.on{background:#141210;color:#faf8f2;border-color:#141210}
+      .fr-subnav-n{font-family:'Geist Mono',monospace;font-size:9.5px;opacity:.6;letter-spacing:0.12em}
+      ${STYLES}
+    </style>
+  `;
+
+  const canvas = root.querySelector('#frCanvas');
+  let current = 'overview';
+  let theme = 'dark';
+
+  function renderPage() {
+    const t = T[theme];
+    canvas.innerHTML = `<div class="fr-root" style="${css(t)}">${P[current]()}</div>`;
+  }
+
+  root.querySelectorAll('#frSubnav .fr-subnav-b').forEach(b => {
+    b.addEventListener('click', () => {
+      root.querySelectorAll('#frSubnav .fr-subnav-b').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      current = b.dataset.page;
+      renderPage();
+    });
+  });
+  root.querySelectorAll('#frThemeSwitch button').forEach(b => {
+    b.addEventListener('click', () => {
+      root.querySelectorAll('#frThemeSwitch button').forEach(x => {
+        x.classList.remove('on');
+        x.style.background = 'transparent';
+        x.style.color = 'inherit';
+      });
+      b.classList.add('on');
+      b.style.background = '#141210'; b.style.color = '#faf8f2';
+      theme = b.dataset.theme;
+      renderPage();
+    });
+  });
+
+  renderPage();
+};
+
+})();
+
+</script>
+<script>
+/* === app.js === */
+/* -------- app.js — shell wiring, direction + tweaks -------- */
+(function () {
+  const ROOT = document.body;
+  const DIR_CLASSES = ['dir-cockpit', 'dir-editorial', 'dir-terminal'];
+  const state = { ...window.TWEAK_DEFAULTS };
+
+  function applyDirection(dir) {
+    // Default doc shell always uses editorial palette (paper).
+    // The per-tab content that calls .dir-xyz will switch accordingly.
+    document.querySelectorAll('.tab-panel').forEach(p => {
+      DIR_CLASSES.forEach(c => p.classList.remove(c));
+      p.classList.add('dir-' + dir);
+    });
+    // mark switch buttons
+    document.querySelectorAll('#dirSwitch button, #tweakDir button').forEach(b => {
+      const active = b.dataset.dir === dir;
+      b.style.background = active ? '#141210' : 'transparent';
+      b.style.color      = active ? '#faf8f2' : '#141210';
+    });
+    state.direction = dir;
+    window.__DIR__ = dir;
+    document.dispatchEvent(new CustomEvent('dir-change', { detail: dir }));
+  }
+
+  function setTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    const el = document.getElementById('tab-' + name);
+    if (el) el.classList.remove('hidden');
+    document.querySelectorAll('#nav .tab-btn').forEach(b => {
+      const active = b.dataset.tab === name;
+      b.style.background = active ? '#141210' : 'transparent';
+      b.style.color      = active ? '#faf8f2' : '#141210';
+    });
+    try { localStorage.setItem('ac_tab', name); } catch (e) {}
+    state.defaultTab = name;
+  }
+
+  function setDensity(d) {
+    document.body.dataset.density = d;
+    document.querySelectorAll('#tweakDensity button').forEach(b => {
+      const active = b.dataset.d === d;
+      b.style.background = active ? '#141210' : 'transparent';
+      b.style.color      = active ? '#faf8f2' : '#141210';
+    });
+    state.density = d;
+    document.dispatchEvent(new CustomEvent('density-change', { detail: d }));
+  }
+
+  function setSidebar(s) {
+    document.body.dataset.sidebar = s;
+    document.querySelectorAll('#tweakSidebar button').forEach(b => {
+      const active = b.dataset.s === s;
+      b.style.background = active ? '#141210' : 'transparent';
+      b.style.color      = active ? '#faf8f2' : '#141210';
+    });
+    state.sidebar = s;
+    document.dispatchEvent(new CustomEvent('sidebar-change', { detail: s }));
+  }
+
+  function persist() {
+    try {
+      window.parent.postMessage({ type: '__edit_mode_set_keys', edits: state }, '*');
+    } catch (e) {}
+  }
+
+  // ---------- mount all tabs ----------
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.buildAudit)  window.buildAudit(document.getElementById('tab-audit'));
+    if (window.buildSystem) window.buildSystem(document.getElementById('tab-system'));
+    if (window.buildMocks)  window.buildMocks(document.getElementById('tab-mocks'));
+    if (window.buildProto)  window.buildProto(document.getElementById('tab-proto'));
+    if (window.buildFull)   window.buildFull(document.getElementById('tab-full'));
+
+    // nav
+    document.querySelectorAll('#nav .tab-btn').forEach(b => {
+      b.addEventListener('click', () => { setTab(b.dataset.tab); persist(); });
+    });
+    document.querySelectorAll('#dirSwitch button, #tweakDir button').forEach(b => {
+      b.addEventListener('click', () => { applyDirection(b.dataset.dir); persist(); });
+    });
+    document.querySelectorAll('#tweakDensity button').forEach(b => {
+      b.addEventListener('click', () => { setDensity(b.dataset.d); persist(); });
+    });
+    document.querySelectorAll('#tweakSidebar button').forEach(b => {
+      b.addEventListener('click', () => { setSidebar(b.dataset.s); persist(); });
+    });
+
+    // tweaks panel
+    const tweaksPanel = document.getElementById('tweaks');
+    const tweaksOpen  = document.getElementById('tweaksOpen');
+    const tweaksClose = document.getElementById('tweaksClose');
+    let tweaksEnabled = false;
+
+    function openTweaks() { if (tweaksEnabled) { tweaksPanel.classList.remove('hidden'); tweaksOpen.classList.add('hidden'); } }
+    function closeTweaks() { tweaksPanel.classList.add('hidden'); if (tweaksEnabled) tweaksOpen.classList.remove('hidden'); }
+    tweaksOpen.addEventListener('click', openTweaks);
+    tweaksClose.addEventListener('click', closeTweaks);
+
+    // EDIT MODE protocol
+    window.addEventListener('message', (e) => {
+      if (!e.data || !e.data.type) return;
+      if (e.data.type === '__activate_edit_mode')   { tweaksEnabled = true; tweaksOpen.classList.remove('hidden'); }
+      if (e.data.type === '__deactivate_edit_mode') { tweaksEnabled = false; closeTweaks(); tweaksOpen.classList.add('hidden'); }
+    });
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch (e) {}
+    tweaksOpen.classList.add('hidden'); // hidden by default until host turns on
+
+    // initial state: restore last tab if any
+    let initialTab = state.defaultTab;
+    try { const t = localStorage.getItem('ac_tab'); if (t) initialTab = t; } catch (e) {}
+    applyDirection(state.direction);
+    setDensity(state.density);
+    setSidebar(state.sidebar);
+    setTab(initialTab);
+
+    // reveal on scroll
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(x => { if (x.isIntersecting) x.target.classList.add('in'); });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('[data-reveal]').forEach(e => io.observe(e));
+  });
+})();
+
+</script>
+
+
+</body>
+</html>

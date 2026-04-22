@@ -1,0 +1,19 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - img [ref=e10]
+      - heading "AI Closer" [level=1] [ref=e12]
+      - paragraph [ref=e13]: Войти в панель управления
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - generic [ref=e16]: Email
+        - textbox "admin@example.com" [ref=e17]
+      - generic [ref=e18]:
+        - generic [ref=e19]: Пароль
+        - generic [ref=e20]:
+          - textbox "••••••••" [ref=e21]
+          - button [ref=e22]:
+            - img [ref=e23]
+      - button "Войти" [ref=e26]
+      - button "Забыли пароль?" [ref=e28]
+  - alert [ref=e29]

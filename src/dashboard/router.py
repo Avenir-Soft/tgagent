@@ -21,6 +21,7 @@ from src.dashboard.service import (
     send_broadcast_background,
     send_cart_recovery as svc_cart_recovery,
 )
+from src.core.audit import log_audit
 from src.leads.models import Lead
 from src.orders.models import Order
 
@@ -48,7 +49,7 @@ async def get_abandoned_carts(
 @limiter.limit("10/minute")
 async def send_cart_recovery(
     request: Request,
-    conversation_id,
+    conversation_id: _UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
@@ -178,6 +179,8 @@ async def send_broadcast(
 
     if not body.text.strip():
         raise HTTPException(400, "text is required")
+    if body.max_recipients > 5000:
+        raise HTTPException(400, "max_recipients cannot exceed 5000")
 
     def _get_query():
         q = build_broadcast_query(user.tenant_id, body.filter)
@@ -188,6 +191,18 @@ async def send_broadcast(
                 raise HTTPException(400, "Invalid conversation_ids")
             q = q.where(Conversation.id.in_(cids))
         return q
+
+    # Confirmation gate: if > 100 recipients and not confirmed, return warning
+    if not body.confirmed and not body.scheduled_at:
+        q_check = _get_query()
+        recipient_count = (await db.execute(select(func.count()).select_from(q_check.subquery()))).scalar() or 0
+        if recipient_count > 100:
+            return {
+                "status": "confirmation_required",
+                "recipient_count": min(recipient_count, 5000),
+                "message": f"Вы собираетесь отправить рассылку {min(recipient_count, 5000)} получателям. Подтвердите отправку.",
+                "confirm_hint": "Повторите запрос с confirmed=true для отправки",
+            }
 
     # Scheduled broadcast
     if body.scheduled_at:
@@ -213,6 +228,10 @@ async def send_broadcast(
         )
         db.add(entry)
         await db.flush()
+        await log_audit(
+            db, user.tenant_id, "user", str(user.id), "broadcast.create", "broadcast", str(entry.id),
+            {"filter": body.filter, "total_targets": count, "scheduled_at": body.scheduled_at},
+        )
         return {"status": "scheduled", "scheduled_at": body.scheduled_at, "total_targets": count, "id": str(entry.id)}
 
     # Immediate broadcast
@@ -268,6 +287,18 @@ async def send_broadcast(
     db.add(entry)
     await db.commit()
 
+    # Audit after commit since we committed
+    try:
+        from src.core.database import async_session_factory
+        async with async_session_factory() as audit_db:
+            await log_audit(
+                audit_db, user.tenant_id, "user", str(user.id), "broadcast.create", "broadcast", str(entry.id),
+                {"filter": body.filter, "total_targets": len(convs)},
+            )
+            await audit_db.commit()
+    except Exception:
+        pass
+
     conv_data = [
         {
             "id": str(conv.id),
@@ -295,14 +326,14 @@ async def send_broadcast(
 @limiter.limit("20/minute")
 async def cancel_scheduled_broadcast(
     request: Request,
-    broadcast_id: str,
+    broadcast_id: _UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
     from src.dashboard.models import BroadcastHistory
     result = await db.execute(
         select(BroadcastHistory).where(
-            BroadcastHistory.id == _UUID(broadcast_id),
+            BroadcastHistory.id == broadcast_id,
             BroadcastHistory.tenant_id == user.tenant_id,
         )
     )
@@ -313,6 +344,9 @@ async def cancel_scheduled_broadcast(
         raise HTTPException(400, "Can only cancel scheduled broadcasts")
     entry.status = "cancelled"
     await db.flush()
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "broadcast.cancel", "broadcast", str(broadcast_id),
+    )
     return {"status": "cancelled"}
 
 

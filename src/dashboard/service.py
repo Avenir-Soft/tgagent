@@ -74,135 +74,172 @@ async def cleanup_expired_drafts(max_age_hours: int = 2, tenant_id: UUID | None 
 
 
 async def get_dashboard_stats(tenant_id: UUID, days: int, db: AsyncSession) -> dict:
-    """Aggregate all dashboard KPIs in a single call."""
+    """Aggregate all dashboard KPIs in a single call.
+
+    Queries run sequentially to avoid InterfaceError on shared AsyncSession.
+    """
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - timedelta(days=1)
     tid = tenant_id
-
-    # Core counts
-    conversations_count = (await db.execute(
-        select(func.count()).select_from(Conversation).where(Conversation.tenant_id == tid)
-    )).scalar() or 0
-
-    dm_count = (await db.execute(
-        select(func.count()).select_from(Conversation)
-        .where(Conversation.tenant_id == tid, Conversation.source_type == "dm")
-    )).scalar() or 0
-
-    leads_count = (await db.execute(
-        select(func.count()).select_from(Lead).where(Lead.tenant_id == tid)
-    )).scalar() or 0
-
-    orders_count = (await db.execute(
-        select(func.count()).select_from(Order).where(Order.tenant_id == tid)
-    )).scalar() or 0
-
-    handoffs_count = (await db.execute(
-        select(func.count()).select_from(Handoff)
-        .where(Handoff.tenant_id == tid, Handoff.status == "pending")
-    )).scalar() or 0
-
-    # Active conversations (last 30 min)
     active_cutoff = now - timedelta(minutes=30)
-    active_conversations = (await db.execute(
-        select(func.count()).select_from(Conversation)
-        .where(
-            Conversation.tenant_id == tid, Conversation.source_type == "dm",
-            Conversation.status == "active", Conversation.last_message_at >= active_cutoff,
-        )
-    )).scalar() or 0
-
-    # Anomaly count (7 days)
     week_ago = now - timedelta(days=7)
-    anomaly_count = (await db.execute(
-        select(func.count()).select_from(Conversation)
-        .where(
-            Conversation.tenant_id == tid,
-            Conversation.last_message_at >= week_ago,
-            Conversation.state_context["_anomalies"].as_string() != "null",
-        )
-    )).scalar() or 0
-
-    # Abandoned carts
     two_hours_ago = now - timedelta(hours=2)
-    abandoned_count = (await db.execute(
-        select(func.count()).select_from(Conversation)
-        .where(
-            Conversation.tenant_id == tid,
-            Conversation.state.in_(["cart", "checkout"]),
-            Conversation.last_message_at <= two_hours_ago,
-            Conversation.ai_enabled == True,  # noqa: E712
-        )
-    )).scalar() or 0
-
-    # Conversion rate
-    conv_with_orders = (await db.execute(
-        select(func.count(func.distinct(Order.lead_id)))
-        .select_from(Order).join(Lead, Order.lead_id == Lead.id)
-        .where(Order.tenant_id == tid)
-    )).scalar() or 0
-    conversion_rate = round(min(100.0, conv_with_orders / dm_count * 100), 1) if dm_count else 0
-
-    # Orders by status + revenue
-    status_rows = (await db.execute(
-        select(Order.status, func.count(), func.coalesce(func.sum(Order.total_amount), 0))
-        .where(Order.tenant_id == tid).group_by(Order.status)
-    )).all()
-    orders_by_status = {row[0]: {"count": row[1], "revenue": float(row[2])} for row in status_rows}
-    active_statuses = {"confirmed", "processing", "shipped", "delivered"}
-    total_revenue = sum(v["revenue"] for k, v in orders_by_status.items() if k in active_statuses)
-
-    # Today / yesterday stats
-    today_row = (await db.execute(
-        select(func.count(), func.coalesce(func.sum(Order.total_amount), 0))
-        .where(Order.tenant_id == tid, Order.created_at >= today_start, Order.status.notin_(["cancelled", "draft"]))
-    )).one()
-    yesterday_row = (await db.execute(
-        select(func.count(), func.coalesce(func.sum(Order.total_amount), 0))
-        .where(Order.tenant_id == tid, Order.created_at >= yesterday_start, Order.created_at < today_start, Order.status.notin_(["cancelled", "draft"]))
-    )).one()
-
-    today_messages = (await db.execute(
-        select(func.count()).select_from(Message).where(Message.tenant_id == tid, Message.created_at >= today_start)
-    )).scalar() or 0
-    yesterday_messages = (await db.execute(
-        select(func.count()).select_from(Message).where(Message.tenant_id == tid, Message.created_at >= yesterday_start, Message.created_at < today_start)
-    )).scalar() or 0
-
-    # Recent orders
-    recent_result = await db.execute(
-        select(Order.order_number, Order.customer_name, Order.total_amount, Order.status, Order.created_at)
-        .where(Order.tenant_id == tid).order_by(Order.created_at.desc()).limit(5)
-    )
-    recent_orders = [
-        {"order_number": r[0], "customer": r[1], "amount": float(r[2]), "status": r[3], "created_at": r[4].isoformat() if r[4] else None}
-        for r in recent_result.all()
-    ]
-
-    # Daily time series
     period_days = min(max(days, 7), 90)
     period_start = now - timedelta(days=period_days)
 
-    daily_result = await db.execute(
-        select(cast(Order.created_at, Date).label("day"), func.count())
-        .where(Order.tenant_id == tid, Order.created_at >= period_start)
-        .group_by("day").order_by("day")
-    )
-    orders_daily = [{"date": str(r[0]), "count": r[1]} for r in daily_result.all()]
+    # ── Build all queries ─────────────────────────────────────────────────────
+    # Group 1: Simple counts (all independent)
+    async def q_conversations_count():
+        return (await db.execute(
+            select(func.count()).select_from(Conversation).where(Conversation.tenant_id == tid)
+        )).scalar() or 0
 
-    leads_daily_result = await db.execute(
-        select(cast(Lead.created_at, Date).label("day"), func.count())
-        .where(Lead.tenant_id == tid, Lead.created_at >= period_start)
-        .group_by("day").order_by("day")
-    )
-    leads_daily = [{"date": str(r[0]), "count": r[1]} for r in leads_daily_result.all()]
+    async def q_dm_count():
+        return (await db.execute(
+            select(func.count()).select_from(Conversation)
+            .where(Conversation.tenant_id == tid, Conversation.source_type == "dm")
+        )).scalar() or 0
 
-    # Leads by status
-    leads_rows = (await db.execute(
-        select(Lead.status, func.count()).where(Lead.tenant_id == tid).group_by(Lead.status)
-    )).all()
-    leads_by_status = {row[0]: row[1] for row in leads_rows}
+    async def q_leads_count():
+        return (await db.execute(
+            select(func.count()).select_from(Lead).where(Lead.tenant_id == tid)
+        )).scalar() or 0
+
+    async def q_orders_count():
+        return (await db.execute(
+            select(func.count()).select_from(Order).where(Order.tenant_id == tid)
+        )).scalar() or 0
+
+    async def q_handoffs_count():
+        return (await db.execute(
+            select(func.count()).select_from(Handoff)
+            .where(Handoff.tenant_id == tid, Handoff.status == "pending")
+        )).scalar() or 0
+
+    async def q_active_conversations():
+        return (await db.execute(
+            select(func.count()).select_from(Conversation)
+            .where(
+                Conversation.tenant_id == tid, Conversation.source_type == "dm",
+                Conversation.status == "active", Conversation.last_message_at >= active_cutoff,
+            )
+        )).scalar() or 0
+
+    async def q_anomaly_count():
+        return (await db.execute(
+            select(func.count()).select_from(Conversation)
+            .where(
+                Conversation.tenant_id == tid,
+                Conversation.last_message_at >= week_ago,
+                Conversation.state_context["_anomalies"].as_string() != "null",
+            )
+        )).scalar() or 0
+
+    async def q_abandoned_count():
+        return (await db.execute(
+            select(func.count()).select_from(Conversation)
+            .where(
+                Conversation.tenant_id == tid,
+                Conversation.state.in_(["cart", "checkout"]),
+                Conversation.last_message_at <= two_hours_ago,
+                Conversation.ai_enabled == True,  # noqa: E712
+            )
+        )).scalar() or 0
+
+    async def q_conv_with_orders():
+        return (await db.execute(
+            select(func.count(func.distinct(Order.lead_id)))
+            .select_from(Order).join(Lead, Order.lead_id == Lead.id)
+            .where(Order.tenant_id == tid)
+        )).scalar() or 0
+
+    async def q_status_rows():
+        return (await db.execute(
+            select(Order.status, func.count(), func.coalesce(func.sum(Order.total_amount), 0))
+            .where(Order.tenant_id == tid).group_by(Order.status)
+        )).all()
+
+    async def q_today_row():
+        return (await db.execute(
+            select(func.count(), func.coalesce(func.sum(Order.total_amount), 0))
+            .where(Order.tenant_id == tid, Order.created_at >= today_start, Order.status.notin_(["cancelled", "draft"]))
+        )).one()
+
+    async def q_yesterday_row():
+        return (await db.execute(
+            select(func.count(), func.coalesce(func.sum(Order.total_amount), 0))
+            .where(Order.tenant_id == tid, Order.created_at >= yesterday_start, Order.created_at < today_start, Order.status.notin_(["cancelled", "draft"]))
+        )).one()
+
+    async def q_today_messages():
+        return (await db.execute(
+            select(func.count()).select_from(Message).where(Message.tenant_id == tid, Message.created_at >= today_start)
+        )).scalar() or 0
+
+    async def q_yesterday_messages():
+        return (await db.execute(
+            select(func.count()).select_from(Message).where(Message.tenant_id == tid, Message.created_at >= yesterday_start, Message.created_at < today_start)
+        )).scalar() or 0
+
+    async def q_recent_orders():
+        result = await db.execute(
+            select(Order.order_number, Order.customer_name, Order.total_amount, Order.status, Order.created_at)
+            .where(Order.tenant_id == tid).order_by(Order.created_at.desc()).limit(5)
+        )
+        return [
+            {"order_number": r[0], "customer": r[1], "amount": float(r[2]), "status": r[3], "created_at": r[4].isoformat() if r[4] else None}
+            for r in result.all()
+        ]
+
+    async def q_orders_daily():
+        result = await db.execute(
+            select(cast(Order.created_at, Date).label("day"), func.count())
+            .where(Order.tenant_id == tid, Order.created_at >= period_start)
+            .group_by("day").order_by("day")
+        )
+        return [{"date": str(r[0]), "count": r[1]} for r in result.all()]
+
+    async def q_leads_daily():
+        result = await db.execute(
+            select(cast(Lead.created_at, Date).label("day"), func.count())
+            .where(Lead.tenant_id == tid, Lead.created_at >= period_start)
+            .group_by("day").order_by("day")
+        )
+        return [{"date": str(r[0]), "count": r[1]} for r in result.all()]
+
+    async def q_leads_by_status():
+        rows = (await db.execute(
+            select(Lead.status, func.count()).where(Lead.tenant_id == tid).group_by(Lead.status)
+        )).all()
+        return {row[0]: row[1] for row in rows}
+
+    # ── Execute all queries sequentially (shared AsyncSession is not safe for gather) ──
+    conversations_count = await q_conversations_count()
+    dm_count = await q_dm_count()
+    leads_count = await q_leads_count()
+    orders_count = await q_orders_count()
+    handoffs_count = await q_handoffs_count()
+    active_conversations = await q_active_conversations()
+    anomaly_count = await q_anomaly_count()
+    abandoned_count = await q_abandoned_count()
+    conv_with_orders = await q_conv_with_orders()
+    status_rows = await q_status_rows()
+    today_row = await q_today_row()
+    yesterday_row = await q_yesterday_row()
+    today_messages = await q_today_messages()
+    yesterday_messages = await q_yesterday_messages()
+    recent_orders = await q_recent_orders()
+    orders_daily = await q_orders_daily()
+    leads_daily = await q_leads_daily()
+    leads_by_status = await q_leads_by_status()
+
+    # ── Compute derived values ────────────────────────────────────────────────
+    conversion_rate = round(min(100.0, conv_with_orders / dm_count * 100), 1) if dm_count else 0
+
+    orders_by_status = {row[0]: {"count": row[1], "revenue": float(row[2])} for row in status_rows}
+    active_statuses = {"confirmed", "processing", "shipped", "delivered"}
+    total_revenue = sum(v["revenue"] for k, v in orders_by_status.items() if k in active_statuses)
 
     return {
         "total_conversations": conversations_count,

@@ -1,0 +1,115 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - link "Перейти к контенту" [ref=e12] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e13]:
+    - complementary [ref=e14]:
+      - generic [ref=e16]:
+        - img [ref=e18]
+        - generic [ref=e20]:
+          - heading "AI Closer" [level=1] [ref=e21]
+          - paragraph [ref=e22]: Панель управления
+      - navigation [ref=e23]:
+        - generic [ref=e24]:
+          - paragraph [ref=e25]: Обзор
+          - generic [ref=e26]:
+            - link "Дашборд" [ref=e27] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e29]
+              - generic [ref=e34]: Дашборд
+            - link "Аналитика" [ref=e35] [cursor=pointer]:
+              - /url: /analytics
+              - img [ref=e37]
+              - generic [ref=e40]: Аналитика
+        - generic [ref=e41]:
+          - paragraph [ref=e42]: Продажи
+          - generic [ref=e43]:
+            - link "Диалоги" [ref=e44] [cursor=pointer]:
+              - /url: /conversations
+              - img [ref=e46]
+              - generic [ref=e48]: Диалоги
+            - link "Лиды" [ref=e49] [cursor=pointer]:
+              - /url: /leads
+              - img [ref=e51]
+              - generic [ref=e55]: Лиды
+            - link "Заказы" [ref=e56] [cursor=pointer]:
+              - /url: /orders
+              - img [ref=e58]
+              - generic [ref=e60]: Заказы
+            - link "Товары" [ref=e61] [cursor=pointer]:
+              - /url: /products
+              - img [ref=e63]
+              - generic [ref=e66]: Товары
+        - generic [ref=e67]:
+          - paragraph [ref=e68]: Операции
+          - generic [ref=e69]:
+            - link "Доставка" [ref=e70] [cursor=pointer]:
+              - /url: /delivery
+              - img [ref=e72]
+              - generic [ref=e77]: Доставка
+            - link "Передачи" [ref=e78] [cursor=pointer]:
+              - /url: /handoffs
+              - img [ref=e80]
+              - generic [ref=e82]: Передачи
+            - link "Рассылки" [ref=e83] [cursor=pointer]:
+              - /url: /broadcast
+              - img [ref=e85]
+              - generic [ref=e87]: Рассылки
+        - generic [ref=e88]:
+          - paragraph [ref=e89]: AI & Обучение
+          - generic [ref=e90]:
+            - link "Обучение AI" [ref=e91] [cursor=pointer]:
+              - /url: /training
+              - img [ref=e93]
+              - generic [ref=e95]: Обучение AI
+            - link "Шаблоны" [ref=e96] [cursor=pointer]:
+              - /url: /templates
+              - img [ref=e98]
+              - generic [ref=e100]: Шаблоны
+            - link "AI Monitor" [ref=e101] [cursor=pointer]:
+              - /url: /ai-monitor
+              - img [ref=e103]
+              - generic [ref=e105]: AI Monitor
+        - generic [ref=e106]:
+          - paragraph [ref=e107]: Система
+          - generic [ref=e108]:
+            - link "Telegram" [ref=e109] [cursor=pointer]:
+              - /url: /telegram
+              - img [ref=e111]
+              - generic [ref=e113]: Telegram
+            - link "Настройки" [ref=e114] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e116]
+              - generic [ref=e119]: Настройки
+      - generic [ref=e122]:
+        - generic [ref=e123]: SO
+        - generic [ref=e124]:
+          - paragraph [ref=e125]: admin@gmail.com
+          - paragraph [ref=e126]: store owner
+        - button "Тёмная тема" [ref=e127]:
+          - img [ref=e128]
+        - button "Выйти" [ref=e130]:
+          - img [ref=e131]
+    - main [ref=e134]:
+      - generic [ref=e135]:
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - heading "Товары (0)" [level=1] [ref=e138]
+            - paragraph [ref=e139]: Управление каталогом товаров
+          - generic [ref=e140]:
+            - button "Экспорт CSV" [ref=e141]
+            - button "+ Вручную" [ref=e142]
+            - button "AI Создать" [ref=e143]:
+              - img [ref=e144]
+              - text: AI Создать
+        - generic [ref=e146]:
+          - textbox "Поиск по названию или бренду..." [ref=e147]
+          - combobox "Фильтр по категории" [ref=e148]:
+            - option "Все категории" [selected]
+        - generic [ref=e150]:
+          - generic [ref=e151]: "Сортировка:"
+          - button "по названию" [ref=e152]
+          - button "по цене" [ref=e153]
+          - button "по наличию" [ref=e154]

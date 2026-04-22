@@ -1,0 +1,177 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - generic [ref=e15]:
+        - img [ref=e17]
+        - generic [ref=e19]:
+          - heading "AI Closer" [level=1] [ref=e20]
+          - paragraph [ref=e21]: Панель управления
+      - navigation [ref=e22]:
+        - generic [ref=e23]:
+          - paragraph [ref=e24]: Обзор
+          - generic [ref=e25]:
+            - link "Дашборд" [ref=e26] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e28]
+              - generic [ref=e33]: Дашборд
+            - link "Аналитика" [ref=e34] [cursor=pointer]:
+              - /url: /analytics
+              - img [ref=e36]
+              - generic [ref=e39]: Аналитика
+        - generic [ref=e40]:
+          - paragraph [ref=e41]: Продажи
+          - generic [ref=e42]:
+            - link "Диалоги" [ref=e43] [cursor=pointer]:
+              - /url: /conversations
+              - img [ref=e45]
+              - generic [ref=e47]: Диалоги
+            - link "Лиды" [ref=e48] [cursor=pointer]:
+              - /url: /leads
+              - img [ref=e50]
+              - generic [ref=e54]: Лиды
+            - link "Заказы" [ref=e55] [cursor=pointer]:
+              - /url: /orders
+              - img [ref=e57]
+              - generic [ref=e59]: Заказы
+            - link "Товары" [ref=e60] [cursor=pointer]:
+              - /url: /products
+              - img [ref=e62]
+              - generic [ref=e65]: Товары
+        - generic [ref=e66]:
+          - paragraph [ref=e67]: Операции
+          - generic [ref=e68]:
+            - link "Доставка" [ref=e69] [cursor=pointer]:
+              - /url: /delivery
+              - img [ref=e71]
+              - generic [ref=e76]: Доставка
+            - link "Передачи" [ref=e77] [cursor=pointer]:
+              - /url: /handoffs
+              - img [ref=e79]
+              - generic [ref=e81]: Передачи
+            - link "Рассылки" [ref=e82] [cursor=pointer]:
+              - /url: /broadcast
+              - img [ref=e84]
+              - generic [ref=e86]: Рассылки
+        - generic [ref=e87]:
+          - paragraph [ref=e88]: AI & Обучение
+          - generic [ref=e89]:
+            - link "Обучение AI" [ref=e90] [cursor=pointer]:
+              - /url: /training
+              - img [ref=e92]
+              - generic [ref=e94]: Обучение AI
+            - link "Шаблоны" [ref=e95] [cursor=pointer]:
+              - /url: /templates
+              - img [ref=e97]
+              - generic [ref=e99]: Шаблоны
+        - generic [ref=e100]:
+          - paragraph [ref=e101]: Система
+          - generic [ref=e102]:
+            - link "Telegram" [ref=e103] [cursor=pointer]:
+              - /url: /telegram
+              - img [ref=e105]
+              - generic [ref=e107]: Telegram
+            - link "Настройки" [ref=e108] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e110]
+              - generic [ref=e113]: Настройки
+      - generic [ref=e116]:
+        - generic [ref=e117]: SO
+        - generic [ref=e118]:
+          - paragraph [ref=e119]: admin@gmail.com
+          - paragraph [ref=e120]: store owner
+        - button "Тёмная тема" [ref=e121]:
+          - img [ref=e122]
+        - button "Выйти" [ref=e124]:
+          - img [ref=e125]
+    - main [ref=e128]:
+      - generic [ref=e129]:
+        - generic [ref=e130]:
+          - generic [ref=e131]:
+            - heading "Аналитика" [level=1] [ref=e132]
+            - paragraph [ref=e133]: Клиенты, конверсия, склад и конкуренты
+          - generic [ref=e134]:
+            - button "7д" [ref=e135]
+            - button "14д" [ref=e136]
+            - button "30д" [ref=e137]
+            - button "60д" [ref=e138]
+            - button "90д" [ref=e139]
+        - generic [ref=e140]:
+          - button "Обзор" [ref=e141]
+          - button "Клиенты" [active] [ref=e142]
+          - button "Диалоги" [ref=e143]
+          - button "Воронка" [ref=e144]
+          - button "Склад" [ref=e145]
+          - button "Конкуренты" [ref=e146]
+        - generic [ref=e263]:
+          - generic [ref=e264]:
+            - button "Пересчитать RFM" [ref=e265]
+            - generic [ref=e266]: 3 клиентов
+          - generic [ref=e267]:
+            - generic [ref=e268]:
+              - paragraph [ref=e269]: "0"
+              - paragraph [ref=e270]: VIP
+            - generic [ref=e271]:
+              - paragraph [ref=e272]: "1"
+              - paragraph [ref=e273]: Лояльный
+            - generic [ref=e274]:
+              - paragraph [ref=e275]: "0"
+              - paragraph [ref=e276]: Перспективный
+            - generic [ref=e277]:
+              - paragraph [ref=e278]: "0"
+              - paragraph [ref=e279]: Новый
+            - generic [ref=e280]:
+              - paragraph [ref=e281]: "0"
+              - paragraph [ref=e282]: Под угрозой
+            - generic [ref=e283]:
+              - paragraph [ref=e284]: "2"
+              - paragraph [ref=e285]: Потерян
+            - generic [ref=e286]:
+              - paragraph [ref=e287]: "0"
+              - paragraph [ref=e288]: Обычный
+          - generic [ref=e289]:
+            - generic [ref=e290]:
+              - generic [ref=e291]: 3 клиентов
+              - button "Экспорт CSV" [ref=e292]
+            - table [ref=e293]:
+              - rowgroup [ref=e294]:
+                - row "Клиент Сегмент Заказов Потрачено Последний RFM" [ref=e295]:
+                  - columnheader "Клиент" [ref=e296]
+                  - columnheader "Сегмент" [ref=e297]
+                  - columnheader "Заказов" [ref=e298] [cursor=pointer]
+                  - columnheader "Потрачено" [ref=e299] [cursor=pointer]
+                  - columnheader "Последний" [ref=e300] [cursor=pointer]
+                  - columnheader "RFM" [ref=e301] [cursor=pointer]
+              - rowgroup [ref=e302]:
+                - row "▶ Ойбек Соибтов Лояльный 3 106 630 000 UZS 0 дн. назад 333" [ref=e303]:
+                  - cell "▶ Ойбек Соибтов" [ref=e304]:
+                    - button "▶ Ойбек Соибтов" [ref=e305]:
+                      - generic [ref=e306]: ▶
+                      - text: Ойбек Соибтов
+                  - cell "Лояльный" [ref=e307]
+                  - cell "3" [ref=e308]
+                  - cell "106 630 000 UZS" [ref=e309]
+                  - cell "0 дн. назад" [ref=e310]
+                  - cell "333" [ref=e311]
+                - row "▶ Oybek Потерян 1 15 235 000 UZS 8 дн. назад 222" [ref=e312]:
+                  - cell "▶ Oybek" [ref=e313]:
+                    - button "▶ Oybek" [ref=e314]:
+                      - generic [ref=e315]: ▶
+                      - text: Oybek
+                  - cell "Потерян" [ref=e316]
+                  - cell "1" [ref=e317]
+                  - cell "15 235 000 UZS" [ref=e318]
+                  - cell "8 дн. назад" [ref=e319]
+                  - cell "222" [ref=e320]
+                - row "▶ Улугбек Потерян 1 12 525 000 UZS 12 дн. назад 111" [ref=e321]:
+                  - cell "▶ Улугбек" [ref=e322]:
+                    - button "▶ Улугбек" [ref=e323]:
+                      - generic [ref=e324]: ▶
+                      - text: Улугбек
+                  - cell "Потерян" [ref=e325]
+                  - cell "1" [ref=e326]
+                  - cell "12 525 000 UZS" [ref=e327]
+                  - cell "12 дн. назад" [ref=e328]
+                  - cell "111" [ref=e329]

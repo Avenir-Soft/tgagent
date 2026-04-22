@@ -1,0 +1,55 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic:
+      - generic: 
+  - generic [ref=e32]:
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - button "Return to chat list" [ref=e1163] [cursor=pointer]
+        - generic:       
+      - generic [ref=e39]:
+        - text: 
+        - generic "Avenir shop uz" [ref=e1677] [cursor=pointer]:
+          - generic "Avenir shop uz" [ref=e1678]:
+            - generic [ref=e1680]: A
+          - generic [ref=e1682]: 
+        - textbox "Search" [ref=e53]
+        - button [ref=e1288] [cursor=pointer]:
+          - generic [ref=e1289]: 
+    - generic [ref=e54]:
+      - text:                                                                                                       
+      - generic [ref=e1165]:
+        - generic [ref=e1166]:
+          - generic [ref=e1168]: Messages
+          - generic [ref=e1170] [cursor=pointer]: Posts
+          - generic [ref=e1172] [cursor=pointer]: Media
+          - generic [ref=e1174] [cursor=pointer]: Links
+          - generic [ref=e1176] [cursor=pointer]: Files
+          - generic [ref=e1178] [cursor=pointer]: Music
+          - generic [ref=e1180] [cursor=pointer]: Voice
+        - generic [ref=e1685]:
+          - heading "Messages" [level=3] [ref=e1686]
+          - button "Avenir shop uz Avenir shop uz Mon Iphone" [ref=e1688] [cursor=pointer]:
+            - generic "Avenir shop uz" [ref=e1690]:
+              - generic [ref=e1692]: A
+            - generic [ref=e1693]:
+              - generic [ref=e1694]:
+                - button "Avenir shop uz" [ref=e1696]
+                - link "Mon" [ref=e1698]:
+                  - /url: "#"
+              - generic [ref=e1700]: Iphone
+          - button "Avenir shop uz Avenir shop uz Mon This message is not supported on the web version of Telegram" [ref=e1702] [cursor=pointer]:
+            - generic "Avenir shop uz" [ref=e1704]:
+              - generic [ref=e1706]: A
+            - generic [ref=e1707]:
+              - generic [ref=e1708]:
+                - button "Avenir shop uz" [ref=e1710]
+                - link "Mon" [ref=e1712]:
+                  - /url: "#"
+              - generic [ref=e1714]: This message is not supported on the web version of Telegram
+    - generic [ref=e653]:
+      - button "New Message" [ref=e654] [cursor=pointer]:
+        - generic [ref=e655]: 
+        - generic [ref=e656]: 
+      - generic:   
+  - img

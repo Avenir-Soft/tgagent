@@ -21,6 +21,15 @@ class Base(DeclarativeBase):
     pass
 
 
+def escape_like(s: str) -> str:
+    """Escape SQL LIKE/ILIKE wildcard characters (%, _) in user input.
+
+    Use this before interpolating user-supplied strings into ILIKE patterns
+    to prevent wildcard injection attacks.
+    """
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 async def get_db() -> AsyncSession:  # type: ignore[misc]
     """FastAPI dependency: yields a session that auto-commits on success.
 

@@ -1,0 +1,476 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - generic [ref=e15]:
+        - img [ref=e17]
+        - generic [ref=e19]:
+          - heading "AI Closer" [level=1] [ref=e20]
+          - paragraph [ref=e21]: Панель управления
+      - navigation [ref=e22]:
+        - generic [ref=e23]:
+          - paragraph [ref=e24]: Обзор
+          - generic [ref=e25]:
+            - link "Дашборд" [ref=e26] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e28]
+              - generic [ref=e33]: Дашборд
+            - link "Аналитика" [ref=e34] [cursor=pointer]:
+              - /url: /analytics
+              - img [ref=e36]
+              - generic [ref=e39]: Аналитика
+        - generic [ref=e40]:
+          - paragraph [ref=e41]: Продажи
+          - generic [ref=e42]:
+            - link "Диалоги" [ref=e43] [cursor=pointer]:
+              - /url: /conversations
+              - img [ref=e45]
+              - generic [ref=e47]: Диалоги
+            - link "Лиды" [ref=e48] [cursor=pointer]:
+              - /url: /leads
+              - img [ref=e50]
+              - generic [ref=e54]: Лиды
+            - link "Заказы" [ref=e55] [cursor=pointer]:
+              - /url: /orders
+              - img [ref=e57]
+              - generic [ref=e59]: Заказы
+            - link "Товары" [ref=e60] [cursor=pointer]:
+              - /url: /products
+              - img [ref=e62]
+              - generic [ref=e65]: Товары
+        - generic [ref=e66]:
+          - paragraph [ref=e67]: Операции
+          - generic [ref=e68]:
+            - link "Доставка" [ref=e69] [cursor=pointer]:
+              - /url: /delivery
+              - img [ref=e71]
+              - generic [ref=e76]: Доставка
+            - link "Передачи" [ref=e77] [cursor=pointer]:
+              - /url: /handoffs
+              - img [ref=e79]
+              - generic [ref=e81]: Передачи
+            - link "Рассылки" [ref=e82] [cursor=pointer]:
+              - /url: /broadcast
+              - img [ref=e84]
+              - generic [ref=e86]: Рассылки
+        - generic [ref=e87]:
+          - paragraph [ref=e88]: AI & Обучение
+          - generic [ref=e89]:
+            - link "Обучение AI" [ref=e90] [cursor=pointer]:
+              - /url: /training
+              - img [ref=e92]
+              - generic [ref=e94]: Обучение AI
+            - link "Шаблоны" [ref=e95] [cursor=pointer]:
+              - /url: /templates
+              - img [ref=e97]
+              - generic [ref=e99]: Шаблоны
+        - generic [ref=e100]:
+          - paragraph [ref=e101]: Система
+          - generic [ref=e102]:
+            - link "Telegram" [ref=e103] [cursor=pointer]:
+              - /url: /telegram
+              - img [ref=e105]
+              - generic [ref=e107]: Telegram
+            - link "Настройки" [ref=e108] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e110]
+              - generic [ref=e113]: Настройки
+      - generic [ref=e116]:
+        - generic [ref=e117]: SO
+        - generic [ref=e118]:
+          - paragraph [ref=e119]: admin@gmail.com
+          - paragraph [ref=e120]: store owner
+        - button "Тёмная тема" [ref=e121]:
+          - img [ref=e122]
+        - button "Выйти" [ref=e124]:
+          - img [ref=e125]
+    - main [ref=e128]:
+      - generic [ref=e129]:
+        - generic [ref=e130]:
+          - generic [ref=e131]:
+            - heading "Аналитика" [level=1] [ref=e132]
+            - paragraph [ref=e133]: Клиенты, конверсия, склад и конкуренты
+          - generic [ref=e134]:
+            - button "7д" [ref=e135]
+            - button "14д" [ref=e136]
+            - button "30д" [ref=e137]
+            - button "60д" [ref=e138]
+            - button "90д" [ref=e139]
+        - generic [ref=e140]:
+          - button "Обзор" [ref=e141]
+          - button "Клиенты" [ref=e142]
+          - button "Диалоги" [ref=e143]
+          - button "Воронка" [ref=e144]
+          - button "Склад" [active] [ref=e145]
+          - button "Конкуренты" [ref=e146]
+        - generic [ref=e444]:
+          - generic [ref=e445]:
+            - generic [ref=e446]:
+              - paragraph [ref=e447]: "1"
+              - paragraph [ref=e448]: Критично
+            - generic [ref=e449]:
+              - paragraph [ref=e450]: "4"
+              - paragraph [ref=e451]: Внимание
+            - generic [ref=e452]:
+              - paragraph [ref=e453]: "4"
+              - paragraph [ref=e454]: Наблюдение
+            - generic [ref=e455]:
+              - paragraph [ref=e456]: "25"
+              - paragraph [ref=e457]: Ок
+          - generic [ref=e458]:
+            - generic [ref=e459]:
+              - generic [ref=e460]: 34 вариантов
+              - button "Экспорт CSV" [ref=e461]
+            - table [ref=e462]:
+              - rowgroup [ref=e463]:
+                - row "Товар Вариант Остаток Продаж/день До стокаута Прогноз (30д) Риск" [ref=e464]:
+                  - columnheader "Товар" [ref=e465]
+                  - columnheader "Вариант" [ref=e466]
+                  - columnheader "Остаток" [ref=e467] [cursor=pointer]
+                  - columnheader "Продаж/день" [ref=e468] [cursor=pointer]
+                  - columnheader "До стокаута" [ref=e469] [cursor=pointer]
+                  - columnheader "Прогноз (30д)" [ref=e470] [cursor=pointer]
+                  - columnheader "Риск" [ref=e471]
+              - rowgroup [ref=e472]:
+                - row "Apple iPhone 15 iPhone 15 128GB Pink 2 шт 1 2 дн. 30 шт Критично" [ref=e473]:
+                  - cell "Apple iPhone 15" [ref=e474]:
+                    - link "Apple iPhone 15" [ref=e475] [cursor=pointer]:
+                      - /url: /products/114be99c-80de-43f2-9d0a-952c047b395e
+                  - cell "iPhone 15 128GB Pink" [ref=e476]
+                  - cell "2 шт" [ref=e477]
+                  - cell "1" [ref=e478]
+                  - cell "2 дн." [ref=e479]
+                  - cell "30 шт" [ref=e480]
+                  - cell "Критично" [ref=e481]
+                - row "Apple iPhone 15 Pro iPhone 15 Pro 256GB Blue Titanium 4 шт 1 4 дн. 30 шт Внимание" [ref=e482]:
+                  - cell "Apple iPhone 15 Pro" [ref=e483]:
+                    - link "Apple iPhone 15 Pro" [ref=e484] [cursor=pointer]:
+                      - /url: /products/7a55a346-984c-455d-9a66-0cabee7daf78
+                  - cell "iPhone 15 Pro 256GB Blue Titanium" [ref=e485]
+                  - cell "4 шт" [ref=e486]
+                  - cell "1" [ref=e487]
+                  - cell "4 дн." [ref=e488]
+                  - cell "30 шт" [ref=e489]
+                  - cell "Внимание" [ref=e490]
+                - row "Anker MagGo 10000mAh Anker MagGo 10000mAh White 4 шт 1 4 дн. 30 шт Внимание" [ref=e491]:
+                  - cell "Anker MagGo 10000mAh" [ref=e492]:
+                    - link "Anker MagGo 10000mAh" [ref=e493] [cursor=pointer]:
+                      - /url: /products/24d8e9d5-9886-45c8-a9dd-aa94313d05cd
+                  - cell "Anker MagGo 10000mAh White" [ref=e494]
+                  - cell "4 шт" [ref=e495]
+                  - cell "1" [ref=e496]
+                  - cell "4 дн." [ref=e497]
+                  - cell "30 шт" [ref=e498]
+                  - cell "Внимание" [ref=e499]
+                - row "Sony PlayStation 5 Slim PlayStation 5 Slim 1TB 5 шт 1 5 дн. 30 шт Внимание" [ref=e500]:
+                  - cell "Sony PlayStation 5 Slim" [ref=e501]:
+                    - link "Sony PlayStation 5 Slim" [ref=e502] [cursor=pointer]:
+                      - /url: /products/7ddec44b-d6c5-4a8d-9180-0ab804875aa6
+                  - cell "PlayStation 5 Slim 1TB" [ref=e503]
+                  - cell "5 шт" [ref=e504]
+                  - cell "1" [ref=e505]
+                  - cell "5 дн." [ref=e506]
+                  - cell "30 шт" [ref=e507]
+                  - cell "Внимание" [ref=e508]
+                - row "Apple iPhone 15 Pro iPhone 15 Pro 256GB Black 6 шт 1 6 дн. 30 шт Внимание" [ref=e509]:
+                  - cell "Apple iPhone 15 Pro" [ref=e510]:
+                    - link "Apple iPhone 15 Pro" [ref=e511] [cursor=pointer]:
+                      - /url: /products/7a55a346-984c-455d-9a66-0cabee7daf78
+                  - cell "iPhone 15 Pro 256GB Black" [ref=e512]
+                  - cell "6 шт" [ref=e513]
+                  - cell "1" [ref=e514]
+                  - cell "6 дн." [ref=e515]
+                  - cell "30 шт" [ref=e516]
+                  - cell "Внимание" [ref=e517]
+                - row "Sony WH-1000XM5 Sony WH-1000XM5 Black 7 шт 1 7 дн. 30 шт Наблюдение" [ref=e518]:
+                  - cell "Sony WH-1000XM5" [ref=e519]:
+                    - link "Sony WH-1000XM5" [ref=e520] [cursor=pointer]:
+                      - /url: /products/f5c11766-d042-42c3-9d26-59eb80351ec3
+                  - cell "Sony WH-1000XM5 Black" [ref=e521]
+                  - cell "7 шт" [ref=e522]
+                  - cell "1" [ref=e523]
+                  - cell "7 дн." [ref=e524]
+                  - cell "30 шт" [ref=e525]
+                  - cell "Наблюдение" [ref=e526]
+                - row "Apple AirPods Pro 2 AirPods Pro 2 USB‑C White 9 шт 1 9 дн. 30 шт Наблюдение" [ref=e527]:
+                  - cell "Apple AirPods Pro 2" [ref=e528]:
+                    - link "Apple AirPods Pro 2" [ref=e529] [cursor=pointer]:
+                      - /url: /products/c41bd854-d615-47aa-a62f-4bb5e052813f
+                  - cell "AirPods Pro 2 USB‑C White" [ref=e530]
+                  - cell "9 шт" [ref=e531]
+                  - cell "1" [ref=e532]
+                  - cell "9 дн." [ref=e533]
+                  - cell "30 шт" [ref=e534]
+                  - cell "Наблюдение" [ref=e535]
+                - row "Apple MacBook Pro 14 M3 MacBook Pro 14 M3 8/512 Space Gray 25 шт 2 12 дн. 60 шт Наблюдение" [ref=e536]:
+                  - cell "Apple MacBook Pro 14 M3" [ref=e537]:
+                    - link "Apple MacBook Pro 14 M3" [ref=e538] [cursor=pointer]:
+                      - /url: /products/c7186f42-7e99-4284-b3d6-43d94dd214c9
+                  - cell "MacBook Pro 14 M3 8/512 Space Gray" [ref=e539]
+                  - cell "25 шт" [ref=e540]
+                  - cell "2" [ref=e541]
+                  - cell "12 дн." [ref=e542]
+                  - cell "60 шт" [ref=e543]
+                  - cell "Наблюдение" [ref=e544]
+                - row "Apple iPhone 15 iPhone 15 128GB Black 16 шт 1 16 дн. 30 шт Наблюдение" [ref=e545]:
+                  - cell "Apple iPhone 15" [ref=e546]:
+                    - link "Apple iPhone 15" [ref=e547] [cursor=pointer]:
+                      - /url: /products/114be99c-80de-43f2-9d0a-952c047b395e
+                  - cell "iPhone 15 128GB Black" [ref=e548]
+                  - cell "16 шт" [ref=e549]
+                  - cell "1" [ref=e550]
+                  - cell "16 дн." [ref=e551]
+                  - cell "30 шт" [ref=e552]
+                  - cell "Наблюдение" [ref=e553]
+                - row "Samsung Galaxy Watch 6 Galaxy Watch 6 44mm Graphite 4 шт 0 -- 0 шт Ок" [ref=e554]:
+                  - cell "Samsung Galaxy Watch 6" [ref=e555]:
+                    - link "Samsung Galaxy Watch 6" [ref=e556] [cursor=pointer]:
+                      - /url: /products/cbbe02cd-3164-492d-99a5-3e89bc258bf5
+                  - cell "Galaxy Watch 6 44mm Graphite" [ref=e557]
+                  - cell "4 шт" [ref=e558]
+                  - cell "0" [ref=e559]
+                  - cell "--" [ref=e560]
+                  - cell "0 шт" [ref=e561]
+                  - cell "Ок" [ref=e562]
+                - row "JBL Charge 5 JBL Charge 5 Black 15 шт 0 -- 0 шт Ок" [ref=e563]:
+                  - cell "JBL Charge 5" [ref=e564]:
+                    - link "JBL Charge 5" [ref=e565] [cursor=pointer]:
+                      - /url: /products/d0edd29e-14c7-4399-8d24-c535f363551f
+                  - cell "JBL Charge 5 Black" [ref=e566]
+                  - cell "15 шт" [ref=e567]
+                  - cell "0" [ref=e568]
+                  - cell "--" [ref=e569]
+                  - cell "0 шт" [ref=e570]
+                  - cell "Ок" [ref=e571]
+                - row "ASUS Zenbook 14 OLED ASUS Zenbook 14 OLED 16/512 Intel Ultra 7 7 шт 0 -- 0 шт Ок" [ref=e572]:
+                  - cell "ASUS Zenbook 14 OLED" [ref=e573]:
+                    - link "ASUS Zenbook 14 OLED" [ref=e574] [cursor=pointer]:
+                      - /url: /products/d68e416c-31fd-43f5-8cc4-964073195a43
+                  - cell "ASUS Zenbook 14 OLED 16/512 Intel Ultra 7" [ref=e575]
+                  - cell "7 шт" [ref=e576]
+                  - cell "0" [ref=e577]
+                  - cell "--" [ref=e578]
+                  - cell "0 шт" [ref=e579]
+                  - cell "Ок" [ref=e580]
+                - row "Apple iPad Air 11 M2 iPad Air 11 M2 128GB Wi‑Fi Blue 5 шт 0 -- 0 шт Ок" [ref=e581]:
+                  - cell "Apple iPad Air 11 M2" [ref=e582]:
+                    - link "Apple iPad Air 11 M2" [ref=e583] [cursor=pointer]:
+                      - /url: /products/0a63ff6d-33ac-4d51-bfac-29985de0ee6d
+                  - cell "iPad Air 11 M2 128GB Wi‑Fi Blue" [ref=e584]
+                  - cell "5 шт" [ref=e585]
+                  - cell "0" [ref=e586]
+                  - cell "--" [ref=e587]
+                  - cell "0 шт" [ref=e588]
+                  - cell "Ок" [ref=e589]
+                - row "Apple MacBook Air M2 MacBook Air M2 13.6 8/256 Midnight 5 шт 0 -- 0 шт Ок" [ref=e590]:
+                  - cell "Apple MacBook Air M2" [ref=e591]:
+                    - link "Apple MacBook Air M2" [ref=e592] [cursor=pointer]:
+                      - /url: /products/c06d58a6-55d3-4213-90f9-78200266245e
+                  - cell "MacBook Air M2 13.6 8/256 Midnight" [ref=e593]
+                  - cell "5 шт" [ref=e594]
+                  - cell "0" [ref=e595]
+                  - cell "--" [ref=e596]
+                  - cell "0 шт" [ref=e597]
+                  - cell "Ок" [ref=e598]
+                - row "Apple iPhone 15 Pro iPhone 15 Pro 256GB Natural Titanium 8 шт 0 -- 0 шт Ок" [ref=e599]:
+                  - cell "Apple iPhone 15 Pro" [ref=e600]:
+                    - link "Apple iPhone 15 Pro" [ref=e601] [cursor=pointer]:
+                      - /url: /products/7a55a346-984c-455d-9a66-0cabee7daf78
+                  - cell "iPhone 15 Pro 256GB Natural Titanium" [ref=e602]
+                  - cell "8 шт" [ref=e603]
+                  - cell "0" [ref=e604]
+                  - cell "--" [ref=e605]
+                  - cell "0 шт" [ref=e606]
+                  - cell "Ок" [ref=e607]
+                - row "JBL Charge 5 JBL Charge 5 Blue 12 шт 0 -- 0 шт Ок" [ref=e608]:
+                  - cell "JBL Charge 5" [ref=e609]:
+                    - link "JBL Charge 5" [ref=e610] [cursor=pointer]:
+                      - /url: /products/d0edd29e-14c7-4399-8d24-c535f363551f
+                  - cell "JBL Charge 5 Blue" [ref=e611]
+                  - cell "12 шт" [ref=e612]
+                  - cell "0" [ref=e613]
+                  - cell "--" [ref=e614]
+                  - cell "0 шт" [ref=e615]
+                  - cell "Ок" [ref=e616]
+                - row "Samsung Galaxy S24 Ultra Samsung Galaxy S24 Ultra 256GB Titanium Black 12 шт 0 -- 0 шт Ок" [ref=e617]:
+                  - cell "Samsung Galaxy S24 Ultra" [ref=e618]:
+                    - link "Samsung Galaxy S24 Ultra" [ref=e619] [cursor=pointer]:
+                      - /url: /products/c3315eb7-7334-488a-a7f3-362120857053
+                  - cell "Samsung Galaxy S24 Ultra 256GB Titanium Black" [ref=e620]
+                  - cell "12 шт" [ref=e621]
+                  - cell "0" [ref=e622]
+                  - cell "--" [ref=e623]
+                  - cell "0 шт" [ref=e624]
+                  - cell "Ок" [ref=e625]
+                - row "Microsoft Xbox Series X Xbox Series X 1TB 5 шт 0 -- 0 шт Ок" [ref=e626]:
+                  - cell "Microsoft Xbox Series X" [ref=e627]:
+                    - link "Microsoft Xbox Series X" [ref=e628] [cursor=pointer]:
+                      - /url: /products/d2113b47-071d-42a8-9b3c-143b66cf98d1
+                  - cell "Xbox Series X 1TB" [ref=e629]
+                  - cell "5 шт" [ref=e630]
+                  - cell "0" [ref=e631]
+                  - cell "--" [ref=e632]
+                  - cell "0 шт" [ref=e633]
+                  - cell "Ок" [ref=e634]
+                - row "Apple MacBook Air M2 MacBook Air M2 13.6 8/512 Starlight 9 шт 0 -- 0 шт Ок" [ref=e635]:
+                  - cell "Apple MacBook Air M2" [ref=e636]:
+                    - link "Apple MacBook Air M2" [ref=e637] [cursor=pointer]:
+                      - /url: /products/c06d58a6-55d3-4213-90f9-78200266245e
+                  - cell "MacBook Air M2 13.6 8/512 Starlight" [ref=e638]
+                  - cell "9 шт" [ref=e639]
+                  - cell "0" [ref=e640]
+                  - cell "--" [ref=e641]
+                  - cell "0 шт" [ref=e642]
+                  - cell "Ок" [ref=e643]
+                - row "Apple iPhone 15 iPhone 15 128GB Green 6 шт 0 -- 0 шт Ок" [ref=e644]:
+                  - cell "Apple iPhone 15" [ref=e645]:
+                    - link "Apple iPhone 15" [ref=e646] [cursor=pointer]:
+                      - /url: /products/114be99c-80de-43f2-9d0a-952c047b395e
+                  - cell "iPhone 15 128GB Green" [ref=e647]
+                  - cell "6 шт" [ref=e648]
+                  - cell "0" [ref=e649]
+                  - cell "--" [ref=e650]
+                  - cell "0 шт" [ref=e651]
+                  - cell "Ок" [ref=e652]
+                - row "Xiaomi Redmi Note 13 Pro Redmi Note 13 Pro 256GB Black 4 шт 0 -- 0 шт Ок" [ref=e653]:
+                  - cell "Xiaomi Redmi Note 13 Pro" [ref=e654]:
+                    - link "Xiaomi Redmi Note 13 Pro" [ref=e655] [cursor=pointer]:
+                      - /url: /products/f9b354d9-c2d8-42ec-9056-a70119182a69
+                  - cell "Redmi Note 13 Pro 256GB Black" [ref=e656]
+                  - cell "4 шт" [ref=e657]
+                  - cell "0" [ref=e658]
+                  - cell "--" [ref=e659]
+                  - cell "0 шт" [ref=e660]
+                  - cell "Ок" [ref=e661]
+                - row "Apple iPhone 15 Pro Max iPhone 15 Pro Max 256GB Natural Titanium 5 шт 0 -- 0 шт Ок" [ref=e662]:
+                  - cell "Apple iPhone 15 Pro Max" [ref=e663]:
+                    - link "Apple iPhone 15 Pro Max" [ref=e664] [cursor=pointer]:
+                      - /url: /products/7d3901f0-f82d-4966-bf77-949226249213
+                  - cell "iPhone 15 Pro Max 256GB Natural Titanium" [ref=e665]
+                  - cell "5 шт" [ref=e666]
+                  - cell "0" [ref=e667]
+                  - cell "--" [ref=e668]
+                  - cell "0 шт" [ref=e669]
+                  - cell "Ок" [ref=e670]
+                - row "Apple Watch Series 9 Apple Watch Series 9 45mm Midnight 6 шт 0 -- 0 шт Ок" [ref=e671]:
+                  - cell "Apple Watch Series 9" [ref=e672]:
+                    - link "Apple Watch Series 9" [ref=e673] [cursor=pointer]:
+                      - /url: /products/32bd0d37-29e5-4494-8c06-ce5d8df599d1
+                  - cell "Apple Watch Series 9 45mm Midnight" [ref=e674]
+                  - cell "6 шт" [ref=e675]
+                  - cell "0" [ref=e676]
+                  - cell "--" [ref=e677]
+                  - cell "0 шт" [ref=e678]
+                  - cell "Ок" [ref=e679]
+                - row "LG 55\" OLED C3 LG 55\" OLED C3 5 шт 0 -- 0 шт Ок" [ref=e680]:
+                  - cell "LG 55\" OLED C3" [ref=e681]:
+                    - link "LG 55\" OLED C3" [ref=e682] [cursor=pointer]:
+                      - /url: /products/909070c5-bd29-4662-8ee1-209f098234a4
+                  - cell "LG 55\" OLED C3" [ref=e683]
+                  - cell "5 шт" [ref=e684]
+                  - cell "0" [ref=e685]
+                  - cell "--" [ref=e686]
+                  - cell "0 шт" [ref=e687]
+                  - cell "Ок" [ref=e688]
+                - row "Samsung Galaxy S24 Samsung Galaxy S24 256GB Amber Yellow 3 шт 0 -- 0 шт Ок" [ref=e689]:
+                  - cell "Samsung Galaxy S24" [ref=e690]:
+                    - link "Samsung Galaxy S24" [ref=e691] [cursor=pointer]:
+                      - /url: /products/6f3a38bf-6b2d-45ec-bf78-9c3f545e14a7
+                  - cell "Samsung Galaxy S24 256GB Amber Yellow" [ref=e692]
+                  - cell "3 шт" [ref=e693]
+                  - cell "0" [ref=e694]
+                  - cell "--" [ref=e695]
+                  - cell "0 шт" [ref=e696]
+                  - cell "Ок" [ref=e697]
+                - row "Xiaomi Redmi Note 13 Pro Redmi Note 13 Pro 256GB Purple 10 шт 0 -- 0 шт Ок" [ref=e698]:
+                  - cell "Xiaomi Redmi Note 13 Pro" [ref=e699]:
+                    - link "Xiaomi Redmi Note 13 Pro" [ref=e700] [cursor=pointer]:
+                      - /url: /products/f9b354d9-c2d8-42ec-9056-a70119182a69
+                  - cell "Redmi Note 13 Pro 256GB Purple" [ref=e701]
+                  - cell "10 шт" [ref=e702]
+                  - cell "0" [ref=e703]
+                  - cell "--" [ref=e704]
+                  - cell "0 шт" [ref=e705]
+                  - cell "Ок" [ref=e706]
+                - row "Lenovo Legion 5 Lenovo Legion 5 16 16/512 RTX4060 4 шт 0 -- 0 шт Ок" [ref=e707]:
+                  - cell "Lenovo Legion 5" [ref=e708]:
+                    - link "Lenovo Legion 5" [ref=e709] [cursor=pointer]:
+                      - /url: /products/426edd06-f1af-439e-a172-14c2ae712c1e
+                  - cell "Lenovo Legion 5 16 16/512 RTX4060" [ref=e710]
+                  - cell "4 шт" [ref=e711]
+                  - cell "0" [ref=e712]
+                  - cell "--" [ref=e713]
+                  - cell "0 шт" [ref=e714]
+                  - cell "Ок" [ref=e715]
+                - row "Apple iPhone 15 iPhone 15 128GB Blue 5 шт 0 -- 0 шт Ок" [ref=e716]:
+                  - cell "Apple iPhone 15" [ref=e717]:
+                    - link "Apple iPhone 15" [ref=e718] [cursor=pointer]:
+                      - /url: /products/114be99c-80de-43f2-9d0a-952c047b395e
+                  - cell "iPhone 15 128GB Blue" [ref=e719]
+                  - cell "5 шт" [ref=e720]
+                  - cell "0" [ref=e721]
+                  - cell "--" [ref=e722]
+                  - cell "0 шт" [ref=e723]
+                  - cell "Ок" [ref=e724]
+                - row "Samsung 55\" QLED 4K Q70C Samsung 55\" QLED 4K Q70C 5 шт 0 -- 0 шт Ок" [ref=e725]:
+                  - cell "Samsung 55\" QLED 4K Q70C" [ref=e726]:
+                    - link "Samsung 55\" QLED 4K Q70C" [ref=e727] [cursor=pointer]:
+                      - /url: /products/0fbd9cb9-ad04-4456-9ce8-0dc6000862ff
+                  - cell "Samsung 55\" QLED 4K Q70C" [ref=e728]
+                  - cell "5 шт" [ref=e729]
+                  - cell "0" [ref=e730]
+                  - cell "--" [ref=e731]
+                  - cell "0 шт" [ref=e732]
+                  - cell "Ок" [ref=e733]
+                - row "Samsung Galaxy Tab S9 Galaxy Tab S9 128GB Graphite 6 шт 0 -- 0 шт Ок" [ref=e734]:
+                  - cell "Samsung Galaxy Tab S9" [ref=e735]:
+                    - link "Samsung Galaxy Tab S9" [ref=e736] [cursor=pointer]:
+                      - /url: /products/7acda5c2-af11-4902-a156-1a097997d5aa
+                  - cell "Galaxy Tab S9 128GB Graphite" [ref=e737]
+                  - cell "6 шт" [ref=e738]
+                  - cell "0" [ref=e739]
+                  - cell "--" [ref=e740]
+                  - cell "0 шт" [ref=e741]
+                  - cell "Ок" [ref=e742]
+                - row "Samsung Galaxy S24 Samsung Galaxy S24 256GB Onyx Black 2 шт 0 -- 0 шт Ок" [ref=e743]:
+                  - cell "Samsung Galaxy S24" [ref=e744]:
+                    - link "Samsung Galaxy S24" [ref=e745] [cursor=pointer]:
+                      - /url: /products/6f3a38bf-6b2d-45ec-bf78-9c3f545e14a7
+                  - cell "Samsung Galaxy S24 256GB Onyx Black" [ref=e746]
+                  - cell "2 шт" [ref=e747]
+                  - cell "0" [ref=e748]
+                  - cell "--" [ref=e749]
+                  - cell "0 шт" [ref=e750]
+                  - cell "Ок" [ref=e751]
+                - row "Apple iPhone 15 Pro Max iPhone 15 Pro Max 256GB Black Titanium 5 шт 0 -- 0 шт Ок" [ref=e752]:
+                  - cell "Apple iPhone 15 Pro Max" [ref=e753]:
+                    - link "Apple iPhone 15 Pro Max" [ref=e754] [cursor=pointer]:
+                      - /url: /products/7d3901f0-f82d-4966-bf77-949226249213
+                  - cell "iPhone 15 Pro Max 256GB Black Titanium" [ref=e755]
+                  - cell "5 шт" [ref=e756]
+                  - cell "0" [ref=e757]
+                  - cell "--" [ref=e758]
+                  - cell "0 шт" [ref=e759]
+                  - cell "Ок" [ref=e760]
+                - row "Apple iPad Air 11 M2 iPad Air 11 M2 256GB Wi‑Fi Space Gray 2 шт 0 -- 0 шт Ок" [ref=e761]:
+                  - cell "Apple iPad Air 11 M2" [ref=e762]:
+                    - link "Apple iPad Air 11 M2" [ref=e763] [cursor=pointer]:
+                      - /url: /products/0a63ff6d-33ac-4d51-bfac-29985de0ee6d
+                  - cell "iPad Air 11 M2 256GB Wi‑Fi Space Gray" [ref=e764]
+                  - cell "2 шт" [ref=e765]
+                  - cell "0" [ref=e766]
+                  - cell "--" [ref=e767]
+                  - cell "0 шт" [ref=e768]
+                  - cell "Ок" [ref=e769]
+                - row "Samsung Galaxy S24 Ultra Samsung Galaxy S24 Ultra 256GB Titanium Gray 2 шт 0 -- 0 шт Ок" [ref=e770]:
+                  - cell "Samsung Galaxy S24 Ultra" [ref=e771]:
+                    - link "Samsung Galaxy S24 Ultra" [ref=e772] [cursor=pointer]:
+                      - /url: /products/c3315eb7-7334-488a-a7f3-362120857053
+                  - cell "Samsung Galaxy S24 Ultra 256GB Titanium Gray" [ref=e773]
+                  - cell "2 шт" [ref=e774]
+                  - cell "0" [ref=e775]
+                  - cell "--" [ref=e776]
+                  - cell "0 шт" [ref=e777]
+                  - cell "Ок" [ref=e778]

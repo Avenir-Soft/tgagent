@@ -13,6 +13,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [impersonating, setImpersonating] = useState(false);
+  const [impersonateTenant, setImpersonateTenant] = useState("");
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -21,6 +23,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       setAuthChecked(true);
     }
   }, [router]);
+
+  // Check impersonation state
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const originalToken = sessionStorage.getItem("original_token");
+    if (originalToken) {
+      setImpersonating(true);
+      setImpersonateTenant(sessionStorage.getItem("impersonate_tenant_name") || "Tenant");
+    }
+  }, []);
 
   // Listen for session expiry events from API client
   useEffect(() => {
@@ -32,6 +44,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const handleSessionLogout = () => {
     resetSessionFlag();
     logout();
+  };
+
+  const handleExitImpersonate = () => {
+    const originalToken = sessionStorage.getItem("original_token");
+    const originalUser = sessionStorage.getItem("original_user");
+    if (originalToken) {
+      localStorage.setItem("token", originalToken);
+      if (originalUser) localStorage.setItem("user", originalUser);
+      sessionStorage.removeItem("original_token");
+      sessionStorage.removeItem("original_user");
+      sessionStorage.removeItem("impersonate_tenant_name");
+      setImpersonating(false);
+      router.push("/platform-tenants");
+    }
   };
 
   // Don't render admin content until auth is verified
@@ -68,10 +94,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </div>
       )}
+      {/* Impersonate banner */}
+      {impersonating && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500 text-amber-950 text-sm font-medium py-2 px-4 flex items-center justify-center gap-3">
+          <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+          <span>Просмотр от имени: <strong>{impersonateTenant}</strong></span>
+          <button
+            onClick={handleExitImpersonate}
+            className="ml-2 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold px-3 py-1 rounded-lg transition-colors"
+          >
+            Выйти в платформу
+          </button>
+        </div>
+      )}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:text-sm focus:font-medium">
         Перейти к контенту
       </a>
-      <div className="flex min-h-screen bg-slate-50">
+      <div className={`flex min-h-screen bg-slate-50 ${impersonating ? "pt-10" : ""}`}>
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0">
           {/* Mobile header */}

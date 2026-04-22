@@ -25,6 +25,7 @@ from src.telegram.schemas import (
     TelegramChannelOut,
 )
 
+from src.core.audit import log_audit
 from src.core.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
@@ -49,18 +50,17 @@ _pending_clients: dict[str, object] = {}
 _PENDING_AUTH_TTL = 900  # 15 minutes
 
 
-async def _get_redis():
-    """Get Redis client for pending auth storage."""
-    import redis.asyncio as aioredis
-    return aioredis.from_url(settings.redis_url, decode_responses=True)
+def _get_redis():
+    """Get shared Redis client for pending auth storage."""
+    from src.core.redis import get_redis
+    return get_redis()
 
 
 async def _store_pending_auth(phone: str, data: dict, client: object):
     """Store pending auth metadata in Redis + client in memory."""
-    r = await _get_redis()
+    r = _get_redis()
     key = f"pending_auth:{phone}"
     await r.setex(key, _PENDING_AUTH_TTL, json.dumps(data))
-    await r.aclose()
     _pending_clients[phone] = client
 
 
@@ -70,10 +70,9 @@ async def _get_pending_auth(phone: str) -> tuple[dict | None, object | None]:
     If the client is not in memory (e.g. different gunicorn worker),
     reconstruct it from the session file stored on disk.
     """
-    r = await _get_redis()
+    r = _get_redis()
     key = f"pending_auth:{phone}"
     raw = await r.get(key)
-    await r.aclose()
     if not raw:
         _pending_clients.pop(phone, None)
         return None, None
@@ -83,9 +82,7 @@ async def _get_pending_auth(phone: str) -> tuple[dict | None, object | None]:
         # Client lost (different worker or process restart) — reconstruct from session file
         session_path = data.get("session_path")
         if not session_path:
-            r2 = await _get_redis()
-            await r2.delete(key)
-            await r2.aclose()
+            await r.delete(key)
             return None, None
         try:
             from telethon import TelegramClient
@@ -103,18 +100,15 @@ async def _get_pending_auth(phone: str) -> tuple[dict | None, object | None]:
             _pending_clients[phone] = client
         except Exception:
             logger.warning("Failed to reconstruct Telethon client for %s", phone)
-            r2 = await _get_redis()
-            await r2.delete(key)
-            await r2.aclose()
+            await r.delete(key)
             return None, None
     return data, client
 
 
 async def _clear_pending_auth(phone: str):
     """Remove pending auth from both Redis and memory."""
-    r = await _get_redis()
+    r = _get_redis()
     await r.delete(f"pending_auth:{phone}")
-    await r.aclose()
     _pending_clients.pop(phone, None)
 
 
@@ -325,6 +319,11 @@ async def verify_code(
 
     await _clear_pending_auth(body.phone_number)
 
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "telegram.connect", "telegram_account", str(account.id),
+        {"phone": safe_phone, "username": me.username},
+    )
+
     # Notify frontend via SSE
     try:
         from src.sse.event_bus import publish_event
@@ -373,19 +372,24 @@ async def disconnect_account(
     if os.path.exists(session_path):
         os.remove(session_path)
 
+    phone = account.phone_number
     await db.delete(account)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "telegram.disconnect", "telegram_account", str(account_id),
+        {"phone": phone},
+    )
 
     # Notify frontend via SSE
     try:
         from src.sse.event_bus import publish_event
         await publish_event(
             f"sse:{user.tenant_id}:tenant",
-            {"event": "telegram_status_changed", "status": "disconnected", "phone": account.phone_number},
+            {"event": "telegram_status_changed", "status": "disconnected", "phone": phone},
         )
     except Exception:
         pass
 
-    return {"status": "disconnected", "phone": account.phone_number}
+    return {"status": "disconnected", "phone": phone}
 
 
 # --- Accounts ---
@@ -548,11 +552,19 @@ async def reconnect_account(
     try:
         await telegram_manager.start_client(account)
         account.status = "connected"
+        await log_audit(
+            db, user.tenant_id, "user", str(user.id), "telegram.reconnect", "telegram_account", str(account_id),
+            {"phone": account.phone_number, "result": "success"},
+        )
         # SSE emitted by start_client
         return {"status": "reconnected", "phone": account.phone_number}
     except Exception as e:
         account.status = "error"
         logger.error("Telegram reconnect failed for account %s: %s", account_id, e)
+        await log_audit(
+            db, user.tenant_id, "user", str(user.id), "telegram.reconnect", "telegram_account", str(account_id),
+            {"phone": account.phone_number, "result": "failed", "error": str(e)},
+        )
         # SSE emitted by start_client failure path
         raise HTTPException(status_code=500, detail="Не удалось переподключить Telegram аккаунт")
 

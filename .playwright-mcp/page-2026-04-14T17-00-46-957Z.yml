@@ -1,0 +1,189 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e13] [cursor=pointer]:
+    - img [ref=e14]
+  - alert [ref=e17]
+  - link "Перейти к контенту" [ref=e18] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e19]:
+    - complementary [ref=e20]:
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - img [ref=e24]
+          - generic [ref=e26]:
+            - heading "AI Closer" [level=1] [ref=e27]
+            - paragraph [ref=e28]: Панель управления
+        - button "Закрыть меню" [ref=e29]:
+          - img [ref=e30]
+      - navigation [ref=e32]:
+        - generic [ref=e33]:
+          - paragraph [ref=e34]: Обзор
+          - generic [ref=e35]:
+            - link "Дашборд" [ref=e36] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e38]
+              - generic [ref=e43]: Дашборд
+            - link "Аналитика" [ref=e44] [cursor=pointer]:
+              - /url: /analytics
+              - img [ref=e46]
+              - generic [ref=e49]: Аналитика
+        - generic [ref=e50]:
+          - paragraph [ref=e51]: Продажи
+          - generic [ref=e52]:
+            - link "Диалоги" [ref=e53] [cursor=pointer]:
+              - /url: /conversations
+              - img [ref=e55]
+              - generic [ref=e57]: Диалоги
+            - link "Лиды" [ref=e58] [cursor=pointer]:
+              - /url: /leads
+              - img [ref=e60]
+              - generic [ref=e64]: Лиды
+            - link "Заказы" [ref=e65] [cursor=pointer]:
+              - /url: /orders
+              - img [ref=e67]
+              - generic [ref=e69]: Заказы
+            - link "Товары" [ref=e70] [cursor=pointer]:
+              - /url: /products
+              - img [ref=e72]
+              - generic [ref=e75]: Товары
+        - generic [ref=e76]:
+          - paragraph [ref=e77]: Операции
+          - generic [ref=e78]:
+            - link "Доставка" [ref=e79] [cursor=pointer]:
+              - /url: /delivery
+              - img [ref=e81]
+              - generic [ref=e86]: Доставка
+            - link "Передачи" [ref=e87] [cursor=pointer]:
+              - /url: /handoffs
+              - img [ref=e89]
+              - generic [ref=e91]: Передачи
+            - link "Рассылки" [ref=e92] [cursor=pointer]:
+              - /url: /broadcast
+              - img [ref=e94]
+              - generic [ref=e96]: Рассылки
+        - generic [ref=e97]:
+          - paragraph [ref=e98]: AI & Обучение
+          - generic [ref=e99]:
+            - link "Обучение AI" [ref=e100] [cursor=pointer]:
+              - /url: /training
+              - img [ref=e102]
+              - generic [ref=e104]: Обучение AI
+            - link "Шаблоны" [ref=e105] [cursor=pointer]:
+              - /url: /templates
+              - img [ref=e107]
+              - generic [ref=e109]: Шаблоны
+            - link "AI Monitor" [ref=e110] [cursor=pointer]:
+              - /url: /ai-monitor
+              - img [ref=e112]
+              - generic [ref=e114]: AI Monitor
+        - generic [ref=e115]:
+          - paragraph [ref=e116]: Система
+          - generic [ref=e117]:
+            - link "Telegram" [ref=e118] [cursor=pointer]:
+              - /url: /telegram
+              - img [ref=e120]
+              - generic [ref=e122]: Telegram
+            - link "Настройки" [ref=e123] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e125]
+              - generic [ref=e128]: Настройки
+      - generic [ref=e131]:
+        - generic [ref=e132]: SO
+        - generic [ref=e133]:
+          - paragraph [ref=e134]: admin@gmail.com
+          - paragraph [ref=e135]: store owner
+        - button "Тёмная тема" [ref=e136]:
+          - img [ref=e137]
+        - button "Выйти" [ref=e139]:
+          - img [ref=e140]
+    - generic [ref=e142]:
+      - banner [ref=e143]:
+        - button "Открыть меню" [ref=e144]:
+          - img [ref=e145]
+        - generic [ref=e147]:
+          - img [ref=e149]
+          - generic [ref=e151]: AI Closer
+      - main [ref=e152]:
+        - generic [ref=e153]:
+          - generic [ref=e154]:
+            - generic [ref=e155]:
+              - heading "Аналитика" [level=1] [ref=e156]
+              - paragraph [ref=e157]: Клиенты, конверсия, склад и конкуренты
+            - generic [ref=e158]:
+              - button "7д" [ref=e159]
+              - button "14д" [ref=e160]
+              - button "30д" [active] [ref=e161]
+              - button "60д" [ref=e162]
+              - button "90д" [ref=e163]
+          - generic [ref=e164]:
+            - button "AI Инсайты" [ref=e165]
+            - button "Обзор" [ref=e166]
+            - button "Клиенты" [ref=e167]
+            - button "Диалоги" [ref=e168]
+            - button "Воронка" [ref=e169]
+            - button "Склад" [ref=e170]
+            - button "Конкуренты" [ref=e171]
+          - generic [ref=e273]:
+            - generic [ref=e274]:
+              - generic [ref=e275]:
+                - heading "AI Аналитик" [level=2] [ref=e276]
+                - paragraph [ref=e277]: Автоматический анализ бизнес-данных за 30 дней
+              - button "Обновить инсайты" [ref=e278]:
+                - img [ref=e279]
+                - text: Обновить инсайты
+            - generic [ref=e281]:
+              - generic [ref=e282]:
+                - paragraph [ref=e283]: Выручка
+                - paragraph [ref=e284]: 134.390.000 сум
+                - paragraph [ref=e285]: ↑ 13439000000% vs прошлый период
+              - generic [ref=e286]:
+                - paragraph [ref=e287]: Заказы
+                - paragraph [ref=e288]: "5"
+                - paragraph [ref=e289]: ср. чек 26.878.000 сум
+              - generic [ref=e290]:
+                - paragraph [ref=e291]: Конверсия
+                - paragraph [ref=e292]: 0%
+                - paragraph [ref=e293]: 9 диалогов
+              - generic [ref=e294]:
+                - paragraph [ref=e295]: Handoff
+                - paragraph [ref=e296]: "0"
+                - paragraph [ref=e297]: передач оператору
+            - generic [ref=e298]:
+              - generic [ref=e300]:
+                - generic [ref=e301]: 📈
+                - generic [ref=e302]:
+                  - generic [ref=e303]:
+                    - heading "Резкий рост выручки" [level=3] [ref=e304]
+                    - generic [ref=e305]: HIGH
+                  - paragraph [ref=e306]: За последние 30 дней выручка составила 134,390,000 сум, что является увеличением на 13439000000.0% по сравнению с предыдущим периодом, когда не было заказов. Это свидетельствует о успешном запуске магазина.
+              - generic [ref=e308]:
+                - generic [ref=e309]: ⚠️
+                - generic [ref=e310]:
+                  - generic [ref=e311]:
+                    - heading "Низкая конверсия" [level=3] [ref=e312]
+                    - generic [ref=e313]: HIGH
+                  - paragraph [ref=e314]: Конверсия остается на уровне 0.0% при 9 диалогах. Это требует внимания, так как ни один из клиентов не завершил покупку. Необходимо проанализировать причины отказов и улучшить процесс общения.
+              - generic [ref=e316]:
+                - generic [ref=e317]: 💡
+                - generic [ref=e318]:
+                  - heading "Популярные товары для продвижения" [level=3] [ref=e320]
+                  - paragraph [ref=e321]: "Топовые товары: Apple iPhone 15 Pro и Apple MacBook Pro 14 M3, каждый из которых принес 45,800,000 сум. Рекомендуется увеличить запасы и запустить рекламные кампании на эти товары."
+              - generic [ref=e323]:
+                - generic [ref=e324]: 🎯
+                - generic [ref=e325]:
+                  - heading "Необходимость пополнения запасов" [level=3] [ref=e327]
+                  - paragraph [ref=e328]: Низкий остаток на складе по Samsung Galaxy S24 и Apple iPad Air 11 M2 (по 2 шт). Рекомендуется заказать дополнительные единицы, чтобы избежать дефицита и удовлетворить спрос.
+              - generic [ref=e330]:
+                - generic [ref=e331]: ⚠️
+                - generic [ref=e332]:
+                  - generic [ref=e333]:
+                    - heading "Проблемы с клиентским обслуживанием" [level=3] [ref=e334]
+                    - generic [ref=e335]: HIGH
+                  - paragraph [ref=e336]: "Причины handoff: 3 случая нецензурной лексики, 1 случай с жалобой на задержку доставки. Необходимо обучить операторов и улучшить систему обработки заказов для повышения качества обслуживания."
+              - generic [ref=e338]:
+                - generic [ref=e339]: 🎯
+                - generic [ref=e340]:
+                  - heading "Возврат клиентов" [level=3] [ref=e342]
+                  - paragraph [ref=e343]: В сегменте 'lost' 2 клиента. Рекомендуется запустить кампанию по возврату клиентов с предложением скидок или специальных предложений для повторных покупок.
+            - generic [ref=e344]:
+              - generic [ref=e345]: "Сгенерировано: 14.04.2026, 21:32:53"
+              - button "Экспорт CSV" [ref=e346]

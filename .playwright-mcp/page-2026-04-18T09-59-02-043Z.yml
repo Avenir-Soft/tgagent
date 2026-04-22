@@ -1,0 +1,109 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - link "Перейти к контенту" [ref=e3] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e4]:
+    - complementary [ref=e5]:
+      - generic [ref=e7]:
+        - img [ref=e9]
+        - generic [ref=e11]:
+          - heading "Easy Tour" [level=1] [ref=e12]
+          - paragraph [ref=e13]: Панель управления
+      - navigation [ref=e14]:
+        - generic [ref=e15]:
+          - paragraph [ref=e16]: Обзор
+          - generic [ref=e17]:
+            - link "Дашборд" [ref=e18] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e20]
+              - generic [ref=e25]: Дашборд
+            - link "Аналитика" [ref=e26] [cursor=pointer]:
+              - /url: /analytics
+              - img [ref=e28]
+              - generic [ref=e31]: Аналитика
+        - generic [ref=e32]:
+          - paragraph [ref=e33]: Туры & Продажи
+          - generic [ref=e34]:
+            - link "Диалоги" [ref=e35] [cursor=pointer]:
+              - /url: /conversations
+              - img [ref=e37]
+              - generic [ref=e39]: Диалоги
+            - link "Лиды" [ref=e40] [cursor=pointer]:
+              - /url: /leads
+              - img [ref=e42]
+              - generic [ref=e46]: Лиды
+            - link "Бронирования" [ref=e47] [cursor=pointer]:
+              - /url: /orders
+              - img [ref=e49]
+              - generic [ref=e51]: Бронирования
+            - link "Туры" [ref=e52] [cursor=pointer]:
+              - /url: /products
+              - img [ref=e54]
+              - generic [ref=e57]: Туры
+        - generic [ref=e58]:
+          - paragraph [ref=e59]: Операции
+          - generic [ref=e60]:
+            - link "Передачи" [ref=e61] [cursor=pointer]:
+              - /url: /handoffs
+              - img [ref=e63]
+              - generic [ref=e65]: Передачи
+            - link "Рассылки" [ref=e66] [cursor=pointer]:
+              - /url: /broadcast
+              - img [ref=e68]
+              - generic [ref=e70]: Рассылки
+        - generic [ref=e71]:
+          - paragraph [ref=e72]: AI & Обучение
+          - generic [ref=e73]:
+            - link "Обучение AI" [ref=e74] [cursor=pointer]:
+              - /url: /training
+              - img [ref=e76]
+              - generic [ref=e78]: Обучение AI
+            - link "Шаблоны" [ref=e79] [cursor=pointer]:
+              - /url: /templates
+              - img [ref=e81]
+              - generic [ref=e83]: Шаблоны
+            - link "AI Monitor" [ref=e84] [cursor=pointer]:
+              - /url: /ai-monitor
+              - img [ref=e86]
+              - generic [ref=e88]: AI Monitor
+        - generic [ref=e89]:
+          - paragraph [ref=e90]: Система
+          - generic [ref=e91]:
+            - link "Telegram" [ref=e92] [cursor=pointer]:
+              - /url: /telegram
+              - img [ref=e94]
+              - generic [ref=e96]: Telegram
+            - link "Настройки" [ref=e97] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e99]
+              - generic [ref=e102]: Настройки
+      - generic [ref=e105]:
+        - generic [ref=e106]: ET
+        - generic [ref=e107]:
+          - paragraph [ref=e108]: easytour@admin.com
+          - paragraph [ref=e109]: store owner
+        - button "Тёмная тема" [ref=e110]:
+          - img [ref=e111]
+        - button "Выйти" [ref=e113]:
+          - img [ref=e114]
+    - main [ref=e117]:
+      - generic [ref=e118]:
+        - generic [ref=e119]:
+          - generic [ref=e120]:
+            - heading "Туры (0)" [level=1] [ref=e121]
+            - paragraph [ref=e122]: Управление каталогом туров
+          - generic [ref=e123]:
+            - button "Экспорт CSV" [ref=e124]
+            - button "+ Вручную" [ref=e125]
+            - button "AI Создать" [ref=e126]:
+              - img [ref=e127]
+              - text: AI Создать
+        - generic [ref=e129]:
+          - textbox "Поиск по названию тура..." [ref=e130]
+          - combobox "Фильтр по категории" [ref=e131]:
+            - option "Все категории" [selected]
+        - generic [ref=e133]:
+          - generic [ref=e134]: "Сортировка:"
+          - button "по названию" [ref=e135]
+          - button "по цене" [ref=e136]
+          - button "по наличию" [ref=e137]

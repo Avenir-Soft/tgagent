@@ -1,19 +1,16 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-import redis.asyncio as aioredis
+from cryptography.fernet import Fernet, InvalidToken
 from jose import JWTError, jwt
 
 from src.core.config import settings
+from src.core.redis import get_redis
 
-_redis = aioredis.from_url(
-    settings.redis_url,
-    decode_responses=True,
-    retry_on_timeout=True,
-    socket_connect_timeout=5,
-    socket_timeout=5,
-    health_check_interval=30,
-)
+_logger = logging.getLogger(__name__)
+
+_redis = get_redis()
 
 
 async def blacklist_token(token: str) -> None:
@@ -93,3 +90,66 @@ def create_media_token(user_id: str, ttl_seconds: int = 300) -> str:
     payload = f"{user_id}.{expires}"
     sig = hmac.new(settings.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
     return f"{payload}.{sig}"
+
+
+def create_sse_token(user_id: str, tenant_id: str, ttl_seconds: int = 300) -> str:
+    """Create a short-lived JWT token for SSE connections (5 min default).
+
+    Avoids exposing the full session JWT in URL query parameters which
+    appear in server logs, browser history, and proxy logs.
+    """
+    expire = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+    payload = {
+        "sub": user_id,
+        "tenant_id": tenant_id,
+        "purpose": "sse",
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+
+
+def verify_sse_token(token: str) -> dict | None:
+    """Verify a short-lived SSE token. Returns payload dict or None if invalid/expired."""
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("purpose") != "sse":
+            return None
+        return payload
+    except JWTError:
+        return None
+
+
+# ── Fernet symmetric encryption for API keys ────────────────────────────────
+
+def _get_fernet() -> Fernet:
+    """Derive a URL-safe base64 Fernet key from the ENCRYPTION_KEY setting.
+
+    Fernet requires exactly 32 bytes, base64-encoded.  We SHA-256 the raw
+    setting value to guarantee the right length, then base64-encode.
+    """
+    import base64
+    import hashlib
+
+    raw = settings.encryption_key.encode("utf-8")
+    key_bytes = hashlib.sha256(raw).digest()          # always 32 bytes
+    fernet_key = base64.urlsafe_b64encode(key_bytes)  # 44 chars, Fernet-compatible
+    return Fernet(fernet_key)
+
+
+def encrypt_api_key(plain_key: str) -> str:
+    """Encrypt an API key string using Fernet. Returns base64 ciphertext."""
+    f = _get_fernet()
+    return f.encrypt(plain_key.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_api_key(encrypted: str) -> str:
+    """Decrypt an API key previously encrypted with encrypt_api_key.
+
+    Returns the plaintext key, or raises ValueError on failure.
+    """
+    try:
+        f = _get_fernet()
+        return f.decrypt(encrypted.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, Exception) as exc:
+        _logger.error("Failed to decrypt API key: %s", type(exc).__name__)
+        raise ValueError("Failed to decrypt API key — encryption key may have changed") from exc

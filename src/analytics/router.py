@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.deps import get_current_user, require_store_owner
 from src.auth.models import User
-from src.core.database import get_db
+from src.core.database import escape_like, get_db
 from src.core.rate_limit import limiter
 from src.analytics.models import CustomerSegment, CompetitorPrice
 from src.analytics.schemas import (
@@ -617,7 +617,7 @@ async def list_competitor_prices(
     if product_id:
         q = q.where(CompetitorPrice.product_id == product_id)
     if competitor_name:
-        q = q.where(CompetitorPrice.competitor_name.ilike(f"%{competitor_name}%"))
+        q = q.where(CompetitorPrice.competitor_name.ilike(f"%{escape_like(competitor_name)}%"))
     q = q.order_by(CompetitorPrice.captured_at.desc()).limit(limit).offset(offset)
 
     result = await db.execute(q)
@@ -654,7 +654,7 @@ async def get_competitor_summary(
 
 
 @router.get("/ai-insights")
-@limiter.limit("30/minute")
+@limiter.limit("5/minute")
 async def get_ai_insights(
     request: Request,
     days: int = Query(30, ge=7, le=90),

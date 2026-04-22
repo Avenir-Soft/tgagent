@@ -397,7 +397,7 @@ MAX_SMART_LABEL_MESSAGES = 200  # Cap to avoid unbounded GPT-4o calls
 
 
 @router.post("/smart-label-all")
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def smart_label_all(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -490,7 +490,7 @@ async def smart_label_all(
 # ── Fine-tuning ──────────────────────────────────────────────────────────────
 
 @router.post("/fine-tune")
-@limiter.limit("10/minute")
+@limiter.limit("3/hour")
 async def start_fine_tuning(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -784,7 +784,7 @@ If there are language-related issues (mixing Russian into Uzbek, wrong script), 
 
 
 @router.post("/generate-rules")
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def generate_rules(
     request: Request,
     db: AsyncSession = Depends(get_db),

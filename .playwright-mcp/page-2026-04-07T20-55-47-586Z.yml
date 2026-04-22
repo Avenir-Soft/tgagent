@@ -1,0 +1,94 @@
+- generic [ref=e1]:
+  - generic:
+    - generic:
+      - generic: 
+  - generic [ref=e32]:
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - button "Return to chat list" [ref=e1163] [cursor=pointer]
+        - generic:       
+      - generic [ref=e39]:
+        - generic [ref=e42]: 
+        - textbox "Search" [active] [ref=e53]
+    - generic [ref=e54]:
+      - text:                                                                                                        
+      - generic [ref=e1165]:
+        - generic [ref=e1166]:
+          - generic [ref=e1168]: Chats
+          - generic [ref=e1170] [cursor=pointer]: Channels
+          - generic [ref=e1172] [cursor=pointer]: Apps
+          - generic [ref=e1174] [cursor=pointer]: Posts
+          - generic [ref=e1176] [cursor=pointer]: Media
+          - generic [ref=e1178] [cursor=pointer]: Links
+          - generic [ref=e1180] [cursor=pointer]: Files
+          - generic [ref=e1182] [cursor=pointer]: Music
+          - generic [ref=e1184] [cursor=pointer]: Voice
+        - generic [ref=e1188]:
+          - generic [ref=e1189] [cursor=pointer]:
+            - img "Полвонбе" [ref=e1192]
+            - generic [ref=e1193]: Полвонбе
+          - generic [ref=e1194] [cursor=pointer]:
+            - img "Avenir | Manager" [ref=e1197]
+            - generic [ref=e1198]: Avenir | Manager
+          - generic [ref=e1199] [cursor=pointer]:
+            - img "Хамелон" [ref=e1202]
+            - generic [ref=e1203]: Хамелон
+          - generic [ref=e1204] [cursor=pointer]:
+            - generic "Sherzodbek Yakubov" [ref=e1205]:
+              - generic [ref=e1207]: SY
+            - generic [ref=e1208]: Sherzodbek
+          - generic [ref=e1209] [cursor=pointer]:
+            - img "Хусан" [ref=e1212]
+            - generic [ref=e1213]: Хусан
+          - generic [ref=e1214] [cursor=pointer]:
+            - img "Madi" [ref=e1217]
+            - generic [ref=e1218]: Madi
+          - generic [ref=e1219] [cursor=pointer]:
+            - img "Ziyodulla Abdurakhmonov" [ref=e1222]
+            - generic [ref=e1223]: Ziyodulla
+          - generic [ref=e1224] [cursor=pointer]:
+            - generic "𝓜𝓾𝓱𝓪𝓶𝓶𝓪𝓭𝓼𝓸𝓭𝓲𝓺" [ref=e1225]:
+              - generic [ref=e1227]: 𝓜
+            - generic [ref=e1228]: 𝓜𝓾𝓱𝓪𝓶𝓶𝓪𝓭𝓼𝓸𝓭𝓲𝓺
+          - generic [ref=e1229] [cursor=pointer]:
+            - img "Дониер Ака" [ref=e1232]
+            - generic [ref=e1233]: Дониер Ака
+          - generic [ref=e1234] [cursor=pointer]:
+            - generic "Хожакбар" [ref=e1235]:
+              - generic [ref=e1237]: Х
+            - generic [ref=e1238]: Хожакбар
+          - generic [ref=e1239] [cursor=pointer]:
+            - img "Шохрух" [ref=e1242]
+            - generic [ref=e1243]: Шохрух
+          - generic [ref=e1244] [cursor=pointer]:
+            - generic "a" [ref=e1245]:
+              - generic [ref=e1247]: A
+            - generic [ref=e1248]: a
+          - generic [ref=e1249] [cursor=pointer]:
+            - img "Elbek Giyozov" [ref=e1252]
+            - generic [ref=e1253]: Elbek Giyozov
+          - generic [ref=e1254] [cursor=pointer]:
+            - img "Мама" [ref=e1257]
+            - generic [ref=e1258]: Мама
+          - generic [ref=e1259] [cursor=pointer]:
+            - img "Коля" [ref=e1262]
+            - generic [ref=e1263]: Коля
+          - generic [ref=e1264] [cursor=pointer]:
+            - img "Obidxon" [ref=e1267]
+            - generic [ref=e1268]: Obidxon
+          - generic [ref=e1269] [cursor=pointer]:
+            - img "Linko Doniyor aka" [ref=e1272]
+            - generic [ref=e1273]: Linko Doniyor aka
+          - generic [ref=e1274] [cursor=pointer]:
+            - generic "Мохинур" [ref=e1275]:
+              - generic [ref=e1277]: М
+            - generic [ref=e1278]: Мохинур
+          - generic [ref=e1279] [cursor=pointer]:
+            - img "Папа" [ref=e1282]
+            - generic [ref=e1283]: Папа
+    - generic [ref=e653]:
+      - button "New Message" [ref=e654] [cursor=pointer]:
+        - generic [ref=e655]: 
+        - generic [ref=e656]: 
+      - generic:   
+  - img

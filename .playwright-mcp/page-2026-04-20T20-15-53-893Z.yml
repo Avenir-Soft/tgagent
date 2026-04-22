@@ -1,0 +1,176 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e102] [cursor=pointer]:
+    - img [ref=e103]
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e6]:
+        - img [ref=e8]
+        - generic [ref=e10]:
+          - heading "AI Closer" [level=1] [ref=e11]
+          - generic [ref=e13]: Platform
+      - navigation [ref=e14]:
+        - generic [ref=e15]:
+          - paragraph [ref=e16]: Обзор
+          - link "Обзор" [ref=e18] [cursor=pointer]:
+            - /url: /platform-overview
+            - img [ref=e20]
+            - generic [ref=e23]: Обзор
+        - generic [ref=e24]:
+          - paragraph [ref=e25]: Управление
+          - generic [ref=e26]:
+            - link "Тенанты" [ref=e27] [cursor=pointer]:
+              - /url: /platform-tenants
+              - img [ref=e29]
+              - generic [ref=e31]: Тенанты
+            - link "Пользователи" [ref=e32] [cursor=pointer]:
+              - /url: /platform-users
+              - img [ref=e34]
+              - generic [ref=e36]: Пользователи
+        - generic [ref=e37]:
+          - paragraph [ref=e38]: Мониторинг
+          - generic [ref=e39]:
+            - link "AI Монитор" [ref=e40] [cursor=pointer]:
+              - /url: /platform-ai-monitor
+              - img [ref=e42]
+              - generic [ref=e44]: AI Монитор
+            - link "Биллинг" [ref=e45] [cursor=pointer]:
+              - /url: /platform-billing
+              - img [ref=e47]
+              - generic [ref=e49]: Биллинг
+            - link "Логи" [ref=e50] [cursor=pointer]:
+              - /url: /platform-logs
+              - img [ref=e52]
+              - generic [ref=e54]: Логи
+        - generic [ref=e55]:
+          - paragraph [ref=e56]: Система
+          - link "Настройки" [ref=e58] [cursor=pointer]:
+            - /url: /platform-settings
+            - img [ref=e60]
+            - generic [ref=e63]: Настройки
+      - generic [ref=e66]:
+        - generic [ref=e67]: SA
+        - generic [ref=e68]:
+          - paragraph [ref=e69]: superadmin@gmail.com
+          - paragraph [ref=e70]: Super Admin
+        - button "Тёмная тема" [active] [ref=e71]:
+          - img [ref=e72]
+        - button "Выйти" [ref=e74]:
+          - img [ref=e75]
+    - main [ref=e78]:
+      - navigation [ref=e79]:
+        - link "Платформа" [ref=e81] [cursor=pointer]:
+          - /url: /platform-overview
+        - generic [ref=e82]:
+          - img [ref=e83]
+          - generic [ref=e85]: Обзор
+      - generic [ref=e106]:
+        - heading "Обзор платформы" [level=1] [ref=e109]
+        - generic [ref=e110]:
+          - generic [ref=e112]:
+            - generic [ref=e113]:
+              - paragraph [ref=e114]: Тенанты
+              - paragraph [ref=e115]: "2"
+              - paragraph [ref=e116]: всего на платформе
+            - img [ref=e118]
+          - generic [ref=e121]:
+            - generic [ref=e122]:
+              - paragraph [ref=e123]: Пользователи
+              - paragraph [ref=e124]: "4"
+            - img [ref=e126]
+          - generic [ref=e129]:
+            - generic [ref=e130]:
+              - paragraph [ref=e131]: Сообщений (24ч)
+              - paragraph [ref=e132]: "8"
+            - img [ref=e134]
+          - generic [ref=e137]:
+            - generic [ref=e138]:
+              - paragraph [ref=e139]: Заказов (24ч)
+              - paragraph [ref=e140]: "0"
+            - img [ref=e142]
+          - generic [ref=e145]:
+            - generic [ref=e146]:
+              - paragraph [ref=e147]: Выручка (24ч)
+              - paragraph [ref=e148]: "0"
+              - paragraph [ref=e149]: UZS
+            - img [ref=e151]
+        - generic [ref=e153]:
+          - heading "Сообщения за 7 дней" [level=2] [ref=e154]
+          - generic [ref=e155]:
+            - generic [ref=e156]:
+              - generic [ref=e157]: "0"
+              - generic [ref=e159]: Вт
+              - generic [ref=e160]: 04-14
+            - generic [ref=e161]:
+              - generic [ref=e162]: "0"
+              - generic [ref=e164]: Ср
+              - generic [ref=e165]: 04-15
+            - generic [ref=e166]:
+              - generic [ref=e167]: "134"
+              - generic [ref=e169]: Чт
+              - generic [ref=e170]: 04-16
+            - generic [ref=e171]:
+              - generic [ref=e172]: "86"
+              - generic [ref=e174]: Пт
+              - generic [ref=e175]: 04-17
+            - generic [ref=e176]:
+              - generic [ref=e177]: "8"
+              - generic [ref=e179]: Сб
+              - generic [ref=e180]: 04-18
+            - generic [ref=e181]:
+              - generic [ref=e182]: "8"
+              - generic [ref=e184]: Вс
+              - generic [ref=e185]: 04-19
+            - generic [ref=e186]:
+              - generic [ref=e187]: "0"
+              - generic [ref=e189]: Пн
+              - generic [ref=e190]: 04-20
+        - generic [ref=e191]:
+          - heading "Топ тенанты (24ч)" [level=2] [ref=e192]
+          - table [ref=e194]:
+            - rowgroup [ref=e195]:
+              - row "Тенант Сообщения Заказы Диалоги" [ref=e196]:
+                - columnheader "Тенант" [ref=e197]
+                - columnheader "Сообщения" [ref=e198]
+                - columnheader "Заказы" [ref=e199]
+                - columnheader "Диалоги" [ref=e200]
+            - rowgroup [ref=e201]:
+              - row "1 Easy Tour 8 0 1" [ref=e202]:
+                - cell "1 Easy Tour" [ref=e203]:
+                  - link "1 Easy Tour" [ref=e204] [cursor=pointer]:
+                    - /url: /platform-tenants/ed0342b5-a5b6-4013-9686-6e2717ee18e6
+                    - generic [ref=e205]: "1"
+                    - generic [ref=e206]: Easy Tour
+                - cell "8" [ref=e207]
+                - cell "0" [ref=e208]
+                - cell "1" [ref=e209]
+              - row "2 TechnoUz Demo Store 0 0 0" [ref=e210]:
+                - cell "2 TechnoUz Demo Store" [ref=e211]:
+                  - link "2 TechnoUz Demo Store" [ref=e212] [cursor=pointer]:
+                    - /url: /platform-tenants/a7b1be91-b75f-4088-848a-22705b44b1b2
+                    - generic [ref=e213]: "2"
+                    - generic [ref=e214]: TechnoUz Demo Store
+                - cell "0" [ref=e215]
+                - cell "0" [ref=e216]
+                - cell "0" [ref=e217]
+        - generic [ref=e218]:
+          - generic [ref=e219]:
+            - heading "Тенанты по статусу" [level=2] [ref=e220]
+            - generic [ref=e223]:
+              - generic [ref=e224]: active
+              - generic [ref=e225]: "2"
+          - generic [ref=e228]:
+            - heading "Метрики платформы" [level=2] [ref=e229]
+            - generic [ref=e230]:
+              - generic [ref=e231]:
+                - generic [ref=e232]: Всего диалогов
+                - generic [ref=e233]: "15"
+              - generic [ref=e234]:
+                - generic [ref=e235]: Сообщений (7 дн.)
+                - generic [ref=e236]: "236"
+              - generic [ref=e237]:
+                - generic [ref=e238]: Средн. сообщений/тенант
+                - generic [ref=e239]: "4"
+              - generic [ref=e240]:
+                - generic [ref=e241]: Средн. заказов/тенант
+                - generic [ref=e242]: "0.0"

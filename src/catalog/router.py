@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from src.auth.deps import get_current_user, require_store_owner
 from src.auth.models import User
-from src.core.database import get_db
+from src.core.database import escape_like, get_db
 from src.core.rate_limit import limiter
 from src.catalog.models import (
     Category,
@@ -41,6 +41,8 @@ from src.catalog.schemas import (
 )
 
 from src.ai.truth_tools import invalidate_catalog_cache
+from src.core.audit import log_audit
+from src.platform.deps import check_not_read_only
 
 router = APIRouter(tags=["catalog"])
 
@@ -93,7 +95,7 @@ def _slugify(text: str) -> str:
     return re.sub(r"-+", "-", s).strip("-")[:500]
 
 
-@router.post("/products", response_model=ProductDetailOut, status_code=201)
+@router.post("/products", response_model=ProductDetailOut, status_code=201, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def create_product(
     request: Request,
@@ -101,6 +103,21 @@ async def create_product(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
+    # Enforce max_products_per_tenant platform limit
+    from sqlalchemy import func as _func
+    from src.platform.settings_cache import get_platform_settings
+    platform_cfg = get_platform_settings()
+    max_products = platform_cfg.get("max_products_per_tenant", 500)
+    count_result = await db.execute(
+        select(_func.count(Product.id)).where(Product.tenant_id == user.tenant_id)
+    )
+    current_count = count_result.scalar_one()
+    if current_count >= max_products:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Лимит товаров для тенанта: {max_products}. Текущее количество: {current_count}.",
+        )
+
     # Auto-generate slug from name if not provided
     data = body.model_dump(exclude={"variants"})
     if not data.get("slug"):
@@ -128,6 +145,10 @@ async def create_product(
         _product_query_with_relations().where(Product.id == product.id)
     )
     product = result.scalar_one()
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "product.create", "product", str(product.id),
+        {"name": product.name, "variants_count": len(body.variants) if body.variants else 0},
+    )
     return _build_product_detail(product)
 
 
@@ -176,7 +197,7 @@ async def get_product(
     return _build_product_detail(product)
 
 
-@router.patch("/products/{product_id}", response_model=ProductOut)
+@router.patch("/products/{product_id}", response_model=ProductOut, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def update_product(
     request: Request,
@@ -191,15 +212,20 @@ async def update_product(
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    changed_fields = body.model_dump(exclude_unset=True)
+    for field, value in changed_fields.items():
         setattr(product, field, value)
     await db.flush()
     await invalidate_catalog_cache(user.tenant_id)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "product.update", "product", str(product_id),
+        {"changed_fields": list(changed_fields.keys())},
+    )
     return ProductOut.model_validate(product)
 
 
 # --- Variants ---
-@router.post("/products/{product_id}/variants", response_model=VariantOut, status_code=201)
+@router.post("/products/{product_id}/variants", response_model=VariantOut, status_code=201, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def create_variant(
     request: Request,
@@ -218,6 +244,10 @@ async def create_variant(
     db.add(variant)
     await db.flush()
     await invalidate_catalog_cache(user.tenant_id)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "variant.create", "variant", str(variant.id),
+        {"product_id": str(product_id), "title": variant.title, "price": float(variant.price) if variant.price else None},
+    )
     return VariantOut.model_validate(variant)
 
 
@@ -236,7 +266,7 @@ async def list_variants(
     return [VariantOut.model_validate(v) for v in result.scalars().all()]
 
 
-@router.patch("/variants/{variant_id}", response_model=VariantOut)
+@router.patch("/variants/{variant_id}", response_model=VariantOut, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def update_variant(
     request: Request,
@@ -254,14 +284,19 @@ async def update_variant(
     variant = result.scalar_one_or_none()
     if not variant:
         raise HTTPException(status_code=404, detail="Variant not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    changed_fields = body.model_dump(exclude_unset=True)
+    for field, value in changed_fields.items():
         setattr(variant, field, value)
     await db.flush()
     await invalidate_catalog_cache(user.tenant_id)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "variant.update", "variant", str(variant_id),
+        {"changed_fields": list(changed_fields.keys())},
+    )
     return VariantOut.model_validate(variant)
 
 
-@router.delete("/variants/{variant_id}", status_code=204)
+@router.delete("/variants/{variant_id}", status_code=204, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("20/minute")
 async def delete_variant(
     request: Request,
@@ -285,13 +320,18 @@ async def delete_variant(
     )
     if order_ref.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Cannot delete variant: referenced by existing orders")
+    variant_title = variant.title
     await db.delete(variant)
     await db.flush()
     await invalidate_catalog_cache(user.tenant_id)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "variant.delete", "variant", str(variant_id),
+        {"title": variant_title},
+    )
 
 
 # --- Inventory ---
-@router.put("/inventory/{variant_id}", response_model=InventoryOut)
+@router.put("/inventory/{variant_id}", response_model=InventoryOut, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def update_inventory(
     request: Request,
@@ -326,7 +366,7 @@ async def update_inventory(
 
 
 # --- Delivery Rules ---
-@router.post("/delivery-rules", response_model=DeliveryRuleOut, status_code=201)
+@router.post("/delivery-rules", response_model=DeliveryRuleOut, status_code=201, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def create_delivery_rule(
     request: Request,
@@ -339,6 +379,10 @@ async def create_delivery_rule(
     rule = DeliveryRule(tenant_id=user.tenant_id, **body.model_dump())
     db.add(rule)
     await db.flush()
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "delivery_rule.create", "delivery_rule", str(rule.id),
+        {"city": body.city, "delivery_type": body.delivery_type, "price": float(body.price)},
+    )
     return DeliveryRuleOut.model_validate(rule)
 
 
@@ -359,7 +403,7 @@ async def list_delivery_rules(
     return [DeliveryRuleOut.model_validate(r) for r in result.scalars().all()]
 
 
-@router.post("/delivery-rules/import-csv")
+@router.post("/delivery-rules/import-csv", dependencies=[Depends(check_not_read_only)])
 @limiter.limit("10/minute")
 async def import_delivery_rules_csv(
     request: Request,
@@ -416,7 +460,7 @@ async def import_delivery_rules_csv(
     return {"created": created, "errors": errors}
 
 
-@router.patch("/delivery-rules/{rule_id}", response_model=DeliveryRuleOut)
+@router.patch("/delivery-rules/{rule_id}", response_model=DeliveryRuleOut, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def update_delivery_rule(
     request: Request,
@@ -440,10 +484,14 @@ async def update_delivery_rule(
         raise HTTPException(status_code=400, detail="eta_min_days cannot exceed eta_max_days")
     await db.flush()
     await db.refresh(rule)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "delivery_rule.update", "delivery_rule", str(rule_id),
+        {"changed_fields": list(body.model_dump(exclude_unset=True).keys())},
+    )
     return DeliveryRuleOut.model_validate(rule)
 
 
-@router.delete("/delivery-rules/{rule_id}", status_code=204)
+@router.delete("/delivery-rules/{rule_id}", status_code=204, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("20/minute")
 async def delete_delivery_rule(
     request: Request,
@@ -460,12 +508,17 @@ async def delete_delivery_rule(
     rule = result.scalar_one_or_none()
     if not rule:
         raise HTTPException(status_code=404, detail="Delivery rule not found")
+    rule_city = rule.city
     await db.delete(rule)
+    await log_audit(
+        db, user.tenant_id, "user", str(user.id), "delivery_rule.delete", "delivery_rule", str(rule_id),
+        {"city": rule_city},
+    )
     return None
 
 
 # --- Categories ---
-@router.post("/categories", response_model=CategoryOut, status_code=201)
+@router.post("/categories", response_model=CategoryOut, status_code=201, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def create_category(
     request: Request,
@@ -496,7 +549,7 @@ async def list_categories(
 
 
 # --- Product Aliases ---
-@router.post("/products/{product_id}/aliases", response_model=ProductAliasOut, status_code=201)
+@router.post("/products/{product_id}/aliases", response_model=ProductAliasOut, status_code=201, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def create_product_alias(
     request: Request,
@@ -534,7 +587,7 @@ async def list_product_aliases(
     return [ProductAliasOut.model_validate(a) for a in result.scalars().all()]
 
 
-@router.delete("/aliases/{alias_id}", status_code=204)
+@router.delete("/aliases/{alias_id}", status_code=204, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("20/minute")
 async def delete_product_alias(
     request: Request,
@@ -556,7 +609,7 @@ async def delete_product_alias(
 
 
 # --- Product Media ---
-@router.post("/products/{product_id}/media", response_model=ProductMediaOut, status_code=201)
+@router.post("/products/{product_id}/media", response_model=ProductMediaOut, status_code=201, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("30/minute")
 async def create_product_media(
     request: Request,
@@ -594,7 +647,7 @@ async def list_product_media(
     return [ProductMediaOut.model_validate(m) for m in result.scalars().all()]
 
 
-@router.delete("/media/{media_id}", status_code=204)
+@router.delete("/media/{media_id}", status_code=204, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("20/minute")
 async def delete_product_media(
     request: Request,
@@ -680,7 +733,7 @@ import uuid as _uuid
 from fastapi import File, Form, UploadFile
 
 
-@router.post("/upload/image")
+@router.post("/upload/image", dependencies=[Depends(check_not_read_only)])
 @limiter.limit("60/minute")
 async def upload_image(
     request: Request,
@@ -805,7 +858,7 @@ RULES:
     existing = await db.execute(
         select(Product.id, Product.name).where(
             Product.tenant_id == user.tenant_id,
-            Product.name.ilike(f"%{name}%"),
+            Product.name.ilike(f"%{escape_like(name)}%"),
             Product.is_active.is_(True),
         ).limit(3)
     )
@@ -816,7 +869,7 @@ RULES:
     return result
 
 
-@router.post("/products/smart-create", response_model=ProductDetailOut, status_code=201)
+@router.post("/products/smart-create", response_model=ProductDetailOut, status_code=201, dependencies=[Depends(check_not_read_only)])
 @limiter.limit("20/minute")
 async def smart_create_product(
     request: Request,
@@ -860,6 +913,21 @@ async def smart_create_product(
     if not variants_data:
         raise HTTPException(400, "At least one variant is required")
 
+    # Enforce max_products_per_tenant platform limit
+    from sqlalchemy import func as _func
+    from src.platform.settings_cache import get_platform_settings as _gps
+    _pcfg = _gps()
+    _max_products = _pcfg.get("max_products_per_tenant", 500)
+    _cnt_result = await db.execute(
+        select(_func.count(Product.id)).where(Product.tenant_id == user.tenant_id)
+    )
+    _current_count = _cnt_result.scalar_one()
+    if _current_count >= _max_products:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Лимит товаров для тенанта: {_max_products}. Текущее количество: {_current_count}.",
+        )
+
     aliases_data = data.get("aliases", [])
     photo_mapping = data.get("photo_mapping", {})
 
@@ -870,7 +938,7 @@ async def smart_create_product(
         cat_result = await db.execute(
             select(Category).where(
                 Category.tenant_id == user.tenant_id,
-                Category.name.ilike(category_name),
+                Category.name.ilike(escape_like(category_name)),
             )
         )
         category = cat_result.scalar_one_or_none()
