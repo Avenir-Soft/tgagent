@@ -30,11 +30,13 @@ logger = logging.getLogger(__name__)
 
 async def _run_alembic_upgrade():
     """Run Alembic migrations on startup. All schema DDL is managed by Alembic."""
+    import os
     import subprocess
+    cwd = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     result = subprocess.run(
         ["alembic", "upgrade", "head"],
         capture_output=True, text=True, timeout=30,
-        cwd="/Users/macbook/Desktop/tg agent",
+        cwd=cwd,
     )
     if result.returncode != 0:
         logger.warning("Alembic upgrade failed: %s", result.stderr[:500])
