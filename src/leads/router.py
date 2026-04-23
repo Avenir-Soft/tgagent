@@ -10,7 +10,7 @@ from src.auth.models import User
 from src.core.database import get_db
 from src.core.rate_limit import limiter
 from src.leads.models import Lead
-from src.leads.schemas import LeadCreate, LeadOut, LeadUpdate
+from src.leads.schemas import LeadOut, LeadUpdate
 from src.orders.models import Order
 
 logger = logging.getLogger(__name__)

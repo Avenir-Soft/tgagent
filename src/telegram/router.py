@@ -221,7 +221,15 @@ async def send_code(
     user: User = Depends(require_store_owner),
 ):
     """Step 1: Send authorization code to the phone number."""
+    from sqlalchemy import func as _func
     from telethon import TelegramClient
+
+    # Enforce max 5 Telegram accounts per tenant
+    acct_count = (await db.execute(
+        select(_func.count(TelegramAccount.id)).where(TelegramAccount.tenant_id == user.tenant_id)
+    )).scalar_one()
+    if acct_count >= 5:
+        raise HTTPException(status_code=403, detail="Максимум 5 Telegram аккаунтов на тенант")
 
     # Sanitize phone number to prevent path traversal
     import re

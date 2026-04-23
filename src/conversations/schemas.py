@@ -19,7 +19,6 @@ class CommentTemplateOut(BaseModel):
     language: str
     template_text: str
     is_active: bool
-    usage_count: int = 0
 
     model_config = {"from_attributes": True}
 

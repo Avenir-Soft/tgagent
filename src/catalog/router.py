@@ -51,6 +51,17 @@ router = APIRouter(tags=["catalog"])
 _embed_logger = logging.getLogger(__name__ + ".embedding")
 
 
+async def _check_product_limit(tenant_id, db: AsyncSession):
+    """Enforce max_products_per_tenant platform limit."""
+    from sqlalchemy import func as _func
+    from src.platform.settings_cache import get_platform_settings
+    cfg = get_platform_settings()
+    max_p = cfg.get("max_products_per_tenant", 500)
+    count = (await db.execute(select(_func.count(Product.id)).where(Product.tenant_id == tenant_id))).scalar_one()
+    if count >= max_p:
+        raise HTTPException(403, f"Лимит товаров для тенанта: {max_p}. Текущее количество: {count}.")
+
+
 async def _update_product_embedding(product_id, tenant_id, db: AsyncSession) -> None:
     """Generate and save embedding for a product (fire-and-forget, non-fatal)."""
     try:
@@ -128,20 +139,7 @@ async def create_product(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_store_owner),
 ):
-    # Enforce max_products_per_tenant platform limit
-    from sqlalchemy import func as _func
-    from src.platform.settings_cache import get_platform_settings
-    platform_cfg = get_platform_settings()
-    max_products = platform_cfg.get("max_products_per_tenant", 500)
-    count_result = await db.execute(
-        select(_func.count(Product.id)).where(Product.tenant_id == user.tenant_id)
-    )
-    current_count = count_result.scalar_one()
-    if current_count >= max_products:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Лимит товаров для тенанта: {max_products}. Текущее количество: {current_count}.",
-        )
+    await _check_product_limit(user.tenant_id, db)
 
     # Auto-generate slug from name if not provided
     data = body.model_dump(exclude={"variants"})
@@ -802,8 +800,9 @@ async def upload_image(
     _os.makedirs(tenant_dir, exist_ok=True)
     filepath = _os.path.join(tenant_dir, filename)
 
-    with open(filepath, "wb") as f:
-        f.write(data)
+    import asyncio as _asyncio
+    import pathlib as _pathlib
+    await _asyncio.to_thread(_pathlib.Path(filepath).write_bytes, data)
 
     url = f"/uploads/{user.tenant_id}/{filename}"
     return {"url": url, "filename": filename}
@@ -890,8 +889,9 @@ RULES:
         result = _json.loads(content)
     except _json.JSONDecodeError:
         raise HTTPException(500, "AI returned invalid JSON — try again")
-    except Exception as e:
-        raise HTTPException(500, f"AI generation failed: {str(e)}")
+    except Exception:
+        logging.getLogger(__name__).exception("AI product generation failed")
+        raise HTTPException(500, "AI generation failed. Please try again.")
 
     # Check for existing product with same name
     existing = await db.execute(
@@ -952,20 +952,7 @@ async def smart_create_product(
     if not variants_data:
         raise HTTPException(400, "At least one variant is required")
 
-    # Enforce max_products_per_tenant platform limit
-    from sqlalchemy import func as _func
-    from src.platform.settings_cache import get_platform_settings as _gps
-    _pcfg = _gps()
-    _max_products = _pcfg.get("max_products_per_tenant", 500)
-    _cnt_result = await db.execute(
-        select(_func.count(Product.id)).where(Product.tenant_id == user.tenant_id)
-    )
-    _current_count = _cnt_result.scalar_one()
-    if _current_count >= _max_products:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Лимит товаров для тенанта: {_max_products}. Текущее количество: {_current_count}.",
-        )
+    await _check_product_limit(user.tenant_id, db)
 
     aliases_data = data.get("aliases", [])
     photo_mapping = data.get("photo_mapping", {})

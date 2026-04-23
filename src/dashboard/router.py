@@ -1,8 +1,9 @@
 """Dashboard API — thin HTTP handlers delegating to service layer."""
 
+from typing import Literal
 from uuid import UUID as _UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,7 +77,7 @@ async def get_low_stock(
 
 @router.get("/broadcast-estimate")
 async def broadcast_estimate(
-    filter: str = "all",
+    filter: Literal["all", "ordered"] = "all",
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -91,7 +92,7 @@ async def broadcast_estimate(
 
 @router.get("/broadcast-recipients")
 async def broadcast_recipients(
-    filter: str = "all",
+    filter: Literal["all", "ordered"] = "all",
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

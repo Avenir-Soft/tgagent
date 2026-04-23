@@ -201,7 +201,7 @@ async def reset_conversation(tenant_id: UUID, conv: Conversation, db: AsyncSessi
     """Reset conversation state — clears cart, unreserves draft inventory, preserves language."""
     from src.leads.models import Lead
     from src.orders.models import Order
-    from src.catalog.models import Inventory
+    from src.orders.service import unreserve_inventory_for_items
 
     lead_ids = []
     if conv.telegram_user_id:
@@ -219,30 +219,10 @@ async def reset_conversation(tenant_id: UUID, conv: Conversation, db: AsyncSessi
         )
         draft_orders = draft_r.scalars().all()
 
-        # Batch-load all inventories in one query instead of N+1
-        all_variant_ids = {
-            item.product_variant_id
-            for order in draft_orders
-            for item in order.items
-            if item.product_variant_id
-        }
-        inv_map: dict = {}
-        if all_variant_ids:
-            inv_r2 = await db.execute(
-                select(Inventory).where(
-                    Inventory.tenant_id == tenant_id,
-                    Inventory.variant_id.in_(all_variant_ids),
-                ).with_for_update()
-            )
-            inv_map = {inv.variant_id: inv for inv in inv_r2.scalars().all()}
+        all_items = [item for order in draft_orders for item in order.items]
+        await unreserve_inventory_for_items(all_items, db)
 
         for order in draft_orders:
-            for item in order.items:
-                if not item.product_variant_id:
-                    continue
-                inv = inv_map.get(item.product_variant_id)
-                if inv:
-                    inv.reserved_quantity = max(0, inv.reserved_quantity - item.qty)
             order.status = "cancelled"
 
     # Preserve active order references

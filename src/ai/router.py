@@ -92,8 +92,9 @@ async def test_notification(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(500, f"Ошибка отправки: {str(e)}")
+    except Exception:
+        _api_key_logger.exception("Telegram test notification send failed")
+        raise HTTPException(500, "Ошибка отправки уведомления. Попробуйте позже.")
     return {"status": "sent"}
 
 
@@ -154,8 +155,11 @@ async def save_api_key(
     # Validate key by making a lightweight test call
     try:
         await _validate_api_key(body.provider, api_key, body.model)
-    except Exception as e:
+    except ValueError as e:
         raise HTTPException(400, f"Ключ невалиден: {e}")
+    except Exception:
+        _api_key_logger.exception("API key validation failed unexpectedly")
+        raise HTTPException(400, "Ошибка проверки ключа. Попробуйте позже.")
 
     # Load or create settings
     result = await db.execute(
@@ -242,8 +246,11 @@ async def test_api_key(
         raise HTTPException(400, f"Неизвестный провайдер: {body.provider}")
     try:
         await _validate_api_key(body.provider, body.api_key.strip(), body.model)
-    except Exception as e:
+    except ValueError as e:
         raise HTTPException(400, f"Ключ невалиден: {e}")
+    except Exception:
+        _api_key_logger.exception("API key test failed unexpectedly")
+        raise HTTPException(400, "Ошибка проверки ключа. Попробуйте позже.")
     return {"status": "valid", "provider": body.provider}
 
 

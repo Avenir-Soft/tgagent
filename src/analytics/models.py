@@ -18,7 +18,9 @@ class CustomerSegment(PkMixin, TenantMixin, UpdatableMixin, Base):
         Index("ix_customer_segments_tenant_lead", "tenant_id", "lead_id", unique=True),
     )
 
-    lead_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False
+    )
     customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     recency_days: Mapped[int] = mapped_column(nullable=False, default=0)

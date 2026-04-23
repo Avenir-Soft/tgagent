@@ -365,7 +365,14 @@ class TelegramClientManager:
     async def _process_batched_messages(
         self, tenant_id: UUID, chat_id: int, events_and_texts: list[tuple]
     ) -> None:
-        """Process a batch of messages as a single AI request."""
+        """Process a batch of messages as a single AI request.
+
+        # TODO: Decompose this 390-line method into smaller functions:
+        # - _find_or_create_conversation()
+        # - _save_inbound_message()
+        # - _download_avatar()
+        # - _send_response_with_photos()
+        """
         async with async_session_factory() as db:
             try:
                 # Use the first event for sender info, last event for responding
@@ -934,6 +941,7 @@ class TelegramClientManager:
                 logger.exception("Error handling comment for tenant %s", tenant_id)
                 await db.rollback()
 
+    # TODO: Extract AI/business logic to src/ai/comment_handler.py
     async def _smart_comment_reply(
         self, tenant_id: UUID, text: str, cta_handle: str, db, *, show_price: bool = True,
     ) -> dict | None:
@@ -1002,7 +1010,7 @@ class TelegramClientManager:
         )
         if any(kw in text for kw in delivery_keywords):
             result = await db.execute(
-                select(DeliveryRule).where(DeliveryRule.tenant_id == tenant_id)
+                select(DeliveryRule).where(DeliveryRule.tenant_id == tenant_id).limit(100)
             )
             rules = result.scalars().all()
             if rules:

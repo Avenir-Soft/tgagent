@@ -15,3 +15,6 @@ frontend/node_modules/
 media_cache/
 .DS_Store
 uploads/
+.playwright-mcp/
+screenshots-platform/
+*.swp

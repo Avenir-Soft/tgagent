@@ -3,7 +3,6 @@
 import json
 import logging
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -17,7 +16,7 @@ from src.conversations.models import Conversation, Message
 from src.core.audit import AuditLog, log_audit
 from src.core.database import escape_like, get_db
 from src.core.rate_limit import limiter
-from src.core.security import create_access_token, hash_password
+from src.core.security import hash_password
 from src.ai.models import AITraceLog
 from src.orders.models import Order
 from src.tenants.models import Tenant
@@ -27,7 +26,6 @@ from src.platform.schemas import (
     AuditLogOut,
     BulkUserStatusRequest,
     DailyBillingItem,
-    ImpersonateResponse,
     MessagesByDay,
     ModelDistributionItem,
     PlatformSettingsOut,
@@ -39,28 +37,18 @@ from src.platform.schemas import (
     PlatformUserUpdate,
     TenantBilling,
 )
-from src.platform.settings_cache import get_platform_settings as _get_cached_settings, invalidate_platform_settings_cache
+from src.platform.settings_cache import (
+    get_platform_settings as _get_cached_settings,
+    invalidate_platform_settings_cache,
+    _DEFAULTS as _DEFAULT_SETTINGS,
+    _SETTINGS_FILE,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/platform", tags=["platform"])
 
-# ── Platform settings file path ───────────────────────────────────────────────
-_SETTINGS_FILE = Path(__file__).parent / "platform_settings.json"
-
-_DEFAULT_SETTINGS = {
-    "default_ai_model": "gpt-4o-mini",
-    "fallback_model": "gpt-4o",
-    "default_language": "ru",
-    "default_timezone": "Asia/Tashkent",
-    "max_products_per_tenant": 500,
-    "max_users_per_tenant": 10,
-    "max_messages_per_day": 5000,
-    "trial_days": 14,
-    "signup_enabled": True,
-    "maintenance_mode": False,
-    "read_only_mode": False,
-}
+# ── Platform settings (loaded from settings_cache.py) ────────────────────────
 
 
 def _load_settings() -> dict:
@@ -74,7 +62,10 @@ def _load_settings() -> dict:
 
 
 def _save_settings(data: dict) -> None:
-    """Persist platform settings to JSON file."""
+    """Persist platform settings to JSON file.
+
+    Note: sync I/O is acceptable here — tiny JSON file, negligible blocking.
+    """
     _SETTINGS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
@@ -420,7 +411,9 @@ async def get_ai_logs(
 
     # Date filtering
     if date_from and date_to:
-        stmt = stmt.where(AITraceLog.created_at >= date_from, AITraceLog.created_at <= date_to + "T23:59:59")
+        dt_from = datetime.fromisoformat(date_from)
+        dt_to = datetime.fromisoformat(date_to + "T23:59:59")
+        stmt = stmt.where(AITraceLog.created_at >= dt_from, AITraceLog.created_at <= dt_to)
     else:
         period_hours = {"1h": 1, "6h": 6, "24h": 24, "7d": 168, "30d": 720}
         hours = period_hours.get(period, 1)
@@ -736,9 +729,11 @@ async def get_audit_logs(
 
     # Date filtering
     if date_from and date_to:
+        dt_from = datetime.fromisoformat(date_from)
+        dt_to = datetime.fromisoformat(date_to + "T23:59:59")
         stmt = stmt.where(
-            AuditLog.created_at >= date_from,
-            AuditLog.created_at <= date_to + "T23:59:59",
+            AuditLog.created_at >= dt_from,
+            AuditLog.created_at <= dt_to,
         )
     else:
         period_hours = {"1h": 1, "24h": 24, "7d": 168, "30d": 720}
@@ -811,80 +806,8 @@ async def update_platform_settings(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 8. POST /tenants/{id}/impersonate — (registered on tenants router separately)
-#    This is included here but will be added to the tenants router via include
+# 8. POST /tenants/{id}/impersonate — lives in src/tenants/router.py (single source)
 # ══════════════════════════════════════════════════════════════════════════════
-
-
-@router.post("/tenants/{tenant_id}/impersonate", response_model=ImpersonateResponse)
-@limiter.limit("10/minute")
-async def impersonate_tenant(
-    request: Request,
-    tenant_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_super_admin),
-):
-    """Impersonate a tenant by creating a short-lived JWT as the tenant's store_owner.
-
-    Creates a 30-minute token with impersonated_by claim for audit trail.
-    """
-    # Verify tenant exists
-    tenant_result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
-    tenant = tenant_result.scalar_one_or_none()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
-    # Find first store_owner in the target tenant
-    user_result = await db.execute(
-        select(User)
-        .where(User.tenant_id == tenant_id, User.role == "store_owner", User.is_active.is_(True))
-        .order_by(User.created_at.asc())
-        .limit(1)
-    )
-    target_user = user_result.scalar_one_or_none()
-    if not target_user:
-        raise HTTPException(
-            status_code=404,
-            detail="No active store_owner found in this tenant",
-        )
-
-    # Create short-lived JWT (30 min) with impersonation claims
-    token = create_access_token(
-        data={
-            "sub": str(target_user.id),
-            "tenant_id": str(tenant_id),
-            "impersonated_by": str(admin.id),
-        },
-        expires_delta=timedelta(minutes=30),
-    )
-
-    # Log impersonation in audit_logs
-    audit = AuditLog(
-        tenant_id=tenant_id,
-        actor_type="user",
-        actor_id=str(admin.id),
-        action="impersonate",
-        entity_type="user",
-        entity_id=str(target_user.id),
-        meta_json={
-            "admin_email": admin.email,
-            "target_user_email": target_user.email,
-            "target_tenant": tenant.name,
-        },
-    )
-    db.add(audit)
-    await db.flush()
-
-    logger.info(
-        "Super admin %s impersonated tenant %s (user %s)",
-        admin.email, tenant.name, target_user.email,
-    )
-
-    return ImpersonateResponse(
-        access_token=token,
-        tenant_name=tenant.name,
-        user_email=target_user.email,
-    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

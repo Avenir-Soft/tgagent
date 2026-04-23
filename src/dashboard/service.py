@@ -47,19 +47,12 @@ async def cleanup_expired_drafts(max_age_hours: int = 2, tenant_id: UUID | None 
         )
         stale_drafts = result.scalars().all()
 
+        from src.orders.service import unreserve_inventory_for_items
+
+        all_items = [item for order in stale_drafts for item in order.items]
+        await unreserve_inventory_for_items(all_items, db)
+
         for order in stale_drafts:
-            for item in order.items:
-                if not item.product_variant_id:
-                    continue
-                inv_result = await db.execute(
-                    select(Inventory).where(
-                        Inventory.tenant_id == order.tenant_id,
-                        Inventory.variant_id == item.product_variant_id,
-                    ).with_for_update()
-                )
-                inv = inv_result.scalar_one_or_none()
-                if inv:
-                    inv.reserved_quantity = max(0, inv.reserved_quantity - item.qty)
             order.status = "cancelled"
             cancelled += 1
 
@@ -523,3 +516,106 @@ async def send_broadcast_background(
     except Exception:
         logger.exception("Broadcast %s crashed", bid)
         await _set_status("failed")
+
+
+# ── Scheduled Broadcasts ────────────────────────────────────────────────────
+
+
+async def execute_due_broadcasts():
+    """Find and execute any scheduled broadcasts that are due."""
+    async with async_session_factory() as db:
+        # Atomically claim due broadcasts to prevent double-send on multiple instances
+        result = await db.execute(
+            _sql(
+                "UPDATE broadcast_history SET status = 'sending'"
+                " WHERE id IN ("
+                "   SELECT id FROM broadcast_history"
+                "   WHERE status = 'scheduled' AND scheduled_at <= now()"
+                "   FOR UPDATE SKIP LOCKED"
+                " ) RETURNING id, tenant_id, message_text, image_url, filter_type, created_by_user_id, target_conversation_ids"
+            )
+        )
+        due = result.fetchall()
+        if not due:
+            return
+        await db.commit()
+
+        for row in due:
+            bid, tenant_id, msg_text, image_url, filter_type, user_id, target_conv_ids = row
+            logger.info("Executing scheduled broadcast %s for tenant %s", bid, tenant_id)
+
+            try:
+                from src.telegram.service import telegram_manager
+                client = telegram_manager.get_client(tenant_id)
+                if not client:
+                    await db.execute(_sql("UPDATE broadcast_history SET status = 'failed' WHERE id = :id"), {"id": bid})
+                    await db.commit()
+                    continue
+
+                q_text = """
+                    SELECT id, telegram_chat_id, telegram_first_name, telegram_username FROM conversations
+                    WHERE tenant_id = :tid AND source_type = 'dm' AND status != 'closed'
+                """
+                params: dict = {"tid": tenant_id}
+                if target_conv_ids and isinstance(target_conv_ids, list):
+                    q_text += " AND id = ANY(:cids)"
+                    params["cids"] = [_uuid_mod.UUID(c) if isinstance(c, str) else c for c in target_conv_ids]
+                elif filter_type == "ordered":
+                    q_text += " AND id IN (SELECT c.id FROM conversations c JOIN leads l ON l.conversation_id = c.id JOIN orders o ON o.lead_id = l.id WHERE c.tenant_id = :tid)"
+                q_text += " LIMIT 5000"
+
+                convs = (await db.execute(_sql(q_text), params)).fetchall()
+
+                sent = 0
+                failed = 0
+                recipients_log = []
+                for conv_id, chat_id, first_name, username in convs:
+                    r_info = {"name": first_name or "—", "username": username, "conversation_id": str(conv_id)}
+                    try:
+                        # Resolve entity — after restart Telethon may not have the peer cached
+                        try:
+                            entity = await client.get_input_entity(chat_id)
+                        except ValueError:
+                            if username:
+                                entity = await client.get_input_entity(username)
+                            else:
+                                raise
+                        if image_url:
+                            tg_sent = await client.send_file(entity, file=image_url, caption=msg_text, force_document=False)
+                        else:
+                            tg_sent = await client.send_message(entity, msg_text)
+                        sent += 1
+                        r_info["sent"] = True
+
+                        # Create Message record so it appears in admin conversation detail
+                        tg_msg_id = getattr(tg_sent, "id", None)
+                        msg_id = _uuid_mod.uuid4()
+                        await db.execute(
+                            _sql(
+                                "INSERT INTO messages (id, tenant_id, conversation_id, telegram_message_id, direction, sender_type, raw_text, ai_generated, created_at)"
+                                " VALUES (:id, :tid, :cid, :tg_mid, 'outbound', 'human_admin', :text, false, now())"
+                            ),
+                            {"id": msg_id, "tid": tenant_id, "cid": conv_id, "tg_mid": tg_msg_id, "text": msg_text},
+                        )
+                        await db.execute(
+                            _sql("UPDATE conversations SET last_message_at = now() WHERE id = :cid"),
+                            {"cid": conv_id},
+                        )
+
+                        await asyncio.sleep(0.3)
+                    except Exception as e:
+                        logger.warning("Broadcast send failed for conversation %s: %s", conv_id, e)
+                        failed += 1
+                        r_info["sent"] = False
+                    recipients_log.append(r_info)
+
+                await db.execute(
+                    _sql("UPDATE broadcast_history SET status = 'sent', sent_count = :sent, failed_count = :failed, sent_at = now(), recipients_json = :rj WHERE id = :id"),
+                    {"id": bid, "sent": sent, "failed": failed, "rj": json.dumps(recipients_log, ensure_ascii=False)},
+                )
+                await db.commit()
+                logger.info("Scheduled broadcast %s complete: %d sent, %d failed", bid, sent, failed)
+            except Exception:
+                logger.exception("Failed to execute scheduled broadcast %s", bid)
+                await db.execute(_sql("UPDATE broadcast_history SET status = 'failed' WHERE id = :id"), {"id": bid})
+                await db.commit()

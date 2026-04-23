@@ -71,6 +71,14 @@ class AiSettings(PkMixin, TenantMixin, UpdatableMixin, Base):
         Boolean, nullable=False, server_default=text("true")
     )
 
+    # Store-level settings
+    timezone: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, server_default=text("'Asia/Tashkent'")
+    )
+    currency: Mapped[str | None] = mapped_column(
+        String(10), nullable=True, server_default=text("'UZS'")
+    )
+
     # Per-tenant AI provider configuration
     ai_provider: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=text("'openai'")

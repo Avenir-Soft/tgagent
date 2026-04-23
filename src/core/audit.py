@@ -1,3 +1,4 @@
+import logging
 import uuid
 from uuid import UUID as PyUUID
 
@@ -50,4 +51,4 @@ async def log_audit(
         db.add(entry)
         # Don't flush here — let the caller's transaction handle it
     except Exception:
-        pass  # Never break the main flow
+        logging.getLogger(__name__).warning("Audit log failed", exc_info=True)

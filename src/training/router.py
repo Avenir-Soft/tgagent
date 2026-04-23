@@ -844,9 +844,9 @@ async def generate_rules(
         raw = resp.choices[0].message.content or "{}"
         data = json.loads(raw)
         generated_rules = data.get("rules", [])
-    except Exception as e:
-        logger.error("Rule generation failed: %s", e)
-        raise HTTPException(500, f"Ошибка генерации правил: {e}")
+    except Exception:
+        logger.exception("Rule generation failed")
+        raise HTTPException(500, "Ошибка генерации правил. Попробуйте позже.")
 
     # Load current AiSettings
     settings_result = await db.execute(

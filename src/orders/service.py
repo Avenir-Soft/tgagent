@@ -269,20 +269,24 @@ async def update_order(
     return order
 
 
-async def _unreserve_order_inventory(tenant_id: UUID, order: Order, db: AsyncSession):
-    """Release reserved inventory for all items in an order."""
-    for item in order.items:
-        if not item.product_variant_id:
-            continue
-        inv_result = await db.execute(
-            select(Inventory).where(
-                Inventory.tenant_id == tenant_id,
-                Inventory.variant_id == item.product_variant_id,
-            ).with_for_update()
-        )
-        inv = inv_result.scalar_one_or_none()
+async def unreserve_inventory_for_items(order_items, db: AsyncSession):
+    """Batch unreserve inventory for order items. Shared utility for orders, conversations, dashboard."""
+    variant_ids = [item.product_variant_id for item in order_items if item.product_variant_id]
+    if not variant_ids:
+        return
+    result = await db.execute(
+        select(Inventory).where(Inventory.variant_id.in_(variant_ids)).with_for_update()
+    )
+    inv_map = {inv.variant_id: inv for inv in result.scalars().all()}
+    for item in order_items:
+        inv = inv_map.get(item.product_variant_id)
         if inv:
             inv.reserved_quantity = max(0, inv.reserved_quantity - item.qty)
+
+
+async def _unreserve_order_inventory(tenant_id: UUID, order: Order, db: AsyncSession):
+    """Release reserved inventory for all items in an order."""
+    await unreserve_inventory_for_items(order.items, db)
     await db.flush()
 
 

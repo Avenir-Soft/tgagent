@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.catalog.models import Category, DeliveryRule, Inventory, Product, ProductAlias, ProductMedia, ProductVariant
+from src.core.database import escape_like as _escape_like
 from src.leads.models import Lead
 from src.orders.models import Order, OrderItem
 
@@ -84,11 +85,6 @@ async def invalidate_catalog_cache(tenant_id) -> None:
                 break
     except Exception as e:
         _logger.warning("Redis cache invalidation failed for tenant %s: %s", tenant_id, e)
-
-
-def _escape_like(s: str) -> str:
-    """Escape SQL LIKE/ILIKE wildcard characters in user input."""
-    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 CATEGORY_NAME_ALIASES: dict[str, list[str]] = {

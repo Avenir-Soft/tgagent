@@ -70,7 +70,7 @@ def _get_openai_client(api_key: str | None = None) -> _openai_mod.AsyncOpenAI:
     return _openai_client
 
 
-def _get_tenant_ai_config(ai_settings) -> tuple[str, object, str]:
+def _get_tenant_ai_config(ai_settings) -> tuple[str, "_openai_mod.AsyncOpenAI", str]:
     """Resolve tenant's AI provider, client, and model.
 
     Returns (provider, client, model) where:
@@ -123,6 +123,7 @@ def _get_tenant_ai_config(ai_settings) -> tuple[str, object, str]:
 # ── AI Settings in-memory cache (TTL 60s) ────────────────────────────────────
 _ai_settings_cache: dict[str, tuple] = {}  # tenant_id_str → (settings_obj, monotonic_ts)
 _AI_SETTINGS_TTL = 60
+_AI_SETTINGS_CACHE_MAX = 200
 
 
 async def _get_ai_settings_cached(tenant_id: UUID, db: AsyncSession):
@@ -139,6 +140,8 @@ async def _get_ai_settings_cached(tenant_id: UUID, db: AsyncSession):
     if ai_settings:
         # Detach from session so cached object is safe to reuse across sessions
         db.expunge(ai_settings)
+    if len(_ai_settings_cache) > _AI_SETTINGS_CACHE_MAX:
+        _ai_settings_cache.clear()  # Simple flush when too many tenants
     _ai_settings_cache[key] = (ai_settings, time.monotonic())
     return ai_settings
 

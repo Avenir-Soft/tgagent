@@ -35,8 +35,8 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
     # Record last login
-    from datetime import datetime
-    user.last_login_at = datetime.utcnow()
+    from datetime import datetime, timezone
+    user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.flush()
 
     access = create_access_token({"sub": str(user.id), "tenant_id": str(user.tenant_id)})

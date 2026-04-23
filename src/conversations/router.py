@@ -138,6 +138,8 @@ async def test_trigger(
         matched = False
         if tpl.trigger_type == "regex":
             for p in patterns:
+                if len(str(p)) > 200:
+                    continue  # Skip overly long patterns (ReDoS protection)
                 try:
                     if re.search(p, test_text, re.IGNORECASE):
                         matched = True
